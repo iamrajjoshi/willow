@@ -52,7 +52,7 @@ func NewApp() *cli.Command {
 			cloneCmd(),
 			newCmd(),
 			lsCmd(),
-			goCmd(),
+			pwdCmd(),
 			rmCmd(),
 			runCmd(),
 			pruneCmd(),
