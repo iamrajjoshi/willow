@@ -85,7 +85,7 @@ func TestMerge_NilSliceDoesNotOverride(t *testing.T) {
 func TestMerge_BoolPointerOverride(t *testing.T) {
 	base := DefaultConfig() // fetch=true, autoSetupRemote=true
 	overlay := &Config{
-		Defaults: Defaults{Fetch: boolPtr(false)},
+		Defaults: Defaults{Fetch: BoolPtr(false)},
 	}
 
 	merge(base, overlay)
@@ -114,9 +114,9 @@ func TestLoadFile_ValidJSON(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	os.WriteFile(path, []byte(`{"baseBranch": "develop", "defaults": {"fetch": false}}`), 0o644)
 
-	cfg, err := loadFile(path)
+	cfg, err := LoadFile(path)
 	if err != nil {
-		t.Fatalf("loadFile() error: %v", err)
+		t.Fatalf("LoadFile() error: %v", err)
 	}
 	if cfg.BaseBranch != "develop" {
 		t.Errorf("BaseBranch = %q, want %q", cfg.BaseBranch, "develop")
@@ -127,9 +127,9 @@ func TestLoadFile_ValidJSON(t *testing.T) {
 }
 
 func TestLoadFile_MissingFile(t *testing.T) {
-	_, err := loadFile("/nonexistent/config.json")
+	_, err := LoadFile("/nonexistent/config.json")
 	if err == nil {
-		t.Error("loadFile() should return error for missing file")
+		t.Error("LoadFile() should return error for missing file")
 	}
 }
 
@@ -138,9 +138,9 @@ func TestLoadFile_InvalidJSON(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	os.WriteFile(path, []byte(`{not json}`), 0o644)
 
-	_, err := loadFile(path)
+	_, err := LoadFile(path)
 	if err == nil {
-		t.Error("loadFile() should return error for invalid JSON")
+		t.Error("LoadFile() should return error for invalid JSON")
 	}
 }
 
@@ -153,8 +153,8 @@ func TestSaveAndLoad(t *testing.T) {
 		BranchPrefix: "raj",
 		Setup:        []string{"npm install"},
 		Defaults: Defaults{
-			Fetch:           boolPtr(false),
-			AutoSetupRemote: boolPtr(true),
+			Fetch:           BoolPtr(false),
+			AutoSetupRemote: BoolPtr(true),
 		},
 	}
 
@@ -162,9 +162,9 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := loadFile(path)
+	loaded, err := LoadFile(path)
 	if err != nil {
-		t.Fatalf("loadFile() error: %v", err)
+		t.Fatalf("LoadFile() error: %v", err)
 	}
 
 	if loaded.BaseBranch != "main" {
@@ -223,13 +223,13 @@ func TestLoad_ThreeTierMerge(t *testing.T) {
 
 	cfg := DefaultConfig()
 
-	global, _ := loadFile(filepath.Join(globalDir, "config.json"))
+	global, _ := LoadFile(filepath.Join(globalDir, "config.json"))
 	merge(cfg, global)
 
-	shared, _ := loadFile(filepath.Join(sharedDir, "config.json"))
+	shared, _ := LoadFile(filepath.Join(sharedDir, "config.json"))
 	merge(cfg, shared)
 
-	local, _ := loadFile(filepath.Join(localDir, "config.json"))
+	local, _ := LoadFile(filepath.Join(localDir, "config.json"))
 	merge(cfg, local)
 
 	// baseBranch: global=main, local=develop → develop wins

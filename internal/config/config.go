@@ -20,13 +20,13 @@ type Defaults struct {
 	AutoSetupRemote *bool `json:"autoSetupRemote,omitempty"`
 }
 
-func boolPtr(v bool) *bool { return &v }
+func BoolPtr(v bool) *bool { return &v }
 
 func DefaultConfig() *Config {
 	return &Config{
 		Defaults: Defaults{
-			Fetch:           boolPtr(true),
-			AutoSetupRemote: boolPtr(true),
+			Fetch:           BoolPtr(true),
+			AutoSetupRemote: BoolPtr(true),
 		},
 	}
 }
@@ -63,18 +63,18 @@ func SharedConfigPath(worktreeRoot string) string {
 func Load(bareDir, worktreeRoot string) *Config {
 	cfg := DefaultConfig()
 
-	if global, err := loadFile(GlobalConfigPath()); err == nil {
+	if global, err := LoadFile(GlobalConfigPath()); err == nil {
 		merge(cfg, global)
 	}
 
 	if worktreeRoot != "" {
-		if shared, err := loadFile(SharedConfigPath(worktreeRoot)); err == nil {
+		if shared, err := LoadFile(SharedConfigPath(worktreeRoot)); err == nil {
 			merge(cfg, shared)
 		}
 	}
 
 	if bareDir != "" {
-		if local, err := loadFile(LocalConfigPath(bareDir)); err == nil {
+		if local, err := LoadFile(LocalConfigPath(bareDir)); err == nil {
 			merge(cfg, local)
 		}
 	}
@@ -82,7 +82,7 @@ func Load(bareDir, worktreeRoot string) *Config {
 	return cfg
 }
 
-func loadFile(path string) (*Config, error) {
+func LoadFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
