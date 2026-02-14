@@ -1,0 +1,42 @@
+version: 2
+
+builds:
+  - main: ./cmd/willow
+    binary: willow
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/iamrajjoshi/willow/internal/cli.version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "willow_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - repository:
+      owner: iamrajjoshi
+      name: homebrew-tap
+    name: willow
+    homepage: https://github.com/iamrajjoshi/willow
+    description: A simple, opinionated git worktree manager
+    license: MIT
+    install: |
+      bin.install "willow"
+    test: |
+      system "#{bin}/willow", "--version"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
