@@ -23,6 +23,7 @@ func rmCmd() *cli.Command {
 				UsageText: "<branch-or-name>",
 			},
 		},
+		ShellComplete: completeWorktrees,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "force",

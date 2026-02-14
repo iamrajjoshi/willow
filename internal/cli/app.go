@@ -30,9 +30,10 @@ func (f Flags) NewUI() *ui.UI {
 
 func NewApp() *cli.Command {
 	return &cli.Command{
-		Name:    "willow",
-		Usage:   "A simple, opinionated git worktree manager",
-		Version: version,
+		Name:                  "willow",
+		Usage:                 "A simple, opinionated git worktree manager",
+		Version:               version,
+		EnableShellCompletion: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "C",

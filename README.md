@@ -31,16 +31,21 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 
 ### Shell integration
 
-Add to your `.bashrc` or `.zshrc`:
+Add to your shell config:
 
 ```bash
+# .bashrc or .zshrc
 eval "$(willow shell-init)"
+
+# fish (~/.config/fish/config.fish)
+willow shell-init | source
 ```
 
-This gives you:
+The shell is auto-detected from `$SHELL`. This gives you:
 - `ww` — alias for `willow`
 - `wwn <branch>` — create a worktree and `cd` into it
 - `wwg <branch>` — `cd` into an existing worktree
+- Tab completion for commands, flags, and worktree branch names
 
 ## Quick start
 
@@ -122,6 +127,7 @@ Run a command in a worktree's directory.
 ```bash
 ww run auth-refactor -- npm test
 ww run main -- git pull
+ww run --all -- git pull              # run across all worktrees
 ```
 
 ### `ww prune [flags]`
