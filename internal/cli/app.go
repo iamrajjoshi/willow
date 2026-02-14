@@ -1,10 +1,26 @@
 package cli
 
 import (
+	"fmt"
+
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
+
+var errNotWillowRepo = fmt.Errorf("not inside a willow-managed repo\n\nRun this command from a worktree under ~/.willow, or use 'ww ls' to see your repos.")
+
+func requireWillowRepo(g *git.Git) (string, error) {
+	bareDir, err := g.BareRepoDir()
+	if err != nil {
+		return "", errNotWillowRepo
+	}
+	if !config.IsWillowRepo(bareDir) {
+		return "", errNotWillowRepo
+	}
+	return bareDir, nil
+}
 
 var version = "dev"
 

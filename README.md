@@ -45,6 +45,7 @@ The shell is auto-detected from `$SHELL`. This gives you:
 - `ww` — alias for `willow`
 - `wwn <branch>` — create a worktree and `cd` into it
 - `wwg <branch>` — `cd` into an existing worktree
+- `www` — `cd` into `~/.willow/worktrees`
 - Tab completion for commands, flags, and worktree branch names
 
 ## Quick start
@@ -61,7 +62,59 @@ wwn auth-refactor
 ww rm auth-refactor
 ```
 
+## Example workflow
+
+Here's a full workflow from cloning a repo through creating worktrees, doing work, and cleaning up:
+
+```bash
+# 1. Clone the repo (one-time)
+ww clone git@github.com:org/backend.git
+
+# 2. Set up your config (branch prefix, setup hooks, etc.)
+ww init
+#   Base branch [main]:
+#   Branch prefix (e.g. your-username): alice
+#   Setup command (run after creating worktree): npm install
+#   Teardown command (run before removing worktree):
+
+# 3. Create a worktree for your feature
+wwn auth-refactor
+# → Creates branch alice/auth-refactor, cd's into the worktree
+
+# 4. Do your work — edit, commit, push as usual
+git add -A
+git commit -m "add OAuth2 login flow"
+git push
+
+# 5. Check on all your worktrees
+ww ls
+#   BRANCH                PATH                                              AGE
+#   main                  ~/.willow/worktrees/backend/main                  3d
+#   alice/auth-refactor   ~/.willow/worktrees/backend/aliceauth-refactor    2m
+
+# 6. Clean up when done
+ww rm auth-refactor
+```
+
+You can also list repos and work across them from anywhere:
+
+```bash
+# See all willow-managed repos (works from any directory)
+ww ls
+#   REPO      WORKTREES
+#   backend   3
+#   frontend  1
+
+# List worktrees for a specific repo
+ww ls backend
+
+# Create a worktree in a repo without cd'ing there first
+wwn fix-bug --repo backend
+```
+
 ## Commands
+
+All repo-scoped commands (`new`, `ls`, `rm`, `pwd`, `run`, `prune`, `init`, `config`) are scoped to `~/.willow`-managed repos. Running them from a non-willow git repo will show a clear error rather than operating on that repo's worktrees.
 
 ### `ww clone <url> [name]`
 
@@ -81,28 +134,35 @@ ww new feature/auth
 ww new feature/auth -b develop       # fork from a specific branch
 ww new -e existing-branch            # use an existing branch
 ww new feature/auth --no-fetch       # skip fetching from remote
+ww new feature/auth --repo myrepo    # target a specific repo (works from anywhere)
 cd "$(ww new feature/auth --cd)"     # create and cd (without shell integration)
 ```
 
 Flags:
-- `-b, --base <branch>` — base branch to fork from (default: config → auto-detected)
+- `-b, --base <branch>` — base branch to fork from (default: config -> auto-detected)
+- `-r, --repo <name>` — target a willow-managed repo by name (works from anywhere)
 - `-e, --existing` — use an existing branch instead of creating a new one
 - `--no-fetch` — skip fetching latest from remote
 - `--cd` — print only the worktree path (for `cd $(...)`)
 
-### `ww ls [flags]`
+### `ww ls [repo] [flags]`
 
-List all worktrees.
+List worktrees or repos, depending on context:
+
+- `ww ls` inside a willow worktree — list that repo's worktrees
+- `ww ls` outside a willow repo — list all willow-managed repos with worktree counts
+- `ww ls <repo>` — list a specific repo's worktrees (works from anywhere)
 
 ```bash
 ww ls
+ww ls myrepo
 ww ls --json
 ww ls --path-only
 ```
 
 ### `ww pwd <branch-or-name>`
 
-Print the path of a worktree. Supports fuzzy matching (exact branch → substring → directory suffix).
+Print the path of a worktree. Supports fuzzy matching (exact branch -> substring -> directory suffix).
 
 ```bash
 ww pwd auth-refactor
