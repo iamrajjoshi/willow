@@ -20,6 +20,7 @@ func pwdCmd() *cli.Command {
 				UsageText: "<branch-or-name>",
 			},
 		},
+		ShellComplete: completeWorktrees,
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
@@ -48,6 +49,32 @@ func pwdCmd() *cli.Command {
 			fmt.Println(wt.Path)
 			return nil
 		},
+	}
+}
+
+// completeWorktrees provides shell completion for commands that take a branch-or-name argument.
+// When the user is typing a flag, it delegates to the default flag completer.
+func completeWorktrees(ctx context.Context, cmd *cli.Command) {
+	if args := cmd.Args().Slice(); len(args) > 0 && strings.HasPrefix(args[len(args)-1], "-") {
+		cli.DefaultCompleteWithFlags(ctx, cmd)
+		return
+	}
+
+	g := &git.Git{}
+	bareDir, err := g.BareRepoDir()
+	if err != nil {
+		return
+	}
+	repoGit := &git.Git{Dir: bareDir}
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return
+	}
+	w := cmd.Root().Writer
+	for _, wt := range wts {
+		if !wt.IsBare {
+			fmt.Fprintln(w, wt.Branch)
+		}
 	}
 }
 
