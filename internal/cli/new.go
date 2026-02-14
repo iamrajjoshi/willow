@@ -49,6 +49,11 @@ func newCmd() *cli.Command {
 				Aliases: []string{"b"},
 				Usage:   "Base branch to fork from",
 			},
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
 			&cli.BoolFlag{
 				Name:    "existing",
 				Aliases: []string{"e"},
@@ -74,12 +79,24 @@ func newCmd() *cli.Command {
 				return fmt.Errorf("branch name is required\n\nUsage: ww new <branch> [flags]")
 			}
 
-			bareDir, err := g.BareRepoDir()
-			if err != nil {
-				return err
+			var bareDir string
+			var worktreeRoot string
+			var err error
+			if repoFlag := cmd.String("repo"); repoFlag != "" {
+				bareDir, err = config.ResolveRepo(repoFlag)
+				if err != nil {
+					return err
+				}
+			} else {
+				bareDir, err = g.BareRepoDir()
+				if err != nil {
+					return fmt.Errorf("not inside a git repository (use --repo to specify a willow-managed repo)")
+				}
+				if !config.IsWillowRepo(bareDir) {
+					return fmt.Errorf("not inside a willow-managed repo (use --repo to specify one)")
+				}
+				worktreeRoot, _ = g.WorktreeRoot()
 			}
-
-			worktreeRoot, _ := g.WorktreeRoot()
 			cfg := config.Load(bareDir, worktreeRoot)
 
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}

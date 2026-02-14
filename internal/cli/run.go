@@ -32,7 +32,7 @@ func runCmd() *cli.Command {
 				return fmt.Errorf("usage: ww run <branch-or-name> -- <command...>\n       ww run --all -- <command...>")
 			}
 
-			bareDir, err := g.BareRepoDir()
+			bareDir, err := requireWillowRepo(g)
 			if err != nil {
 				return err
 			}

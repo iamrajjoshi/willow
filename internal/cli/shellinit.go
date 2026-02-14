@@ -27,6 +27,8 @@ wwg() {
   cd "$dir" || return
 }
 
+www() { cd ~/.willow/worktrees || return; }
+
 # Tab completion
 __willow_init_completion() {
   COMPREPLY=()
@@ -77,6 +79,8 @@ wwg() {
   cd "$dir" || return
 }
 
+www() { cd ~/.willow/worktrees || return; }
+
 # Tab completion
 _willow() {
   local -a opts
@@ -119,6 +123,10 @@ function wwg
   set -l dir (willow pwd $argv)
   or return
   cd $dir
+end
+
+function www
+  cd ~/.willow/worktrees; or return
 end
 
 # Tab completion

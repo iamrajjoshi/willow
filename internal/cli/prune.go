@@ -28,7 +28,7 @@ func pruneCmd() *cli.Command {
 			g := flags.NewGit()
 			u := flags.NewUI()
 
-			bareDir, err := g.BareRepoDir()
+			bareDir, err := requireWillowRepo(g)
 			if err != nil {
 				return err
 			}

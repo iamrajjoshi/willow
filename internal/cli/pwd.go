@@ -30,7 +30,7 @@ func pwdCmd() *cli.Command {
 				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww pwd <branch-or-name>")
 			}
 
-			bareDir, err := g.BareRepoDir()
+			bareDir, err := requireWillowRepo(g)
 			if err != nil {
 				return err
 			}
