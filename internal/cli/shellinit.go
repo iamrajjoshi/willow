@@ -13,7 +13,18 @@ const bashInitScript = `# Willow shell integration
 # Add to your .bashrc:
 #   eval "$(willow shell-init)"
 
-alias ww='willow'
+ww() {
+  if [ "$1" = "rm" ]; then
+    local cwd="$PWD"
+    command willow "$@"
+    local ret=$?
+    if [ $ret -eq 0 ] && ! [ -d "$cwd" ]; then
+      cd "${cwd%/*}" 2>/dev/null || cd ~/.willow/worktrees 2>/dev/null || true
+    fi
+    return $ret
+  fi
+  command willow "$@"
+}
 
 wwn() {
   local dir
@@ -65,7 +76,18 @@ const zshInitScript = `# Willow shell integration
 # Add to your .zshrc:
 #   eval "$(willow shell-init)"
 
-alias ww='willow'
+ww() {
+  if [ "$1" = "rm" ]; then
+    local cwd="$PWD"
+    command willow "$@"
+    local ret=$?
+    if [ $ret -eq 0 ] && ! [ -d "$cwd" ]; then
+      cd "${cwd%/*}" 2>/dev/null || cd ~/.willow/worktrees 2>/dev/null || true
+    fi
+    return $ret
+  fi
+  command willow "$@"
+}
 
 wwn() {
   local dir
@@ -111,7 +133,20 @@ const fishInitScript = `# Willow shell integration
 # Add to your config.fish:
 #   willow shell-init | source
 
-alias ww='willow'
+function ww
+  if test (count $argv) -gt 0; and test "$argv[1]" = "rm"
+    set -l cwd $PWD
+    command willow $argv
+    set -l ret $status
+    if test $ret -eq 0; and not test -d "$cwd"
+      cd (string replace -r '/[^/]+$' '' "$cwd") 2>/dev/null
+        or cd ~/.willow/worktrees 2>/dev/null
+        or true
+    end
+    return $ret
+  end
+  command willow $argv
+end
 
 function wwn
   set -l dir (willow new $argv --cd)
