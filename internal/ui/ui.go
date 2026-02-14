@@ -32,7 +32,7 @@ func (u *UI) Warn(msg string) {
 }
 
 func (u *UI) Errorf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, u.Red("error: ")+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "%s "+format+"\n", append([]any{u.Red("error:")}, args...)...)
 }
 
 func (u *UI) Bold(s string) string {
