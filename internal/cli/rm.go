@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -94,6 +95,16 @@ func rmCmd() *cli.Command {
 						u.Info("Aborted.")
 						return nil
 					}
+				}
+			}
+
+			// Run teardown hooks before removal
+			worktreeRoot, _ := g.WorktreeRoot()
+			cfg := config.Load(bareDir, worktreeRoot)
+			if len(cfg.Teardown) > 0 {
+				u.Info("Running teardown hooks...")
+				if err := runHooks(cfg.Teardown, wt.Path, u); err != nil {
+					return err
 				}
 			}
 
