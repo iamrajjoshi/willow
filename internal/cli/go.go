@@ -3,7 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
 
@@ -11,15 +14,72 @@ func goCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "go",
 		Aliases: []string{"g"},
-		Usage:   "Print worktree path / interactive picker",
+		Usage:   "Print worktree path",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:      "branch",
+				UsageText: "<branch-or-name>",
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			target := cmd.Args().First()
+			flags := parseFlags(cmd)
+			g := flags.NewGit()
+
+			target := cmd.StringArg("branch")
 			if target == "" {
-				fmt.Println("[stub] interactive worktree picker")
-				return nil
+				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww go <branch-or-name>")
 			}
-			fmt.Printf("[stub] go to worktree=%s\n", target)
+
+			bareDir, err := resolveBareRepo(g)
+			if err != nil {
+				return err
+			}
+
+			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
+			worktrees, err := worktree.List(repoGit)
+			if err != nil {
+				return fmt.Errorf("failed to list worktrees: %w", err)
+			}
+
+			wt, err := findWorktree(worktrees, target)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(wt.Path)
 			return nil
 		},
+	}
+}
+
+// findWorktree matches a target string against worktrees by exact branch name,
+// directory name, or substring match on the branch.
+func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Worktree, error) {
+	// Exact branch match
+	for i := range worktrees {
+		if worktrees[i].Branch == target {
+			return &worktrees[i], nil
+		}
+	}
+
+	// Substring match on branch name or directory name
+	var matches []worktree.Worktree
+	for _, wt := range worktrees {
+		if strings.Contains(wt.Branch, target) || strings.HasSuffix(wt.Path, "/"+target) {
+			matches = append(matches, wt)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no worktree found matching %q", target)
+	case 1:
+		return &matches[0], nil
+	default:
+		lines := fmt.Sprintf("ambiguous match %q, could be:\n", target)
+		for _, wt := range matches {
+			lines += fmt.Sprintf("  %s  %s\n", wt.Branch, wt.Path)
+		}
+		return nil, fmt.Errorf("%s", strings.TrimRight(lines, "\n"))
 	}
 }
