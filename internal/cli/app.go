@@ -54,6 +54,7 @@ func NewApp() *cli.Command {
 			lsCmd(),
 			goCmd(),
 			rmCmd(),
+			runCmd(),
 		},
 	}
 }
