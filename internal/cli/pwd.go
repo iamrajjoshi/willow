@@ -10,11 +10,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func goCmd() *cli.Command {
+func pwdCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "go",
-		Aliases: []string{"g"},
-		Usage:   "Print worktree path",
+		Name:  "pwd",
+		Usage: "Print worktree path",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
@@ -27,7 +26,7 @@ func goCmd() *cli.Command {
 
 			target := cmd.StringArg("branch")
 			if target == "" {
-				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww go <branch-or-name>")
+				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww pwd <branch-or-name>")
 			}
 
 			bareDir, err := g.BareRepoDir()
