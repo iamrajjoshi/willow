@@ -104,10 +104,3 @@ func repoNameFromURL(url string) string {
 	return strings.TrimSuffix(name, ".git")
 }
 
-func detectDefaultBranch(g *git.Git) (string, error) {
-	ref, err := g.Run("symbolic-ref", "HEAD")
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimPrefix(ref, "refs/heads/"), nil
-}
