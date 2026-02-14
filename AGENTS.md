@@ -27,7 +27,9 @@ go build -o bin/willow ./cmd/willow
 - Follow the Go community's style guide for code formatting and readability.
 
 ## Workflow Conventions
-- When creating branches, use a consistent naming convention (e.g. `feature--<branch_name>`, `bugfix--<branch_name>`, `release--<branch_name>`)
-- Writing commit messages should follow the conventional commit format (https://www.conventionalcommits.org/en/v1.0.0/)
+- When creating branches, use a consistent naming convention (e.g. `feat--<branch_name>`, `fix--<branch_name>`, `release--<branch_name>`)
 - Use emojis to indicate the type of change (✨ for feature, 🐛 for bug fix, 📝 for docs, 📦 for dependency updates, 🚀 for deployements, 🎨 for design changes, 🔧 for chore, ♻️ for refactoring, 🧹 for cleanup, 🧪 for tests)
+- The commit title should be in the format `:emoji <type>(<scope>): <subject>` and make sure that it is concise and descriptive.
+- Writing commit messages should follow the conventional commit format (https://www.conventionalcommits.org/en/v1.0.0/)
+
 - Use pull requests for code review and merging changes into the main branch.
