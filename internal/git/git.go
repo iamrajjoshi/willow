@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -31,4 +32,41 @@ func (g *Git) Run(args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func (g *Git) BareRepoDir() (string, error) {
+	dir, err := g.Run("rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", fmt.Errorf("not inside a git repository")
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	return absDir, nil
+}
+
+func (g *Git) DefaultBranch() (string, error) {
+	ref, err := g.Run("symbolic-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(ref, "refs/heads/"), nil
+}
+
+func (g *Git) IsDirty() (bool, error) {
+	out, err := g.Run("status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return out != "", nil
+}
+
+func (g *Git) HasUnpushedCommits() (bool, error) {
+	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
+	if err != nil {
+		// No upstream set — treat as unpushed
+		return true, nil
+	}
+	return strings.TrimSpace(out) != "0", nil
 }

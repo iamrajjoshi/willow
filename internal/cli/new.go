@@ -11,6 +11,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func repoNameFromDir(bareDir string) string {
+	return strings.TrimSuffix(filepath.Base(bareDir), ".git")
+}
+
 func newCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
@@ -53,7 +57,7 @@ func newCmd() *cli.Command {
 				return fmt.Errorf("branch name is required\n\nUsage: ww new <branch> [flags]")
 			}
 
-			bareDir, err := resolveBareRepo(g)
+			bareDir, err := g.BareRepoDir()
 			if err != nil {
 				return err
 			}
@@ -64,7 +68,7 @@ func newCmd() *cli.Command {
 			// Resolve base branch
 			baseBranch := cmd.String("base")
 			if baseBranch == "" {
-				baseBranch, err = detectDefaultBranch(repoGit)
+				baseBranch, err = repoGit.DefaultBranch()
 				if err != nil {
 					return fmt.Errorf("failed to detect default branch (use --base to specify): %w", err)
 				}
