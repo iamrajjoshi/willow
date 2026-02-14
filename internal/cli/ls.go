@@ -31,7 +31,7 @@ func lsCmd() *cli.Command {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 
-			bareDir, err := resolveBareRepo(g)
+			bareDir, err := g.BareRepoDir()
 			if err != nil {
 				return err
 			}
