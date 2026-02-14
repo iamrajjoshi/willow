@@ -74,7 +74,7 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to fetch from origin: %w", err)
 			}
 
-			defaultBranch, err := detectDefaultBranch(repoGit)
+			defaultBranch, err := repoGit.DefaultBranch()
 			if err != nil {
 				return fmt.Errorf("failed to detect default branch: %w", err)
 			}

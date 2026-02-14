@@ -30,7 +30,7 @@ func goCmd() *cli.Command {
 				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww go <branch-or-name>")
 			}
 
-			bareDir, err := resolveBareRepo(g)
+			bareDir, err := g.BareRepoDir()
 			if err != nil {
 				return err
 			}
