@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -68,19 +67,6 @@ func lsCmd() *cli.Command {
 			return nil
 		},
 	}
-}
-
-// resolveBareRepo finds the bare repo directory from the current working directory.
-func resolveBareRepo(g *git.Git) (string, error) {
-	dir, err := g.Run("rev-parse", "--git-common-dir")
-	if err != nil {
-		return "", fmt.Errorf("not inside a git repository (run 'ww clone' first)")
-	}
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return "", err
-	}
-	return absDir, nil
 }
 
 func printTable(flags Flags, worktrees []worktree.Worktree) {
