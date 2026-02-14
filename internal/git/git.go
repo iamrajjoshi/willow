@@ -46,6 +46,14 @@ func (g *Git) BareRepoDir() (string, error) {
 	return absDir, nil
 }
 
+func (g *Git) WorktreeRoot() (string, error) {
+	dir, err := g.Run("rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", fmt.Errorf("not inside a git worktree")
+	}
+	return dir, nil
+}
+
 func (g *Git) DefaultBranch() (string, error) {
 	ref, err := g.Run("symbolic-ref", "HEAD")
 	if err != nil {
