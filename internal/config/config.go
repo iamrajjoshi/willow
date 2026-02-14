@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 )
@@ -14,11 +16,22 @@ type Config struct {
 }
 
 type Defaults struct {
-	Fetch           bool `json:"fetch"`
-	AutoSetupRemote bool `json:"autoSetupRemote"`
+	Fetch           *bool `json:"fetch,omitempty"`
+	AutoSetupRemote *bool `json:"autoSetupRemote,omitempty"`
 }
 
-// ~/.willow
+func boolPtr(v bool) *bool { return &v }
+
+func DefaultConfig() *Config {
+	return &Config{
+		Defaults: Defaults{
+			Fetch:           boolPtr(true),
+			AutoSetupRemote: boolPtr(true),
+		},
+	}
+}
+
+// WillowHome returns ~/.willow
 func WillowHome() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".willow")
@@ -30,4 +43,90 @@ func ReposDir() string {
 
 func WorktreesDir() string {
 	return filepath.Join(WillowHome(), "worktrees")
+}
+
+func GlobalConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "willow", "config.json")
+}
+
+func LocalConfigPath(bareDir string) string {
+	return filepath.Join(bareDir, "willow.json")
+}
+
+func SharedConfigPath(worktreeRoot string) string {
+	return filepath.Join(worktreeRoot, ".willow", "config.json")
+}
+
+// Load resolves config by merging 3 tiers: global → shared → local.
+// bareDir and worktreeRoot can be empty if unavailable (e.g. not in a repo).
+func Load(bareDir, worktreeRoot string) *Config {
+	cfg := DefaultConfig()
+
+	if global, err := loadFile(GlobalConfigPath()); err == nil {
+		merge(cfg, global)
+	}
+
+	if worktreeRoot != "" {
+		if shared, err := loadFile(SharedConfigPath(worktreeRoot)); err == nil {
+			merge(cfg, shared)
+		}
+	}
+
+	if bareDir != "" {
+		if local, err := loadFile(LocalConfigPath(bareDir)); err == nil {
+			merge(cfg, local)
+		}
+	}
+
+	return cfg
+}
+
+func loadFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		return nil, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// merge overlays non-zero fields from overlay onto base (mutates base).
+func merge(base, overlay *Config) {
+	if overlay.BaseBranch != "" {
+		base.BaseBranch = overlay.BaseBranch
+	}
+	if overlay.BranchPrefix != "" {
+		base.BranchPrefix = overlay.BranchPrefix
+	}
+	if overlay.Setup != nil {
+		base.Setup = overlay.Setup
+	}
+	if overlay.Teardown != nil {
+		base.Teardown = overlay.Teardown
+	}
+	if overlay.Defaults.Fetch != nil {
+		base.Defaults.Fetch = overlay.Defaults.Fetch
+	}
+	if overlay.Defaults.AutoSetupRemote != nil {
+		base.Defaults.AutoSetupRemote = overlay.Defaults.AutoSetupRemote
+	}
+}
+
+// Save writes a config to the given path, creating directories as needed.
+func Save(cfg *Config, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }

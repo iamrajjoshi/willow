@@ -3,16 +3,33 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
 
 func repoNameFromDir(bareDir string) string {
 	return strings.TrimSuffix(filepath.Base(bareDir), ".git")
+}
+
+func runHooks(commands []string, dir string, u *ui.UI) error {
+	for _, c := range commands {
+		u.Info(fmt.Sprintf("  → %s", c))
+		sh := exec.Command("sh", "-c", c)
+		sh.Dir = dir
+		sh.Stdout = os.Stdout
+		sh.Stderr = os.Stderr
+		if err := sh.Run(); err != nil {
+			return fmt.Errorf("hook failed: %s: %w", c, err)
+		}
+	}
+	return nil
 }
 
 func newCmd() *cli.Command {
@@ -62,11 +79,22 @@ func newCmd() *cli.Command {
 				return err
 			}
 
+			worktreeRoot, _ := g.WorktreeRoot()
+			cfg := config.Load(bareDir, worktreeRoot)
+
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			repoName := repoNameFromDir(bareDir)
 
-			// Resolve base branch
+			// Apply branch prefix from config
+			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
+				branch = cfg.BranchPrefix + "/" + branch
+			}
+
+			// Resolve base branch: flag → config → auto-detect
 			baseBranch := cmd.String("base")
+			if baseBranch == "" {
+				baseBranch = cfg.BaseBranch
+			}
 			if baseBranch == "" {
 				baseBranch, err = repoGit.DefaultBranch()
 				if err != nil {
@@ -74,8 +102,9 @@ func newCmd() *cli.Command {
 				}
 			}
 
-			// Fetch latest from remote
-			if !cmd.Bool("no-fetch") {
+			// Fetch latest from remote (config default, --no-fetch overrides)
+			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
+			if shouldFetch {
 				if !cdOnly {
 					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
 				}
@@ -103,10 +132,19 @@ func newCmd() *cli.Command {
 				}
 			}
 
-			// Configure push.autoSetupRemote so `git push` works without --set-upstream
-			wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
-			if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
-				return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
+			if *cfg.Defaults.AutoSetupRemote {
+				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
+				if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
+					return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
+				}
+			}
+
+			// Run setup hooks
+			if len(cfg.Setup) > 0 && !cdOnly {
+				u.Info("Running setup hooks...")
+				if err := runHooks(cfg.Setup, wtPath, u); err != nil {
+					return err
+				}
 			}
 
 			if cdOnly {
