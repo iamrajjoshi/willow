@@ -155,7 +155,7 @@ func configSet(cmd *cli.Command, g *git.Git, u *ui.UI, key, value string) error 
 	if cmd.Bool("global") {
 		configPath = config.GlobalConfigPath()
 	} else {
-		bareDir, err := g.BareRepoDir()
+		bareDir, err := requireWillowRepo(g)
 		if err != nil {
 			return fmt.Errorf("not inside a willow-managed repo (use --global for global config)")
 		}
@@ -189,7 +189,7 @@ func configEdit(cmd *cli.Command, g *git.Git) error {
 	if cmd.Bool("global") {
 		configPath = config.GlobalConfigPath()
 	} else {
-		bareDir, err := g.BareRepoDir()
+		bareDir, err := requireWillowRepo(g)
 		if err != nil {
 			return fmt.Errorf("not inside a willow-managed repo (use --global for global config)")
 		}

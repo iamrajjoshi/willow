@@ -50,7 +50,7 @@ func rmCmd() *cli.Command {
 				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww rm <branch-or-name> [flags]")
 			}
 
-			bareDir, err := g.BareRepoDir()
+			bareDir, err := requireWillowRepo(g)
 			if err != nil {
 				return err
 			}

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -16,7 +18,14 @@ func lsCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "ls",
 		Aliases: []string{"l"},
-		Usage:   "List all worktrees",
+		Usage:   "List worktrees (or repos when outside a willow repo)",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:      "repo",
+				UsageText: "[repo]",
+			},
+		},
+		ShellComplete: completeRepos,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "json",
@@ -31,41 +40,114 @@ func lsCmd() *cli.Command {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 
+			// If an explicit repo name was given, resolve it and list its worktrees
+			if repoArg := cmd.StringArg("repo"); repoArg != "" {
+				bareDir, err := config.ResolveRepo(repoArg)
+				if err != nil {
+					return err
+				}
+				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+			}
+
+			// Try to detect the current repo
 			bareDir, err := g.BareRepoDir()
-			if err != nil {
-				return err
+			if err == nil && config.IsWillowRepo(bareDir) {
+				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
-			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
-			worktrees, err := worktree.List(repoGit)
-			if err != nil {
-				return fmt.Errorf("failed to list worktrees: %w", err)
-			}
-
-			// Filter out the bare repo entry
-			var filtered []worktree.Worktree
-			for _, wt := range worktrees {
-				if !wt.IsBare {
-					filtered = append(filtered, wt)
-				}
-			}
-
-			if cmd.Bool("path-only") {
-				for _, wt := range filtered {
-					fmt.Println(wt.Path)
-				}
-				return nil
-			}
-
-			if cmd.Bool("json") {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(filtered)
-			}
-
-			printTable(flags, filtered)
-			return nil
+			// Outside a willow repo — list all repos
+			return printRepoList(flags)
 		},
+	}
+}
+
+func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
+	worktrees, err := worktree.List(repoGit)
+	if err != nil {
+		return fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	var filtered []worktree.Worktree
+	for _, wt := range worktrees {
+		if !wt.IsBare {
+			filtered = append(filtered, wt)
+		}
+	}
+
+	if cmd.Bool("path-only") {
+		for _, wt := range filtered {
+			fmt.Println(wt.Path)
+		}
+		return nil
+	}
+
+	if cmd.Bool("json") {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(filtered)
+	}
+
+	printTable(flags, filtered)
+	return nil
+}
+
+func printRepoList(flags Flags) error {
+	u := flags.NewUI()
+	repos, err := config.ListRepos()
+	if err != nil {
+		return fmt.Errorf("failed to list repos: %w", err)
+	}
+
+	if len(repos) == 0 {
+		u.Info("No willow-managed repos. Use 'ww clone <url>' to get started.")
+		return nil
+	}
+
+	nameW := len("REPO")
+	for _, r := range repos {
+		if len(r) > nameW {
+			nameW = len(r)
+		}
+	}
+
+	header := fmt.Sprintf("  %-*s  %s", nameW, "REPO", "WORKTREES")
+	u.Info(u.Bold(header))
+
+	for _, r := range repos {
+		bareDir, err := config.ResolveRepo(r)
+		if err != nil {
+			continue
+		}
+		repoGit := &git.Git{Dir: bareDir}
+		wts, err := worktree.List(repoGit)
+		if err != nil {
+			continue
+		}
+		count := 0
+		for _, wt := range wts {
+			if !wt.IsBare {
+				count++
+			}
+		}
+		line := fmt.Sprintf("  %-*s  %d", nameW, r, count)
+		u.Info(line)
+	}
+	return nil
+}
+
+func completeRepos(ctx context.Context, cmd *cli.Command) {
+	if args := cmd.Args().Slice(); len(args) > 0 && strings.HasPrefix(args[len(args)-1], "-") {
+		cli.DefaultCompleteWithFlags(ctx, cmd)
+		return
+	}
+
+	repos, err := config.ListRepos()
+	if err != nil {
+		return
+	}
+	w := cmd.Root().Writer
+	for _, r := range repos {
+		fmt.Fprintln(w, r)
 	}
 }
 
@@ -77,7 +159,6 @@ func printTable(flags Flags, worktrees []worktree.Worktree) {
 		return
 	}
 
-	// Compute column widths
 	branchW := len("BRANCH")
 	pathW := len("PATH")
 	for _, wt := range worktrees {

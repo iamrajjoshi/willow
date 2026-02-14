@@ -38,7 +38,7 @@ func initCmd() *cli.Command {
 			if cmd.Bool("global") {
 				configPath = config.GlobalConfigPath()
 			} else {
-				bareDir, err = g.BareRepoDir()
+				bareDir, err = requireWillowRepo(g)
 				if err != nil {
 					return fmt.Errorf("not inside a willow-managed repo (use --global for global config)")
 				}

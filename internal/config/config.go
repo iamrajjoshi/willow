@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -56,6 +58,47 @@ func LocalConfigPath(bareDir string) string {
 
 func SharedConfigPath(worktreeRoot string) string {
 	return filepath.Join(worktreeRoot, ".willow", "config.json")
+}
+
+// IsWillowRepo checks if bareDir lives under ~/.willow/repos/.
+// Both paths are resolved through EvalSymlinks to handle macOS /var → /private/var.
+func IsWillowRepo(bareDir string) bool {
+	reposDir := ReposDir()
+	if resolved, err := filepath.EvalSymlinks(reposDir); err == nil {
+		reposDir = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(bareDir); err == nil {
+		bareDir = resolved
+	}
+	return strings.HasPrefix(bareDir, reposDir+string(filepath.Separator))
+}
+
+// ListRepos scans ~/.willow/repos/ for *.git dirs and returns repo names (without .git suffix).
+func ListRepos() ([]string, error) {
+	entries, err := os.ReadDir(ReposDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var repos []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasSuffix(e.Name(), ".git") {
+			repos = append(repos, strings.TrimSuffix(e.Name(), ".git"))
+		}
+	}
+	return repos, nil
+}
+
+// ResolveRepo returns the bare dir path for a named repo under ~/.willow/repos/.
+func ResolveRepo(name string) (string, error) {
+	dir := filepath.Join(ReposDir(), name+".git")
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("repo %q not found in %s", name, ReposDir())
+	}
+	return dir, nil
 }
 
 // Load resolves config by merging 3 tiers: global → shared → local.
