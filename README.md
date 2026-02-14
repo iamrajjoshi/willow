@@ -1,5 +1,7 @@
 # willow
 
+![willow](willow.jpg)
+
 A simple, opinionated git worktree manager.
 
 Willow uses bare clones and git worktrees to give every branch its own clean, isolated directory. No more stashing, no more juggling working copies.
