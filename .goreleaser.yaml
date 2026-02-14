@@ -15,22 +15,20 @@ builds:
       - -s -w -X github.com/iamrajjoshi/willow/internal/cli.version={{.Version}}
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "willow_{{ .Os }}_{{ .Arch }}"
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: willow
+    repository:
       owner: iamrajjoshi
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    name: willow
     homepage: https://github.com/iamrajjoshi/willow
     description: A simple, opinionated git worktree manager
-    license: MIT
-    install: |
-      bin.install "willow"
-    test: |
-      system "#{bin}/willow", "--version"
+    binaries:
+      - willow
 
 checksum:
   name_template: "checksums.txt"
