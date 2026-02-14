@@ -58,6 +58,7 @@ func NewApp() *cli.Command {
 			pruneCmd(),
 			initCmd(),
 			configCmd(),
+			shellInitCmd(),
 		},
 	}
 }
