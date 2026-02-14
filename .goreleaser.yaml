@@ -22,6 +22,7 @@ brews:
   - repository:
       owner: iamrajjoshi
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     name: willow
     homepage: https://github.com/iamrajjoshi/willow
     description: A simple, opinionated git worktree manager
