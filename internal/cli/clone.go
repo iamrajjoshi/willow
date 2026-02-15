@@ -27,6 +27,12 @@ func cloneCmd() *cli.Command {
 				UsageText: "[name]",
 			},
 		},
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "force",
+				Usage: "Remove existing repo and re-clone from scratch",
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
@@ -44,9 +50,19 @@ func cloneCmd() *cli.Command {
 
 			bareDir := filepath.Join(config.ReposDir(), name+".git")
 			worktreesDir := filepath.Join(config.WorktreesDir(), name)
+			force := cmd.Bool("force")
 
 			if _, err := os.Stat(bareDir); err == nil {
-				return fmt.Errorf("repository %q already exists at %s", name, bareDir)
+				if !force {
+					return fmt.Errorf("repository %q already exists at %s\n\nRun with --force to remove it and re-clone", name, bareDir)
+				}
+				u.Info(fmt.Sprintf("Removing existing repo %s...", u.Bold(name)))
+				if err := os.RemoveAll(bareDir); err != nil {
+					return fmt.Errorf("failed to remove bare repo: %w", err)
+				}
+				if err := os.RemoveAll(worktreesDir); err != nil {
+					return fmt.Errorf("failed to remove worktrees: %w", err)
+				}
 			}
 
 			if err := os.MkdirAll(config.ReposDir(), 0o755); err != nil {
