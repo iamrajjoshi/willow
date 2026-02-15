@@ -16,6 +16,7 @@ import (
 var configKeys = []string{
 	"baseBranch",
 	"branchPrefix",
+	"postCheckoutHook",
 	"setup",
 	"teardown",
 	"defaults.fetch",
@@ -237,6 +238,10 @@ func getFieldValue(cfg *config.Config, key string) (string, bool) {
 		if cfg.BranchPrefix != "" {
 			return cfg.BranchPrefix, true
 		}
+	case "postCheckoutHook":
+		if cfg.PostCheckoutHook != "" {
+			return cfg.PostCheckoutHook, true
+		}
 	case "setup":
 		if cfg.Setup != nil {
 			return strings.Join(cfg.Setup, ", "), true
@@ -263,6 +268,8 @@ func setFieldValue(cfg *config.Config, key, value string) error {
 		cfg.BaseBranch = value
 	case "branchPrefix":
 		cfg.BranchPrefix = value
+	case "postCheckoutHook":
+		cfg.PostCheckoutHook = value
 	case "setup":
 		cfg.Setup = splitCommands(value)
 	case "teardown":
