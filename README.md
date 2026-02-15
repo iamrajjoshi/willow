@@ -245,6 +245,7 @@ Config is resolved by merging three tiers (later wins):
 {
   "baseBranch": "main",           // default base branch for new worktrees
   "branchPrefix": "alice",        // auto-prepended to branch names (e.g. alice/my-branch)
+  "postCheckoutHook": ".husky/post-checkout",  // run this hook after creating a worktree
   "setup": ["npm install"],       // run after creating a worktree
   "teardown": ["rm -rf node_modules"],  // run before removing a worktree
   "defaults": {
@@ -253,6 +254,8 @@ Config is resolved by merging three tiers (later wins):
   }
 }
 ```
+
+> **Note:** `postCheckoutHook` is needed because git resolves relative `core.hooksPath` against the bare repo directory, where hook files don't exist. This field tells willow to manually invoke the hook from the new worktree after creation.
 
 ### Merge behavior
 
