@@ -63,7 +63,11 @@ func completeWorktrees(ctx context.Context, cmd *cli.Command) {
 	g := &git.Git{}
 	bareDir, err := g.BareRepoDir()
 	if err != nil {
-		return
+		if dir, ok := resolveRepoFromCwd(); ok {
+			bareDir = dir
+		} else {
+			return
+		}
 	}
 	repoGit := &git.Git{Dir: bareDir}
 	wts, err := worktree.List(repoGit)

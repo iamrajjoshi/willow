@@ -49,9 +49,12 @@ func lsCmd() *cli.Command {
 				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
-			// Try to detect the current repo
+			// Try to detect the current repo (git context or worktrees dir)
 			bareDir, err := g.BareRepoDir()
 			if err == nil && config.IsWillowRepo(bareDir) {
+				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+			}
+			if bareDir, ok := resolveRepoFromCwd(); ok {
 				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 

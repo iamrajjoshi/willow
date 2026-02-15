@@ -82,6 +82,9 @@ func configCmd() *cli.Command {
 
 func configList(g *git.Git, u *ui.UI) error {
 	bareDir, _ := g.BareRepoDir()
+	if bareDir == "" {
+		bareDir, _ = resolveRepoFromCwd()
+	}
 	worktreeRoot, _ := g.WorktreeRoot()
 
 	type tier struct {
@@ -138,6 +141,9 @@ func configGet(g *git.Git, u *ui.UI, key string) error {
 	}
 
 	bareDir, _ := g.BareRepoDir()
+	if bareDir == "" {
+		bareDir, _ = resolveRepoFromCwd()
+	}
 	worktreeRoot, _ := g.WorktreeRoot()
 	cfg := config.Load(bareDir, worktreeRoot)
 
