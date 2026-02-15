@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -73,11 +74,16 @@ func runCmd() *cli.Command {
 			}
 
 			if runAll {
+				var failed []string
 				for _, wt := range filtered {
 					u.Info(fmt.Sprintf("==> %s", u.Bold(wt.Branch)))
 					if err := execIn(wt.Path, cmdArgs); err != nil {
 						u.Warn(fmt.Sprintf("command failed in %s: %v", wt.Branch, err))
+						failed = append(failed, wt.Branch)
 					}
+				}
+				if len(failed) > 0 {
+					return fmt.Errorf("command failed in %d/%d worktrees: %s", len(failed), len(filtered), strings.Join(failed, ", "))
 				}
 				return nil
 			}
