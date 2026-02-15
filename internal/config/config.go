@@ -101,6 +101,37 @@ func ResolveRepo(name string) (string, error) {
 	return dir, nil
 }
 
+// ResolveRepoFromDir checks if dir is at or under ~/.willow/worktrees/<name>/
+// and returns the corresponding bare repo path (~/.willow/repos/<name>.git).
+// This allows commands to work from the worktrees/<name>/ directory itself,
+// not just from inside a specific worktree.
+func ResolveRepoFromDir(dir string) (string, bool) {
+	wtDir := WorktreesDir()
+	if resolved, err := filepath.EvalSymlinks(wtDir); err == nil {
+		wtDir = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+
+	rel, err := filepath.Rel(wtDir, dir)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+
+	// rel is either "<name>" or "<name>/..." — extract the first component
+	name := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+	if name == "" || name == "." {
+		return "", false
+	}
+
+	bareDir, err := ResolveRepo(name)
+	if err != nil {
+		return "", false
+	}
+	return bareDir, true
+}
+
 // Load resolves config by merging 3 tiers: global → shared → local.
 // bareDir and worktreeRoot can be empty if unavailable (e.g. not in a repo).
 func Load(bareDir, worktreeRoot string) *Config {
