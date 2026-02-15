@@ -102,6 +102,9 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to create initial worktree: %w", err)
 			}
 
+			cfg := config.Load(bareDir, wtPath)
+			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath)
+
 			u.Success(fmt.Sprintf("Cloned %s", u.Bold(name)))
 			u.Info(fmt.Sprintf("  bare repo:  %s", u.Dim(bareDir)))
 			u.Info(fmt.Sprintf("  worktree:   %s", u.Dim(wtPath)))
