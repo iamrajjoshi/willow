@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -17,18 +20,13 @@ func pwdCmd() *cli.Command {
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
-				UsageText: "<branch-or-name>",
+				UsageText: "[branch-or-name]",
 			},
 		},
 		ShellComplete: completeWorktrees,
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
-
-			target := cmd.StringArg("branch")
-			if target == "" {
-				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww pwd <branch-or-name>")
-			}
 
 			bareDir, err := requireWillowRepo(g)
 			if err != nil {
@@ -41,7 +39,19 @@ func pwdCmd() *cli.Command {
 				return fmt.Errorf("failed to list worktrees: %w", err)
 			}
 
-			wt, err := findWorktree(worktrees, target)
+			var filtered []worktree.Worktree
+			for _, wt := range worktrees {
+				if !wt.IsBare {
+					filtered = append(filtered, wt)
+				}
+			}
+
+			target := cmd.StringArg("branch")
+			if target == "" {
+				return pickWorktree(filtered)
+			}
+
+			wt, err := findWorktree(filtered, target)
 			if err != nil {
 				return err
 			}
@@ -50,6 +60,30 @@ func pwdCmd() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func pickWorktree(worktrees []worktree.Worktree) error {
+	if len(worktrees) == 0 {
+		return fmt.Errorf("no worktrees found")
+	}
+
+	for i, wt := range worktrees {
+		fmt.Fprintf(os.Stderr, "  %d) %s\n", i+1, wt.Branch)
+	}
+	fmt.Fprintf(os.Stderr, "Select worktree [1-%d]: ", len(worktrees))
+
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		return fmt.Errorf("aborted")
+	}
+
+	choice, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+	if err != nil || choice < 1 || choice > len(worktrees) {
+		return fmt.Errorf("invalid selection")
+	}
+
+	fmt.Println(worktrees[choice-1].Path)
+	return nil
 }
 
 // completeWorktrees provides shell completion for commands that take a branch-or-name argument.

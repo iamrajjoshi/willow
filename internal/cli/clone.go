@@ -78,20 +78,29 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
 
+			// If anything below fails, clean up the partial clone
+			cleanup := func() {
+				os.RemoveAll(bareDir)
+				os.RemoveAll(worktreesDir)
+			}
+
 			// Bare clones don't set up remote tracking by default.
 			// Configure the fetch refspec so `git fetch` populates refs/remotes/origin/*.
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			if _, err := repoGit.Run("config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+				cleanup()
 				return fmt.Errorf("failed to configure fetch refs: %w", err)
 			}
 
 			u.Info("Fetching latest from origin...")
 			if _, err := repoGit.Run("fetch", "origin"); err != nil {
+				cleanup()
 				return fmt.Errorf("failed to fetch from origin: %w", err)
 			}
 
 			defaultBranch, err := repoGit.DefaultBranch()
 			if err != nil {
+				cleanup()
 				return fmt.Errorf("failed to detect default branch: %w", err)
 			}
 
@@ -99,11 +108,12 @@ func cloneCmd() *cli.Command {
 			wtPath := filepath.Join(worktreesDir, defaultBranch)
 			u.Info(fmt.Sprintf("Creating worktree %s at %s...", u.Bold(defaultBranch), wtPath))
 			if _, err := repoGit.Run("worktree", "add", wtPath, defaultBranch); err != nil {
+				cleanup()
 				return fmt.Errorf("failed to create initial worktree: %w", err)
 			}
 
 			cfg := config.Load(bareDir, wtPath)
-			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath)
+			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
 
 			u.Success(fmt.Sprintf("Cloned %s", u.Bold(name)))
 			u.Info(fmt.Sprintf("  bare repo:  %s", u.Dim(bareDir)))

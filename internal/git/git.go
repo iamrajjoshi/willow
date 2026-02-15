@@ -73,8 +73,11 @@ func (g *Git) IsDirty() (bool, error) {
 func (g *Git) HasUnpushedCommits() (bool, error) {
 	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
 	if err != nil {
-		// No upstream set — treat as unpushed
-		return true, nil
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "no upstream") || strings.Contains(errMsg, "upstream") {
+			return true, nil
+		}
+		return false, err
 	}
 	return strings.TrimSpace(out) != "0", nil
 }
