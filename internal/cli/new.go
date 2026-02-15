@@ -32,6 +32,34 @@ func runHooks(commands []string, dir string, u *ui.UI) error {
 	return nil
 }
 
+// runPostCheckoutHook manually invokes the configured post-checkout hook from
+// the new worktree. This is needed for bare repos because git resolves relative
+// core.hooksPath against the bare repo dir (where hook files don't exist),
+// so the hook never fires automatically.
+func runPostCheckoutHook(hookPath, wtPath string) {
+	if hookPath == "" {
+		return
+	}
+
+	hookFile := filepath.Join(wtPath, hookPath)
+	if _, err := os.Stat(hookFile); err != nil {
+		return
+	}
+
+	wtGit := &git.Git{Dir: wtPath}
+	head, err := wtGit.Run("rev-parse", "HEAD")
+	if err != nil {
+		return
+	}
+
+	nullRef := "0000000000000000000000000000000000000000"
+	cmd := exec.Command(hookFile, nullRef, head, "1")
+	cmd.Dir = wtPath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
 func newCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
@@ -148,6 +176,8 @@ func newCmd() *cli.Command {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			}
+
+			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath)
 
 			if *cfg.Defaults.AutoSetupRemote {
 				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}

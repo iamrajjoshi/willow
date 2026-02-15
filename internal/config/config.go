@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	BaseBranch   string   `json:"baseBranch,omitempty"`
-	BranchPrefix string   `json:"branchPrefix,omitempty"`
-	Setup        []string `json:"setup,omitempty"`
-	Teardown     []string `json:"teardown,omitempty"`
-	Defaults     Defaults `json:"defaults"`
+	BaseBranch        string   `json:"baseBranch,omitempty"`
+	BranchPrefix      string   `json:"branchPrefix,omitempty"`
+	PostCheckoutHook  string   `json:"postCheckoutHook,omitempty"`
+	Setup             []string `json:"setup,omitempty"`
+	Teardown          []string `json:"teardown,omitempty"`
+	Defaults          Defaults `json:"defaults"`
 }
 
 type Defaults struct {
@@ -147,6 +148,9 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.BranchPrefix != "" {
 		base.BranchPrefix = overlay.BranchPrefix
+	}
+	if overlay.PostCheckoutHook != "" {
+		base.PostCheckoutHook = overlay.PostCheckoutHook
 	}
 	if overlay.Setup != nil {
 		base.Setup = overlay.Setup
