@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -13,13 +14,23 @@ var errNotWillowRepo = fmt.Errorf("not inside a willow-managed repo\n\nRun this 
 
 func requireWillowRepo(g *git.Git) (string, error) {
 	bareDir, err := g.BareRepoDir()
+	if err == nil && config.IsWillowRepo(bareDir) {
+		return bareDir, nil
+	}
+
+	if bareDir, ok := resolveRepoFromCwd(); ok {
+		return bareDir, nil
+	}
+
+	return "", errNotWillowRepo
+}
+
+func resolveRepoFromCwd() (string, bool) {
+	cwd, err := os.Getwd()
 	if err != nil {
-		return "", errNotWillowRepo
+		return "", false
 	}
-	if !config.IsWillowRepo(bareDir) {
-		return "", errNotWillowRepo
-	}
-	return bareDir, nil
+	return config.ResolveRepoFromDir(cwd)
 }
 
 var version = "dev"
