@@ -162,7 +162,7 @@ ww ls --json
 ww ls --path-only
 ```
 
-### `ww pwd <branch-or-name>`
+### `ww pwd <branch>`
 
 Print the path of a worktree. Supports fuzzy matching (exact branch -> substring -> directory suffix).
 
@@ -171,7 +171,7 @@ ww pwd auth-refactor
 ww pwd auth                          # substring match
 ```
 
-### `ww rm <branch-or-name> [flags]`
+### `ww rm <branch> [flags]`
 
 Remove a worktree and its branch. Checks for uncommitted changes and unpushed commits before removing.
 
@@ -182,7 +182,7 @@ ww rm auth-refactor --keep-branch    # remove worktree, keep the branch
 ww rm auth-refactor --yes            # skip confirmation
 ```
 
-### `ww run <branch-or-name> -- <command>`
+### `ww run <branch> -- <command>`
 
 Run a command in a worktree's directory.
 

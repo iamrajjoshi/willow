@@ -108,7 +108,7 @@ Status shows: `clean`, `dirty` (uncommitted changes), `N ahead` (unpushed commit
 ### 2.3 `ww rm` — Remove a worktree
 
 ```
-ww rm <branch-or-name> [options]
+ww rm <branch> [options]
 ```
 
 | Flag | Description | Default |
@@ -144,7 +144,7 @@ ww rm auth-refactor --keep-branch
 Prints the worktree path. Designed to be used with `cd` via shell integration.
 
 ```
-ww go <branch-or-name>
+ww go <branch>
 ```
 
 **Examples:**
@@ -223,7 +223,7 @@ Removes worktrees whose directories no longer exist on disk, and optionally clea
 ### 2.7 `ww run` — Run a command in a worktree
 
 ```
-ww run <branch-or-name> -- <command...>
+ww run <branch> -- <command...>
 ```
 
 **Examples:**
