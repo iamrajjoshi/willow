@@ -20,7 +20,7 @@ func pwdCmd() *cli.Command {
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
-				UsageText: "[branch-or-name]",
+				UsageText: "[branch]",
 			},
 		},
 		ShellComplete: completeWorktrees,
@@ -86,7 +86,7 @@ func pickWorktree(worktrees []worktree.Worktree) error {
 	return nil
 }
 
-// completeWorktrees provides shell completion for commands that take a branch-or-name argument.
+// completeWorktrees provides shell completion for commands that take a branch argument.
 // When the user is typing a flag, it delegates to the default flag completer.
 func completeWorktrees(ctx context.Context, cmd *cli.Command) {
 	if args := cmd.Args().Slice(); len(args) > 0 && strings.HasPrefix(args[len(args)-1], "-") {
