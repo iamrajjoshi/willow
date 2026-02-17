@@ -30,7 +30,7 @@ func runCmd() *cli.Command {
 
 			args := cmd.Args().Slice()
 			if len(args) == 0 {
-				return fmt.Errorf("usage: ww run <branch-or-name> -- <command...>\n       ww run --all -- <command...>")
+				return fmt.Errorf("usage: ww run <branch> -- <command...>\n       ww run --all -- <command...>")
 			}
 
 			bareDir, err := requireWillowRepo(g)
@@ -70,7 +70,7 @@ func runCmd() *cli.Command {
 			}
 
 			if len(cmdArgs) == 0 {
-				return fmt.Errorf("no command specified after --\n\nUsage: ww run <branch-or-name> -- <command...>")
+				return fmt.Errorf("no command specified after --\n\nUsage: ww run <branch> -- <command...>")
 			}
 
 			if runAll {
@@ -89,7 +89,7 @@ func runCmd() *cli.Command {
 			}
 
 			if target == "" {
-				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww run <branch-or-name> -- <command...>")
+				return fmt.Errorf("branch name is required\n\nUsage: ww run <branch> -- <command...>")
 			}
 
 			wt, err := findWorktree(filtered, target)

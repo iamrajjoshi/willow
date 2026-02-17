@@ -20,7 +20,7 @@ func rmCmd() *cli.Command {
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
-				UsageText: "<branch-or-name>",
+				UsageText: "<branch>",
 			},
 		},
 		ShellComplete: completeWorktrees,
@@ -39,6 +39,11 @@ func rmCmd() *cli.Command {
 				Aliases: []string{"y"},
 				Usage:   "Skip confirmation prompt",
 			},
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
@@ -47,12 +52,21 @@ func rmCmd() *cli.Command {
 
 			target := cmd.StringArg("branch")
 			if target == "" {
-				return fmt.Errorf("branch or worktree name is required\n\nUsage: ww rm <branch-or-name> [flags]")
+				return fmt.Errorf("branch name is required\n\nUsage: ww rm <branch> [flags]")
 			}
 
-			bareDir, err := requireWillowRepo(g)
-			if err != nil {
-				return err
+			var bareDir string
+			var err error
+			if repoFlag := cmd.String("repo"); repoFlag != "" {
+				bareDir, err = config.ResolveRepo(repoFlag)
+				if err != nil {
+					return err
+				}
+			} else {
+				bareDir, err = requireWillowRepo(g)
+				if err != nil {
+					return err
+				}
 			}
 
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}

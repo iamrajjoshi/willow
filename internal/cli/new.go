@@ -119,12 +119,9 @@ func newCmd() *cli.Command {
 					return err
 				}
 			} else {
-				bareDir, err = g.BareRepoDir()
+				bareDir, err = requireWillowRepo(g)
 				if err != nil {
-					return fmt.Errorf("not inside a git repository (use --repo to specify a willow-managed repo)")
-				}
-				if !config.IsWillowRepo(bareDir) {
-					return fmt.Errorf("not inside a willow-managed repo (use --repo to specify one)")
+					return err
 				}
 				worktreeRoot, _ = g.WorktreeRoot()
 			}
