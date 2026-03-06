@@ -161,7 +161,9 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 	}
 
 	branchW := len("BRANCH")
+	statusW := len("STATUS")
 	pathW := len("PATH")
+	ageW := len("AGE")
 	for _, wt := range worktrees {
 		if len(wt.Branch) > branchW {
 			branchW = len(wt.Branch)
@@ -169,9 +171,13 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 		if len(wt.Path) > pathW {
 			pathW = len(wt.Path)
 		}
+		age := worktreeAge(wt.Path)
+		if len(age) > ageW {
+			ageW = len(age)
+		}
 	}
 
-	header := fmt.Sprintf("  %-*s  %-6s  %-*s  %s", branchW, "BRANCH", "STATUS", pathW, "PATH", "AGE")
+	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %*s", branchW, "BRANCH", statusW, "STATUS", pathW, "PATH", ageW, "AGE")
 	u.Info(u.Bold(header))
 
 	for _, wt := range worktrees {
@@ -179,7 +185,10 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 		wtDir := filepath.Base(wt.Path)
 		ws := claude.ReadStatus(repoName, wtDir)
 		statusLabel := claude.StatusLabel(ws.Status)
-		line := fmt.Sprintf("  %-*s  %-6s  %-*s  %s", branchW, wt.Branch, statusLabel, pathW, u.Dim(wt.Path), u.Dim(age))
+		// Build the line with padding first, then apply Dim to the dimmed parts
+		pathPadded := fmt.Sprintf("%-*s", pathW, wt.Path)
+		agePadded := fmt.Sprintf("%*s", ageW, age)
+		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, wt.Branch, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
 	}
 }
