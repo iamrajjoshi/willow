@@ -195,10 +195,10 @@ myrepo (4 worktrees, 2 agents active)
 
 ---
 
-### 2.7 `ww setup` — Install Claude Code hooks
+### 2.7 `ww cc-setup` — Install Claude Code hooks
 
 ```
-ww setup
+ww cc-setup
 ```
 
 One-time setup to install Claude Code hooks for status tracking.
@@ -284,11 +284,11 @@ The local config lives inside the bare repo directory, so it's private to your m
 │       ├── main/
 │       ├── auth-refactor/
 │       └── payments/
-├── status/                      # Claude Code agent status (created by ww setup)
+├── status/                      # Claude Code agent status (created by ww cc-setup)
 │   └── myrepo/
 │       ├── main.json
 │       └── auth-refactor.json
-└── hooks/                       # Hook scripts (created by ww setup)
+└── hooks/                       # Hook scripts (created by ww cc-setup)
     └── claude-status-hook.sh
 ```
 
@@ -331,7 +331,7 @@ GLOBAL FLAGS
 ww clone git@github.com:org/myrepo.git
 
 # Install Claude Code hooks (one-time)
-ww setup
+ww cc-setup
 ```
 
 ### Starting a new Claude Code session

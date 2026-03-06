@@ -1,29 +1,51 @@
-# willow
+<p align="center">
+  <img src="willow.jpg" width="100%" alt="willow" />
+</p>
 
-![willow](willow.jpg)
+<h1 align="center">willow</h1>
 
-A simple, opinionated git worktree manager with Claude Code agent status tracking.
+<p align="center">
+  <strong>A git worktree manager built for AI agent workflows.</strong>
+</p>
 
-Willow uses bare clones and git worktrees to give every branch its own clean, isolated directory. Built for spinning up isolated worktrees for AI agent sessions and switching between them fast.
+<p align="center">
+  <a href="https://github.com/iamrajjoshi/willow/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/iamrajjoshi/willow?style=flat-square&color=blue"></a>
+  <a href="https://github.com/iamrajjoshi/willow/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/iamrajjoshi/willow/release.yml?style=flat-square"></a>
+  <a href="https://github.com/iamrajjoshi/willow/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/iamrajjoshi/willow?style=flat-square"></a>
+</p>
+
+<p align="center">
+  Spin up isolated worktrees for Claude Code sessions.<br>
+  Switch between them instantly with fzf.<br>
+  See which agents are busy, waiting, or idle.
+</p>
+
+---
+
+![demo](screenshots/demo-workflow.gif)
+
+## Why willow?
+
+Running multiple Claude Code sessions on the same repo means constant context-switching, stashing, and branch juggling. Willow fixes this by giving every task its own isolated directory via git worktrees, then adding fzf-based switching and live agent status tracking on top.
 
 ```
 ~/.willow/
 ├── repos/
-│   └── myrepo.git/          # bare clone (just the git database)
+│   └── myrepo.git/              # bare clone (shared git database)
 ├── worktrees/
 │   └── myrepo/
-│       ├── main/             # each branch gets its own directory
-│       ├── auth-refactor/
-│       └── payments/
-└── status/                   # Claude Code agent status (optional, via ww setup)
+│       ├── main/                 # each branch = isolated directory
+│       ├── auth-refactor/        # Claude Code running here
+│       └── payments/             # another agent running here
+└── status/
     └── myrepo/
-        ├── main.json
-        └── auth-refactor.json
+        ├── auth-refactor.json    # {"status": "BUSY", ...}
+        └── payments.json         # {"status": "WAIT", ...}
 ```
 
 ## Install
 
-### Homebrew (macOS and Linux)
+### Homebrew
 
 ```bash
 brew install iamrajjoshi/tap/willow
@@ -35,52 +57,69 @@ brew install iamrajjoshi/tap/willow
 go install github.com/iamrajjoshi/willow/cmd/willow@latest
 ```
 
-### Dependencies
+### Requirements
 
-- **git** (runtime)
-- **[fzf](https://github.com/junegunn/fzf)** (runtime, required for `ww sw` and `ww rm` without arguments)
+- [git](https://git-scm.com/)
+- [fzf](https://github.com/junegunn/fzf) — for `ww sw` and `ww rm` interactive picker
 
-### Shell integration
+## Setup
 
-Add to your shell config:
+### 1. Shell integration
 
 ```bash
-# .bashrc or .zshrc
+# Add to .bashrc / .zshrc
 eval "$(willow shell-init)"
 
-# fish (~/.config/fish/config.fish)
+# fish
 willow shell-init | source
 ```
 
-The shell is auto-detected from `$SHELL`. This gives you:
-- `ww` — alias for `willow` (with `sw` and `rm` cd-awareness)
-- `ww sw` — fzf picker to switch worktrees (cd's into selection)
-- `wwn <branch>` — create a worktree and `cd` into it
-- `www` — `cd` into `~/.willow/worktrees`
-- Tab completion for commands, flags, and worktree branch names
+This gives you:
+
+| Command | Description |
+|---------|-------------|
+| `ww <cmd>` | Alias for `willow` |
+| `ww sw` | fzf worktree switcher (cd's into selection) |
+| `wwn <branch>` | Create worktree + cd into it |
+| `www` | cd to `~/.willow/worktrees/` |
+
+**Optional:** Set terminal tab title to the current worktree name:
+
+```bash
+eval "$(willow shell-init --tab-title)"
+```
+
+### 2. Claude Code status tracking (optional)
+
+```bash
+ww cc-setup
+```
+
+Installs a hook into `~/.claude/settings.json` that writes agent status (`BUSY` / `WAIT` / `IDLE`) to `~/.willow/status/`. This powers the status column in `ww ls`, `ww sw`, and `ww status`.
 
 ## Quick start
 
 ```bash
-# Clone a repo (one-time setup)
+# Clone a repo (one-time)
 ww clone git@github.com:org/myrepo.git
 
-# Install Claude Code hooks (one-time, optional)
-ww setup
-
-# Create a worktree and navigate to it
+# Create a worktree and cd into it
 wwn auth-refactor
 
 # Start Claude Code
 claude
 
-# Switch between worktrees with fzf
+# In another terminal — create a second worktree
+wwn payments-fix
+claude
+
+# Switch between worktrees (fzf picker with agent status)
 ww sw
 
-# Check agent status across all worktrees
+# Check on all agents
 ww status
 
-# When done, remove the worktree
+# Clean up when done
 ww rm auth-refactor
 ```
 
@@ -88,7 +127,7 @@ ww rm auth-refactor
 
 ### `ww clone <url> [name]`
 
-Clone a repo as a bare clone and create an initial worktree on the default branch. This is the required entry point for all willow-managed repos.
+Bare-clone a repo and create an initial worktree on the default branch. Required entry point.
 
 ```bash
 ww clone git@github.com:org/repo.git
@@ -101,30 +140,25 @@ ww clone git@github.com:org/repo.git --force    # re-clone from scratch
 Create a new worktree with a new branch.
 
 ```bash
-ww new feature/auth
-ww new feature/auth -b develop       # fork from a specific branch
-ww new -e existing-branch            # use an existing branch
-ww new feature/auth --no-fetch       # skip fetching from remote
-ww new feature/auth --repo myrepo    # target a specific repo (works from anywhere)
-wwn feature/auth                     # create and cd (shell integration)
+ww new feature/auth                    # create worktree
+ww new feature/auth -b develop         # fork from specific branch
+ww new -e existing-branch              # use existing branch
+ww new feature/auth -r myrepo          # target a specific repo
+wwn feature/auth                       # create + cd (shell integration)
 ```
 
-Flags:
-- `-b, --base <branch>` — base branch to fork from (default: config -> auto-detected)
-- `-r, --repo <name>` — target a willow-managed repo by name
-- `-e, --existing` — use an existing branch instead of creating a new one
-- `--no-fetch` — skip fetching latest from remote
-- `--cd` — print only the worktree path (for shell integration)
+| Flag | Description |
+|------|-------------|
+| `-b, --base` | Base branch to fork from |
+| `-r, --repo` | Target repo by name |
+| `-e, --existing` | Use an existing branch |
+| `--no-fetch` | Skip fetching from remote |
+| `--cd` | Print only the path (for scripting) |
 
 ### `ww sw`
 
-Switch to a worktree via fzf picker with Claude Code agent status. Outputs the selected path (shell integration wraps it in `cd`).
+Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
 
-```bash
-ww sw    # fzf picker with status icons, cd's into selection
-```
-
-Display:
 ```
 🤖 BUSY   auth-refactor        ~/.willow/worktrees/repo/auth-refactor
 ⏳ WAIT   payments             ~/.willow/worktrees/repo/payments
@@ -134,72 +168,76 @@ Display:
 
 ### `ww rm [branch] [flags]`
 
-Remove a worktree and its branch. Without arguments, launches fzf picker.
+Remove a worktree. Without arguments, opens fzf picker.
 
 ```bash
-ww rm auth-refactor                  # direct removal
-ww rm                                # fzf picker
-ww rm auth-refactor --force          # skip safety checks
-ww rm auth-refactor --keep-branch    # remove worktree, keep the branch
-ww rm auth-refactor --yes            # skip confirmation
-ww rm auth-refactor --prune          # also run git worktree prune
+ww rm auth-refactor              # direct removal
+ww rm                            # fzf picker
+ww rm auth-refactor --force      # skip safety checks
+ww rm auth-refactor --prune      # also run git worktree prune
 ```
 
-### `ww ls [repo] [flags]`
+| Flag | Description |
+|------|-------------|
+| `-f, --force` | Skip safety checks |
+| `--keep-branch` | Keep the local branch |
+| `-y, --yes` | Skip confirmation |
+| `--prune` | Run `git worktree prune` after |
 
-List worktrees with Claude Code agent status:
+### `ww ls [repo]`
 
-- `ww ls` inside a willow worktree — list that repo's worktrees
-- `ww ls` outside a willow repo — list all willow-managed repos
-- `ww ls <repo>` — list a specific repo's worktrees
+List worktrees with status.
 
-```
-  BRANCH               STATUS  PATH                                        AGE
-  main                 IDLE    ~/.willow/worktrees/myrepo/main             3d
-  auth-refactor        BUSY    ~/.willow/worktrees/myrepo/auth-refactor    2h
-  payments             WAIT    ~/.willow/worktrees/myrepo/payments         1d
-  old-feature          --      ~/.willow/worktrees/myrepo/old-feature      5m
-```
+![ww ls](screenshots/demo-ls.gif)
 
-Flags: `--json`, `--path-only`
+| Flag | Description |
+|------|-------------|
+| `--json` | JSON output |
+| `--path-only` | Paths only (one per line) |
 
-### `ww status [flags]`
+### `ww status`
 
-Rich view of Claude Code agent status across all worktrees.
+Rich view of Claude Code agent status.
 
-```
-myrepo (4 worktrees, 2 agents active)
+![ww status](screenshots/demo-status.gif)
 
-  🤖 auth-refactor          BUSY   2m ago
-  ⏳ payments               WAIT   30s ago
-  🟡 main                   IDLE   1h ago
-     old-feature            --
-```
+| Flag | Description |
+|------|-------------|
+| `--json` | JSON output |
 
-Flags: `--json`
+### `ww cc-setup`
 
-### `ww setup`
+One-time hook installation for Claude Code status tracking.
 
-One-time installation of Claude Code hooks for agent status tracking. Installs a hook script and adds it to `~/.claude/settings.json`.
+### `ww shell-init [flags]`
 
-```bash
-ww setup
-```
+Print shell integration script.
 
-### `ww shell-init`
+| Flag | Description |
+|------|-------------|
+| `--tab-title` | Include terminal tab title hook (sets tab to `repo/branch`) |
 
-Print shell integration script for `eval`.
+## Agent status
+
+After running `ww cc-setup`, Claude Code automatically reports its state:
+
+| Icon | Status | Meaning |
+|------|--------|---------|
+| 🤖 | `BUSY` | Agent is actively working |
+| ⏳ | `WAIT` | Agent is waiting for user input |
+| 🟡 | `IDLE` | Agent session ended |
+| | `--` | No activity detected |
+
+Status appears in `ww ls`, `ww sw`, and `ww status`. Stale `BUSY` status (>5 min) automatically degrades to `IDLE`.
 
 ## Configuration
 
-Config is resolved by merging two tiers (later wins):
+Config merges two tiers (local wins):
 
 | Priority | Path | Scope |
 |----------|------|-------|
-| 1 (lowest) | `~/.config/willow/config.json` | Global defaults |
-| 2 (highest) | `<bare-repo>/willow.json` | Per-repo, local only |
-
-Edit config files directly — they're just JSON:
+| 1 | `~/.config/willow/config.json` | Global defaults |
+| 2 | `~/.willow/repos/<repo>.git/willow.json` | Per-repo |
 
 ```jsonc
 {
@@ -207,7 +245,7 @@ Edit config files directly — they're just JSON:
   "branchPrefix": "alice",
   "postCheckoutHook": ".husky/post-checkout",
   "setup": ["npm install"],
-  "teardown": ["rm -rf node_modules"],
+  "teardown": [],
   "defaults": {
     "fetch": true,
     "autoSetupRemote": true
@@ -215,42 +253,50 @@ Edit config files directly — they're just JSON:
 }
 ```
 
-## Global flags
+## Terminal setup (Ghostty / iTerm / etc.)
+
+Use `--tab-title` to automatically set your terminal tab to the worktree name:
+
+```bash
+eval "$(willow shell-init --tab-title)"
+```
+
+Each tab shows `repo/branch` (e.g. `myrepo/auth-refactor`) when inside a willow worktree.
+
+Recommended Ghostty layout per worktree:
 
 ```
--C <path>       Run as if willow was started in <path>
---verbose       Show git commands being executed
---no-color      Disable colored output
+┌─────────────────────────────────────┐
+│ Tab: myrepo/auth-refactor           │
+├──────────────────┬──────────────────┤
+│  claude          │  claude          │
+│  (agent 1)       │  (agent 2)      │
+├──────────────────┴──────────────────┤
+│  shell (git diff, tests, etc.)      │
+└─────────────────────────────────────┘
 ```
 
 ## Contributing
 
-### Prerequisites
-
-- Go 1.25+
-- [fzf](https://github.com/junegunn/fzf) (for interactive features)
-
-### Build
-
 ```bash
+# Build
 go build -o bin/willow ./cmd/willow
-```
 
-### Test
-
-```bash
+# Test
 go test ./...
 ```
+
+Requires Go 1.25+ and [fzf](https://github.com/junegunn/fzf).
 
 ## Releasing
 
 Releases are automated via [GoReleaser](https://goreleaser.com/) and GitHub Actions.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)

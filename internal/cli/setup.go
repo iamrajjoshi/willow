@@ -10,7 +10,7 @@ import (
 
 func setupCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "setup",
+		Name:  "cc-setup",
 		Usage: "Install Claude Code hooks for status tracking",
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
