@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -20,7 +22,7 @@ func rmCmd() *cli.Command {
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
-				UsageText: "<branch>",
+				UsageText: "[branch]",
 			},
 		},
 		ShellComplete: completeWorktrees,
@@ -44,16 +46,15 @@ func rmCmd() *cli.Command {
 				Aliases: []string{"r"},
 				Usage:   "Target a willow-managed repo by name",
 			},
+			&cli.BoolFlag{
+				Name:  "prune",
+				Usage: "Run git worktree prune after removal",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 			u := flags.NewUI()
-
-			target := cmd.StringArg("branch")
-			if target == "" {
-				return fmt.Errorf("branch name is required\n\nUsage: ww rm <branch> [flags]")
-			}
 
 			var bareDir string
 			var err error
@@ -75,9 +76,36 @@ func rmCmd() *cli.Command {
 				return fmt.Errorf("failed to list worktrees: %w", err)
 			}
 
-			wt, err := findWorktree(worktrees, target)
-			if err != nil {
-				return err
+			filtered := filterBareWorktrees(worktrees)
+
+			target := cmd.StringArg("branch")
+			var wt *worktree.Worktree
+
+			if target == "" {
+				// No argument: launch fzf picker
+				repoName := repoNameFromDir(bareDir)
+				selectedPath, err := fzfPickWorktree(filtered, repoName)
+				if err != nil {
+					return err
+				}
+				if selectedPath == "" {
+					return nil
+				}
+				// Find the worktree matching the selected path
+				for i := range filtered {
+					if filtered[i].Path == selectedPath {
+						wt = &filtered[i]
+						break
+					}
+				}
+				if wt == nil {
+					return fmt.Errorf("selected worktree not found")
+				}
+			} else {
+				wt, err = findWorktree(filtered, target)
+				if err != nil {
+					return err
+				}
 			}
 
 			force := cmd.Bool("force")
@@ -114,8 +142,7 @@ func rmCmd() *cli.Command {
 			}
 
 			// Run teardown hooks before removal
-			worktreeRoot, _ := g.WorktreeRoot()
-			cfg := config.Load(bareDir, worktreeRoot)
+			cfg := config.Load(bareDir)
 			if len(cfg.Teardown) > 0 {
 				u.Info("Running teardown hooks...")
 				if err := runHooks(cfg.Teardown, wt.Path, u); err != nil {
@@ -133,7 +160,23 @@ func rmCmd() *cli.Command {
 				}
 			}
 
+			// Clean up status file
+			repoName := repoNameFromDir(bareDir)
+			wtDir := filepath.Base(wt.Path)
+			statusFile := filepath.Join(claude.StatusDir(), repoName, wtDir+".json")
+			os.Remove(statusFile)
+
 			u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
+
+			if cmd.Bool("prune") {
+				u.Info("Pruning stale worktrees...")
+				if _, err := repoGit.Run("worktree", "prune"); err != nil {
+					u.Warn(fmt.Sprintf("Prune failed: %v", err))
+				} else {
+					u.Success("Pruned stale worktrees")
+				}
+			}
+
 			return nil
 		},
 	}

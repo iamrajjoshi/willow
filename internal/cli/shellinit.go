@@ -14,6 +14,12 @@ const bashInitScript = `# Willow shell integration
 #   eval "$(willow shell-init)"
 
 ww() {
+  if [ "$1" = "sw" ]; then
+    local dir
+    dir="$(command willow sw "${@:2}")" || return
+    cd "$dir" || return
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -29,12 +35,6 @@ ww() {
 wwn() {
   local dir
   dir="$(willow new "$@" --cd)" || return
-  cd "$dir" || return
-}
-
-wwg() {
-  local dir
-  dir="$(willow pwd "$@")" || return
   cd "$dir" || return
 }
 
@@ -77,6 +77,12 @@ const zshInitScript = `# Willow shell integration
 #   eval "$(willow shell-init)"
 
 ww() {
+  if [ "$1" = "sw" ]; then
+    local dir
+    dir="$(command willow sw "${@:2}")" || return
+    cd "$dir" || return
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -92,12 +98,6 @@ ww() {
 wwn() {
   local dir
   dir="$(willow new "$@" --cd)" || return
-  cd "$dir" || return
-}
-
-wwg() {
-  local dir
-  dir="$(willow pwd "$@")" || return
   cd "$dir" || return
 }
 
@@ -134,6 +134,12 @@ const fishInitScript = `# Willow shell integration
 #   willow shell-init | source
 
 function ww
+  if test (count $argv) -gt 0; and test "$argv[1]" = "sw"
+    set -l dir (command willow sw $argv[2..])
+    or return
+    cd $dir
+    return
+  end
   if test (count $argv) -gt 0; and test "$argv[1]" = "rm"
     set -l cwd $PWD
     command willow $argv
@@ -150,12 +156,6 @@ end
 
 function wwn
   set -l dir (willow new $argv --cd)
-  or return
-  cd $dir
-end
-
-function wwg
-  set -l dir (willow pwd $argv)
   or return
   cd $dir
 end
