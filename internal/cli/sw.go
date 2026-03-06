@@ -124,9 +124,11 @@ func statusOrder(s claude.Status) int {
 		return 0
 	case claude.StatusWait:
 		return 1
-	case claude.StatusIdle:
+	case claude.StatusDone:
 		return 2
-	default:
+	case claude.StatusIdle:
 		return 3
+	default:
+		return 4
 	}
 }

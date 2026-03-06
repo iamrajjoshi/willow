@@ -61,6 +61,29 @@ func TestReadStatus_StaleBusyBecomesIdle(t *testing.T) {
 	}
 }
 
+func TestReadStatus_StaleDoneBecomesIdle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "stale-done-wt"
+	statusDir := filepath.Join(home, ".willow", "status", repoName)
+	os.MkdirAll(statusDir, 0o755)
+
+	ws := WorktreeStatus{
+		Status:    StatusDone,
+		Timestamp: time.Now().UTC().Add(-10 * time.Minute),
+		Worktree:  wtName,
+	}
+	data, _ := json.Marshal(ws)
+	os.WriteFile(filepath.Join(statusDir, wtName+".json"), data, 0o644)
+
+	got := ReadStatus(repoName, wtName)
+	if got.Status != StatusIdle {
+		t.Errorf("Status = %q, want %q (stale DONE should become IDLE)", got.Status, StatusIdle)
+	}
+}
+
 func TestReadStatus_InvalidJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -83,6 +106,7 @@ func TestStatusIcon(t *testing.T) {
 		want   string
 	}{
 		{StatusBusy, "\U0001F916"},
+		{StatusDone, "\u2705"},
 		{StatusWait, "\u23F3"},
 		{StatusIdle, "\U0001F7E1"},
 		{StatusOffline, "  "},

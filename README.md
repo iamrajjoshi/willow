@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="willow.jpg" width="100%" alt="willow" />
+  <img src="screenshots/willow.jpg" width="100%" alt="willow" />
 </p>
 
 <h1 align="center">willow</h1>
@@ -95,7 +95,7 @@ eval "$(willow shell-init --tab-title)"
 ww cc-setup
 ```
 
-Installs a hook into `~/.claude/settings.json` that writes agent status (`BUSY` / `WAIT` / `IDLE`) to `~/.willow/status/`. This powers the status column in `ww ls`, `ww sw`, and `ww status`.
+Installs hooks into `~/.claude/settings.json` that write agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. This powers the status column in `ww ls`, `ww sw`, and `ww status`.
 
 ## Quick start
 
@@ -161,6 +161,7 @@ Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by
 
 ```
 🤖 BUSY   auth-refactor        ~/.willow/worktrees/repo/auth-refactor
+✅ DONE   api-cleanup          ~/.willow/worktrees/repo/api-cleanup
 ⏳ WAIT   payments             ~/.willow/worktrees/repo/payments
 🟡 IDLE   main                 ~/.willow/worktrees/repo/main
    --     old-feature          ~/.willow/worktrees/repo/old-feature
@@ -224,11 +225,12 @@ After running `ww cc-setup`, Claude Code automatically reports its state:
 | Icon | Status | Meaning |
 |------|--------|---------|
 | 🤖 | `BUSY` | Agent is actively working |
+| ✅ | `DONE` | Agent finished its turn |
 | ⏳ | `WAIT` | Agent is waiting for user input |
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Status appears in `ww ls`, `ww sw`, and `ww status`. Stale `BUSY` status (>5 min) automatically degrades to `IDLE`.
+Status appears in `ww ls`, `ww sw`, and `ww status`. Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`.
 
 ## Configuration
 

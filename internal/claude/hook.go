@@ -69,7 +69,7 @@ HOOK_EVENT="${CLAUDE_HOOK_EVENT:-}"
 STATUS="BUSY"
 
 if [ "$HOOK_EVENT" = "Stop" ]; then
-  STATUS="IDLE"
+  STATUS="DONE"
 elif [ "$TOOL_NAME" = "AskUserQuestion" ]; then
   STATUS="WAIT"
 fi

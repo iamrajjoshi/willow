@@ -13,6 +13,7 @@ type Status string
 
 const (
 	StatusBusy    Status = "BUSY"
+	StatusDone    Status = "DONE"
 	StatusWait    Status = "WAIT"
 	StatusIdle    Status = "IDLE"
 	StatusOffline Status = "--"
@@ -50,8 +51,8 @@ func ReadStatus(repoName, worktreeDir string) *WorktreeStatus {
 		return &WorktreeStatus{Status: StatusOffline}
 	}
 
-	// Consider stale status (>5 minutes for BUSY) as IDLE
-	if ws.Status == StatusBusy && time.Since(ws.Timestamp) > 5*time.Minute {
+	// Consider stale BUSY/DONE (>5 minutes) as IDLE
+	if (ws.Status == StatusBusy || ws.Status == StatusDone) && time.Since(ws.Timestamp) > 5*time.Minute {
 		ws.Status = StatusIdle
 	}
 
@@ -63,6 +64,8 @@ func StatusIcon(s Status) string {
 	switch s {
 	case StatusBusy:
 		return "\U0001F916" // robot face
+	case StatusDone:
+		return "\u2705" // white check mark
 	case StatusWait:
 		return "\u23F3" // hourglass
 	case StatusIdle:
