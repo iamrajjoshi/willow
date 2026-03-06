@@ -79,13 +79,11 @@ func NewApp() *cli.Command {
 		Commands: []*cli.Command{
 			cloneCmd(),
 			newCmd(),
-			lsCmd(),
-			pwdCmd(),
+			swCmd(),
 			rmCmd(),
-			runCmd(),
-			pruneCmd(),
-			initCmd(),
-			configCmd(),
+			lsCmd(),
+			statusCmd(),
+			setupCmd(),
 			shellInitCmd(),
 		},
 	}

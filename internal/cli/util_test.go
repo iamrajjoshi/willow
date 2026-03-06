@@ -74,12 +74,14 @@ func TestFindWorktree_ExactMatchTakesPriority(t *testing.T) {
 	}
 }
 
-func TestPickWorktree_EmptyList(t *testing.T) {
-	err := pickWorktree(nil)
-	if err == nil {
-		t.Fatal("expected error for empty worktree list")
+func TestFilterBareWorktrees(t *testing.T) {
+	worktrees := []worktree.Worktree{
+		{Branch: "main", Path: "/path/main", IsBare: false},
+		{Branch: "", Path: "/path/bare", IsBare: true},
+		{Branch: "feature", Path: "/path/feature", IsBare: false},
 	}
-	if !strings.Contains(err.Error(), "no worktrees found") {
-		t.Errorf("error = %q, want it to contain 'no worktrees found'", err.Error())
+	filtered := filterBareWorktrees(worktrees)
+	if len(filtered) != 2 {
+		t.Errorf("expected 2 non-bare worktrees, got %d", len(filtered))
 	}
 }

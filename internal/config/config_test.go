@@ -184,16 +184,11 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 }
 
-func TestLoad_ThreeTierMerge(t *testing.T) {
-	// Set up directory structure:
-	//   globalDir/.config/willow/config.json  (global)
-	//   wtRoot/.willow/config.json            (shared)
-	//   bareDir/willow.json                   (local)
-
+func TestLoad_TwoTierMerge(t *testing.T) {
 	tmp := t.TempDir()
 
 	// We can't override GlobalConfigPath() easily since it uses os.UserHomeDir.
-	// Instead, test the merge behavior by calling loadFile + merge directly,
+	// Instead, test the merge behavior by calling LoadFile + merge directly,
 	// which is what Load does internally.
 
 	// Simulate global: baseBranch=main, fetch=true, setup=[npm install]
@@ -205,15 +200,7 @@ func TestLoad_ThreeTierMerge(t *testing.T) {
 		"defaults": {"fetch": true}
 	}`), 0o644)
 
-	// Simulate shared: branchPrefix=team, setup=[yarn install] (overrides global)
-	sharedDir := filepath.Join(tmp, "shared")
-	os.MkdirAll(sharedDir, 0o755)
-	os.WriteFile(filepath.Join(sharedDir, "config.json"), []byte(`{
-		"branchPrefix": "team",
-		"setup": ["yarn install"]
-	}`), 0o644)
-
-	// Simulate local: baseBranch=develop, fetch=false (overrides both)
+	// Simulate local: baseBranch=develop, fetch=false (overrides global)
 	localDir := filepath.Join(tmp, "local")
 	os.MkdirAll(localDir, 0o755)
 	os.WriteFile(filepath.Join(localDir, "config.json"), []byte(`{
@@ -226,37 +213,25 @@ func TestLoad_ThreeTierMerge(t *testing.T) {
 	global, _ := LoadFile(filepath.Join(globalDir, "config.json"))
 	merge(cfg, global)
 
-	shared, _ := LoadFile(filepath.Join(sharedDir, "config.json"))
-	merge(cfg, shared)
-
 	local, _ := LoadFile(filepath.Join(localDir, "config.json"))
 	merge(cfg, local)
 
-	// baseBranch: global=main, local=develop → develop wins
 	if cfg.BaseBranch != "develop" {
 		t.Errorf("BaseBranch = %q, want %q", cfg.BaseBranch, "develop")
 	}
-	// branchPrefix: only shared sets it → team
-	if cfg.BranchPrefix != "team" {
-		t.Errorf("BranchPrefix = %q, want %q", cfg.BranchPrefix, "team")
+	if len(cfg.Setup) != 1 || cfg.Setup[0] != "npm install" {
+		t.Errorf("Setup = %v, want [npm install]", cfg.Setup)
 	}
-	// setup: global=[npm install], shared=[yarn install] → yarn install wins
-	if len(cfg.Setup) != 1 || cfg.Setup[0] != "yarn install" {
-		t.Errorf("Setup = %v, want [yarn install]", cfg.Setup)
-	}
-	// fetch: default=true, global=true, local=false → false wins
 	if *cfg.Defaults.Fetch != false {
 		t.Error("Defaults.Fetch should be false (local override)")
 	}
-	// autoSetupRemote: only default sets it → true
 	if *cfg.Defaults.AutoSetupRemote != true {
 		t.Error("Defaults.AutoSetupRemote should remain true (no overrides)")
 	}
 }
 
 func TestLoad_NoConfigFiles(t *testing.T) {
-	// When no config files exist, Load should return defaults
-	cfg := Load("/nonexistent/bare", "/nonexistent/worktree")
+	cfg := Load("/nonexistent/bare")
 
 	if cfg.BaseBranch != "" {
 		t.Errorf("BaseBranch = %q, want empty", cfg.BaseBranch)
@@ -269,9 +244,8 @@ func TestLoad_NoConfigFiles(t *testing.T) {
 	}
 }
 
-func TestLoad_EmptyBareAndWorktree(t *testing.T) {
-	// When bare and worktree are empty strings, should still return defaults
-	cfg := Load("", "")
+func TestLoad_EmptyBareDir(t *testing.T) {
+	cfg := Load("")
 
 	if *cfg.Defaults.Fetch != true {
 		t.Error("Defaults.Fetch should be true")

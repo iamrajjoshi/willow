@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -70,12 +72,7 @@ func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
 		return fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
-	var filtered []worktree.Worktree
-	for _, wt := range worktrees {
-		if !wt.IsBare {
-			filtered = append(filtered, wt)
-		}
-	}
+	filtered := filterBareWorktrees(worktrees)
 
 	if cmd.Bool("path-only") {
 		for _, wt := range filtered {
@@ -90,7 +87,8 @@ func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
 		return enc.Encode(filtered)
 	}
 
-	printTable(flags, filtered)
+	repoName := repoNameFromDir(repoGit.Dir)
+	printTable(flags, filtered, repoName)
 	return nil
 }
 
@@ -154,7 +152,7 @@ func completeRepos(ctx context.Context, cmd *cli.Command) {
 	}
 }
 
-func printTable(flags Flags, worktrees []worktree.Worktree) {
+func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 	u := flags.NewUI()
 
 	if len(worktrees) == 0 {
@@ -173,12 +171,15 @@ func printTable(flags Flags, worktrees []worktree.Worktree) {
 		}
 	}
 
-	header := fmt.Sprintf("  %-*s  %-*s  %s", branchW, "BRANCH", pathW, "PATH", "AGE")
+	header := fmt.Sprintf("  %-*s  %-6s  %-*s  %s", branchW, "BRANCH", "STATUS", pathW, "PATH", "AGE")
 	u.Info(u.Bold(header))
 
 	for _, wt := range worktrees {
 		age := worktreeAge(wt.Path)
-		line := fmt.Sprintf("  %-*s  %-*s  %s", branchW, wt.Branch, pathW, u.Dim(wt.Path), u.Dim(age))
+		wtDir := filepath.Base(wt.Path)
+		ws := claude.ReadStatus(repoName, wtDir)
+		statusLabel := claude.StatusLabel(ws.Status)
+		line := fmt.Sprintf("  %-*s  %-6s  %-*s  %s", branchW, wt.Branch, statusLabel, pathW, u.Dim(wt.Path), u.Dim(age))
 		u.Info(line)
 	}
 }
