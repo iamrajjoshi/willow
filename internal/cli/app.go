@@ -37,13 +37,13 @@ var version = "dev"
 
 type Flags struct {
 	Verbose bool
-	NoColor bool
+	Trace   bool
 }
 
 func parseFlags(cmd *cli.Command) Flags {
 	return Flags{
 		Verbose: cmd.Root().Bool("verbose"),
-		NoColor: cmd.Root().Bool("no-color"),
+		Trace:   cmd.Root().Bool("trace"),
 	}
 }
 
@@ -52,7 +52,7 @@ func (f Flags) NewGit() *git.Git {
 }
 
 func (f Flags) NewUI() *ui.UI {
-	return &ui.UI{NoColor: f.NoColor}
+	return &ui.UI{}
 }
 
 func NewApp() *cli.Command {
@@ -72,8 +72,9 @@ func NewApp() *cli.Command {
 				Usage: "Show git commands being executed",
 			},
 			&cli.BoolFlag{
-				Name:  "no-color",
-				Usage: "Disable colored output",
+				Name:    "trace",
+				Usage:   "Print timing trace to stderr for performance debugging",
+				Sources: cli.EnvVars("WILLOW_TRACE"),
 			},
 		},
 		Commands: []*cli.Command{
