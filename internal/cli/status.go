@@ -67,7 +67,7 @@ func statusCmd() *cli.Command {
 				}
 				entries = append(entries, entry)
 
-				if ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait {
+				if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
 					activeCount++
 				}
 			}
