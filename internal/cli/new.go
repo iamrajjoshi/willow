@@ -111,7 +111,6 @@ func newCmd() *cli.Command {
 			}
 
 			var bareDir string
-			var worktreeRoot string
 			var err error
 			if repoFlag := cmd.String("repo"); repoFlag != "" {
 				bareDir, err = config.ResolveRepo(repoFlag)
@@ -123,9 +122,8 @@ func newCmd() *cli.Command {
 				if err != nil {
 					return err
 				}
-				worktreeRoot, _ = g.WorktreeRoot()
 			}
-			cfg := config.Load(bareDir, worktreeRoot)
+			cfg := config.Load(bareDir)
 
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			repoName := repoNameFromDir(bareDir)

@@ -57,10 +57,6 @@ func LocalConfigPath(bareDir string) string {
 	return filepath.Join(bareDir, "willow.json")
 }
 
-func SharedConfigPath(worktreeRoot string) string {
-	return filepath.Join(worktreeRoot, ".willow", "config.json")
-}
-
 // IsWillowRepo checks if bareDir lives under ~/.willow/repos/.
 // Both paths are resolved through EvalSymlinks to handle macOS /var → /private/var.
 func IsWillowRepo(bareDir string) bool {
@@ -133,19 +129,13 @@ func ResolveRepoFromDir(dir string) (string, bool) {
 	return bareDir, true
 }
 
-// Load resolves config by merging 3 tiers: global → shared → local.
-// bareDir and worktreeRoot can be empty if unavailable (e.g. not in a repo).
-func Load(bareDir, worktreeRoot string) *Config {
+// Load resolves config by merging 2 tiers: global → local.
+// bareDir can be empty if unavailable (e.g. not in a repo).
+func Load(bareDir string) *Config {
 	cfg := DefaultConfig()
 
 	if global, err := LoadFile(GlobalConfigPath()); err == nil {
 		merge(cfg, global)
-	}
-
-	if worktreeRoot != "" {
-		if shared, err := LoadFile(SharedConfigPath(worktreeRoot)); err == nil {
-			merge(cfg, shared)
-		}
 	}
 
 	if bareDir != "" {

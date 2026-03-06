@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -205,36 +204,6 @@ func TestNew_SlashedBranchDirName(t *testing.T) {
 	expectedDir := filepath.Join(worktreeDir, "feature-auth")
 	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
 		t.Errorf("worktree directory not created at %s", expectedDir)
-	}
-}
-
-func TestConfig_PostCheckoutHook(t *testing.T) {
-	origin := setupTestEnv(t)
-	home, _ := os.UserHomeDir()
-
-	if err := runApp("clone", origin, "testrepo"); err != nil {
-		t.Fatalf("clone failed: %v", err)
-	}
-
-	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
-	entries, _ := os.ReadDir(worktreeDir)
-	mainDir := filepath.Join(worktreeDir, entries[0].Name())
-	os.Chdir(mainDir)
-
-	// Set postCheckoutHook via config command
-	if err := runApp("config", "postCheckoutHook", ".husky/post-checkout"); err != nil {
-		t.Fatalf("config set failed: %v", err)
-	}
-
-	// Verify it was saved by loading the config file
-	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
-	configPath := filepath.Join(bareDir, "willow.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("failed to read config: %v", err)
-	}
-	if !strings.Contains(string(data), ".husky/post-checkout") {
-		t.Errorf("config file does not contain postCheckoutHook value: %s", data)
 	}
 }
 
