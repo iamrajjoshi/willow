@@ -78,12 +78,8 @@ func statusCmd() *cli.Command {
 				return enc.Encode(entries)
 			}
 
-			activeLabel := "agent active"
-			if activeCount != 1 {
-				activeLabel = "agents active"
-			}
-			u.Info(fmt.Sprintf("%s (%d worktrees, %d %s)\n",
-				u.Bold(repoName), len(filtered), activeCount, activeLabel))
+			u.Info(fmt.Sprintf("%s (\U0001F333 %d worktrees, \U0001F916 %d active)\n",
+				u.Bold(repoName), len(filtered), activeCount))
 
 			branchW := 0
 			for _, e := range entries {
