@@ -113,42 +113,46 @@ func IsInstalled() bool {
 		return false
 	}
 
-	hooks, ok := settings["hooks"]
+	hooksMap, ok := settings["hooks"].(map[string]any)
 	if !ok {
 		return false
 	}
 
-	hooksMap, ok := hooks.(map[string]any)
-	if !ok {
-		return false
-	}
-
-	for _, events := range []string{"PostToolUse", "Stop"} {
-		eventHooks, ok := hooksMap[events]
-		if !ok {
-			return false
-		}
-		hooksList, ok := eventHooks.([]any)
-		if !ok {
-			return false
-		}
-		found := false
-		for _, h := range hooksList {
-			hookMap, ok := h.(map[string]any)
-			if !ok {
-				continue
-			}
-			if cmd, ok := hookMap["command"].(string); ok && cmd == HookScriptPath() {
-				found = true
-				break
-			}
-		}
-		if !found {
+	hookPath := HookScriptPath()
+	for _, event := range []string{"PostToolUse", "Stop"} {
+		if !eventHasHook(hooksMap, event, hookPath) {
 			return false
 		}
 	}
-
 	return true
+}
+
+func eventHasHook(hooksMap map[string]any, event, hookPath string) bool {
+	rules, ok := hooksMap[event].([]any)
+	if !ok {
+		return false
+	}
+	for _, rule := range rules {
+		ruleMap, ok := rule.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Check nested format: {"hooks": [{"type": "command", "command": "..."}]}
+		if innerHooks, ok := ruleMap["hooks"].([]any); ok {
+			for _, h := range innerHooks {
+				if hMap, ok := h.(map[string]any); ok {
+					if cmd, ok := hMap["command"].(string); ok && cmd == hookPath {
+						return true
+					}
+				}
+			}
+		}
+		// Check flat format: {"type": "command", "command": "..."}
+		if cmd, ok := ruleMap["command"].(string); ok && cmd == hookPath {
+			return true
+		}
+	}
+	return false
 }
 
 func readClaudeSettings() (map[string]any, error) {
@@ -174,42 +178,34 @@ func addHookToSettings(hookPath string) error {
 		return err
 	}
 
-	hooks, ok := settings["hooks"].(map[string]any)
+	hooksMap, ok := settings["hooks"].(map[string]any)
 	if !ok {
-		hooks = make(map[string]any)
+		hooksMap = make(map[string]any)
 	}
 
-	willowHook := map[string]any{
-		"type":    "command",
-		"command": hookPath,
+	willowRule := map[string]any{
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": hookPath,
+			},
+		},
 	}
 
 	for _, event := range []string{"PostToolUse", "Stop"} {
-		existing, ok := hooks[event].([]any)
+		if eventHasHook(hooksMap, event, hookPath) {
+			continue
+		}
+
+		existing, ok := hooksMap[event].([]any)
 		if !ok {
 			existing = []any{}
 		}
-
-		// Check if already installed
-		alreadyInstalled := false
-		for _, h := range existing {
-			hookMap, ok := h.(map[string]any)
-			if !ok {
-				continue
-			}
-			if cmd, ok := hookMap["command"].(string); ok && cmd == hookPath {
-				alreadyInstalled = true
-				break
-			}
-		}
-
-		if !alreadyInstalled {
-			existing = append(existing, willowHook)
-		}
-		hooks[event] = existing
+		existing = append(existing, willowRule)
+		hooksMap[event] = existing
 	}
 
-	settings["hooks"] = hooks
+	settings["hooks"] = hooksMap
 
 	settingsPath := claudeSettingsPath()
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
