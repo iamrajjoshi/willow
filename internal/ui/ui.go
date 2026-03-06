@@ -15,9 +15,7 @@ const (
 	cyan   = "\033[36m"
 )
 
-type UI struct {
-	NoColor bool
-}
+type UI struct{}
 
 func (u *UI) Success(msg string) {
 	fmt.Printf("%s %s\n", u.Green("✔"), msg)
@@ -36,43 +34,25 @@ func (u *UI) Errorf(format string, args ...any) {
 }
 
 func (u *UI) Bold(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return bold + s + reset
 }
 
 func (u *UI) Green(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return green + s + reset
 }
 
 func (u *UI) Yellow(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return yellow + s + reset
 }
 
 func (u *UI) Red(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return red + s + reset
 }
 
 func (u *UI) Cyan(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return cyan + s + reset
 }
 
 func (u *UI) Dim(s string) string {
-	if u.NoColor {
-		return s
-	}
 	return dim + s + reset
 }

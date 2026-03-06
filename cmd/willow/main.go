@@ -11,7 +11,7 @@ import (
 func main() {
 	root := cli.NewApp()
 	if err := root.Run(context.Background(), os.Args); err != nil {
-		u := &ui.UI{NoColor: root.Bool("no-color")}
+		u := &ui.UI{}
 		u.Errorf("%v", err)
 		os.Exit(1)
 	}
