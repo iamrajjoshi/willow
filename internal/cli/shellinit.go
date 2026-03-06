@@ -2,12 +2,31 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/urfave/cli/v3"
 )
+
+const bashTabTitle = `
+# Set terminal tab title to willow worktree name
+__willow_tab_title() {
+  local wt_dir="$HOME/.willow/worktrees"
+  local resolved_wt_dir resolved_pwd
+  resolved_wt_dir="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || return
+  resolved_pwd="$(pwd -P)"
+  case "$resolved_pwd" in
+    "$resolved_wt_dir"/*)
+      local rel="${resolved_pwd#"$resolved_wt_dir"/}"
+      local repo="${rel%%/*}"
+      local branch="${rel#*/}"
+      branch="${branch%%/*}"
+      printf '\e]0;%s/%s\a' "$repo" "$branch"
+      ;;
+  esac
+}
+PROMPT_COMMAND="__willow_tab_title;${PROMPT_COMMAND:-}"
+`
 
 const bashInitScript = `# Willow shell integration
 # Add to your .bashrc:
@@ -72,6 +91,26 @@ complete -o bashdefault -o default -o nospace -F __willow_bash_autocomplete will
 complete -o bashdefault -o default -o nospace -F __willow_bash_autocomplete ww
 `
 
+const zshTabTitle = `
+# Set terminal tab title to willow worktree name
+__willow_tab_title() {
+  local wt_dir="$HOME/.willow/worktrees"
+  local resolved_wt_dir resolved_pwd
+  resolved_wt_dir="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || return
+  resolved_pwd="$(pwd -P)"
+  case "$resolved_pwd" in
+    "$resolved_wt_dir"/*)
+      local rel="${resolved_pwd#"$resolved_wt_dir"/}"
+      local repo="${rel%%/*}"
+      local branch="${rel#*/}"
+      branch="${branch%%/*}"
+      printf '\e]0;%s/%s\a' "$repo" "$branch"
+      ;;
+  esac
+}
+precmd_functions+=(__willow_tab_title)
+`
+
 const zshInitScript = `# Willow shell integration
 # Add to your .zshrc:
 #   eval "$(willow shell-init)"
@@ -127,6 +166,21 @@ compdef _willow ww
 if [ "$funcstack[1]" = "_willow" ]; then
   _willow
 fi
+`
+
+const fishTabTitle = `
+# Set terminal tab title to willow worktree name
+function __willow_tab_title --on-variable PWD
+  set -l wt_dir "$HOME/.willow/worktrees"
+  set -l resolved_wt_dir (cd "$wt_dir" 2>/dev/null; and pwd -P)
+  set -l resolved_pwd (pwd -P)
+  if string match -q "$resolved_wt_dir/*" "$resolved_pwd"
+    set -l rel (string replace "$resolved_wt_dir/" "" "$resolved_pwd")
+    set -l repo (string split / "$rel")[1]
+    set -l branch (string split / "$rel")[2]
+    printf '\e]0;%s/%s\a' "$repo" "$branch"
+  end
+end
 `
 
 const fishInitScript = `# Willow shell integration
@@ -193,15 +247,31 @@ func shellInitCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "shell-init",
 		Usage: "Print shell integration script",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "tab-title",
+				Usage: "Include terminal tab title integration (sets tab to repo/branch in willow worktrees)",
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			shell := detectShell()
+			tabTitle := cmd.Bool("tab-title")
 			switch shell {
 			case "zsh":
-				fmt.Print(zshInitScript)
+				os.Stdout.WriteString(zshInitScript)
+				if tabTitle {
+					os.Stdout.WriteString(zshTabTitle)
+				}
 			case "fish":
-				fmt.Print(fishInitScript)
+				os.Stdout.WriteString(fishInitScript)
+				if tabTitle {
+					os.Stdout.WriteString(fishTabTitle)
+				}
 			default:
-				fmt.Print(bashInitScript)
+				os.Stdout.WriteString(bashInitScript)
+				if tabTitle {
+					os.Stdout.WriteString(bashTabTitle)
+				}
 			}
 			return nil
 		},
