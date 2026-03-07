@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
+}
+
+/* Force dark appearance */
+html {
+  color-scheme: dark;
+}
+
+/* Hero section */
+.VPHero .name {
+  font-family: var(--vp-font-family-mono) !important;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.VPHero .text {
+  font-family: var(--vp-font-family-mono) !important;
+  color: var(--willow-steel-blue) !important;
+}
+
+.VPHero .tagline {
+  color: var(--willow-pale-bone) !important;
+  opacity: 0.8;
+}
+
+/* Feature cards */
+.VPFeature {
+  background: var(--vp-c-bg-soft) !important;
+  border: 1px solid var(--vp-c-divider) !important;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.VPFeature:hover {
+  border-color: var(--willow-neon-cyan) !important;
+  box-shadow: 0 0 20px rgba(139, 233, 253, 0.1);
+}
+
+.VPFeature .title {
+  color: var(--willow-neon-cyan) !important;
+}
+
+/* Nav glass effect */
+.VPNav {
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Custom landing sections */
+.landing-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.landing-section + .landing-section {
+  padding-top: 0;
+}
+
+.section-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--willow-neon-cyan);
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.section-subtitle {
+  color: var(--willow-steel-blue);
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+/* Terminal chrome */
+.terminal-window {
+  background: #0d0d12;
+  border-radius: 12px;
+  border: 1px solid rgba(129, 174, 198, 0.15);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-titlebar {
+  background: #1a1a22;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(129, 174, 198, 0.1);
+}
+
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red { background: #fc4346; }
+.terminal-dot.yellow { background: #f0fb8c; }
+.terminal-dot.green { background: #50fb7b; }
+
+.terminal-title {
+  flex: 1;
+  text-align: center;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8rem;
+  color: var(--willow-ash-gray);
+  margin-right: 52px;
+}
+
+.terminal-body {
+  padding: 0;
+}
+
+.terminal-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.status-badge.busy {
+  background: rgba(252, 67, 70, 0.15);
+  color: #fc4346;
+  border: 1px solid rgba(252, 67, 70, 0.3);
+}
+
+.status-badge.done {
+  background: rgba(80, 251, 123, 0.15);
+  color: #50fb7b;
+  border: 1px solid rgba(80, 251, 123, 0.3);
+}
+
+.status-badge.wait {
+  background: rgba(240, 251, 140, 0.15);
+  color: #f0fb8c;
+  border: 1px solid rgba(240, 251, 140, 0.3);
+}
+
+.status-badge.idle {
+  background: rgba(73, 186, 255, 0.15);
+  color: #49baff;
+  border: 1px solid rgba(73, 186, 255, 0.3);
+}
+
+/* Code group styling */
+.vp-code-group .tabs label {
+  font-family: var(--vp-font-family-mono);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--willow-ash-gray);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--willow-steel-blue);
+}
+
+/* Footer */
+.VPFooter {
+  border-top-color: var(--vp-c-divider) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .landing-section {
+    padding: 48px 16px;
+  }
+
+  .section-title {
+    font-size: 1.4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-section {
+    padding: 32px 12px;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+  }
+}
