@@ -296,7 +296,7 @@ Requires Go 1.25+ and [fzf](https://github.com/junegunn/fzf).
 
 ## Website
 
-The [docs site](https://iamrajjoshi.github.io/willow/) is built with [VitePress](https://vitepress.dev/).
+The [docs site](https://getwillow.dev) is built with [VitePress](https://vitepress.dev/).
 
 ```bash
 cd website
