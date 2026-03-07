@@ -6,7 +6,7 @@ const commitHash = execSync('git rev-parse --short HEAD').toString().trim()
 export default defineConfig({
   title: 'willow',
   description: 'A git worktree manager built for AI agent workflows.',
-  appearance: 'dark',
+  appearance: 'force-dark',
   cleanUrls: true,
   sitemap: { hostname: 'https://getwillow.dev' },
 
