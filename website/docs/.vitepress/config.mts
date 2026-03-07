@@ -8,6 +8,7 @@ export default defineConfig({
   description: 'A git worktree manager built for AI agent workflows.',
   appearance: 'dark',
   cleanUrls: true,
+  sitemap: { hostname: 'https://getwillow.dev' },
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
@@ -15,6 +16,8 @@ export default defineConfig({
     ['meta', { property: 'og:title', content: 'willow — Git worktree manager for AI agents' }],
     ['meta', { property: 'og:description', content: 'Spin up isolated worktrees for Claude Code sessions. Switch between them instantly with fzf. See which agents are busy, waiting, or idle.' }],
     ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:url', content: 'https://getwillow.dev' }],
+    ['link', { rel: 'canonical', href: 'https://getwillow.dev' }],
   ],
 
   themeConfig: {

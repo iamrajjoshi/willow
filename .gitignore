@@ -30,3 +30,8 @@ go.work.sum
 # Build output
 bin/
 dist/
+
+# Website
+website/node_modules/
+website/docs/.vitepress/dist/
+website/docs/.vitepress/cache/
