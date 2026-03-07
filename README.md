@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="screenshots/willow.jpg" width="100%" alt="willow" />
+  <img src="website/docs/public/logo.svg" width="80" alt="willow logo" />
 </p>
 
 <h1 align="center">willow</h1>
+
+<p align="center">
+  <img src="screenshots/willow.jpg" width="100%" alt="willow" />
+</p>
 
 <p align="center">
   <strong>A git worktree manager built for AI agent workflows.</strong>
@@ -289,6 +293,19 @@ go test ./...
 ```
 
 Requires Go 1.25+ and [fzf](https://github.com/junegunn/fzf).
+
+## Website
+
+The [docs site](https://iamrajjoshi.github.io/willow/) is built with [VitePress](https://vitepress.dev/).
+
+```bash
+cd website
+pnpm install
+pnpm dev       # localhost:5173
+pnpm build     # production build
+```
+
+Deployed automatically to GitHub Pages on push to `main` when `website/` changes.
 
 ## Releasing
 
