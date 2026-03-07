@@ -1,0 +1,85 @@
+# Configuration
+
+## Config file locations
+
+Config merges two tiers (local wins):
+
+| Priority | Path | Scope |
+|----------|------|-------|
+| 1 (highest) | `~/.willow/repos/<repo>.git/willow.json` | Per-repo, local only |
+| 2 | `~/.config/willow/config.json` | Global defaults |
+
+The local config lives inside the bare repo directory, so it's private to your machine. Global config provides machine-wide defaults for all repos.
+
+## Config schema
+
+```jsonc
+{
+  "baseBranch": "main",
+  "branchPrefix": "alice",
+  "postCheckoutHook": ".husky/post-checkout",
+  "setup": ["npm install", "cp .env.example .env"],
+  "teardown": [],
+  "defaults": {
+    "fetch": true,
+    "autoSetupRemote": true
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `baseBranch` | `string` | Default branch to fork new worktrees from |
+| `branchPrefix` | `string` | Prefix for new branch names (e.g. `alice` → `alice/feature-auth`) |
+| `postCheckoutHook` | `string` | Script to run after creating a worktree |
+| `setup` | `string[]` | Commands to run after creating a worktree (e.g. install deps) |
+| `teardown` | `string[]` | Commands to run before removing a worktree |
+| `defaults.fetch` | `boolean` | Whether to fetch before creating a worktree |
+| `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
+
+## Directory structure
+
+```
+~/.willow/
+├── repos/                       # Bare clones
+│   └── myrepo.git/
+│       └── willow.json          # Per-repo config
+├── worktrees/                   # All worktrees, grouped by repo
+│   └── myrepo/
+│       ├── main/
+│       ├── auth-refactor/
+│       └── payments/
+├── status/                      # Claude Code agent status
+│   └── myrepo/
+│       ├── main.json
+│       └── auth-refactor.json
+└── hooks/                       # Hook scripts
+    └── claude-status-hook.sh
+```
+
+### `~/.willow/repos/`
+
+Contains bare git clones. Each repo is cloned once with `ww clone` and shared across all worktrees. Per-repo config (`willow.json`) lives here.
+
+### `~/.willow/worktrees/`
+
+Each worktree is a fully isolated directory with its own working copy. Grouped by repo name — `~/.willow/worktrees/<repo>/<branch>/`.
+
+### `~/.willow/status/`
+
+Created by `ww cc-setup`. Contains JSON files with Claude Code agent status for each worktree.
+
+```jsonc
+// ~/.willow/status/myrepo/auth-refactor.json
+{
+  "status": "BUSY",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "worktree": "auth-refactor"
+}
+```
+
+### `~/.willow/hooks/`
+
+Contains hook scripts installed by `ww cc-setup`. The `claude-status-hook.sh` fires on Claude Code `PostToolUse` and `Stop` events.

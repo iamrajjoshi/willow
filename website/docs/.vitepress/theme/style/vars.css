@@ -1,0 +1,102 @@
+:root {
+  /* Neon Phantom palette */
+  --willow-void-black: #131318;
+  --willow-pale-bone: #ebece6;
+  --willow-neon-cyan: #8be9fd;
+  --willow-electric-blue: #49baff;
+  --willow-phantom-green: #50fb7b;
+  --willow-hot-magenta: #fc4cb4;
+  --willow-signal-red: #fc4346;
+  --willow-soft-yellow: #f0fb8c;
+  --willow-steel-blue: #81aec6;
+  --willow-ash-gray: #555555;
+
+  /* Status badge colors */
+  --willow-status-busy: #fc4346;
+  --willow-status-done: #50fb7b;
+  --willow-status-wait: #f0fb8c;
+  --willow-status-idle: #49baff;
+}
+
+.dark {
+  --vp-c-bg: #131318;
+  --vp-c-bg-alt: #131318;
+  --vp-c-bg-soft: #1a1a22;
+  --vp-c-bg-mute: #2a2a35;
+  --vp-c-bg-elv: #1a1a22;
+
+  --vp-c-text-1: #ebece6;
+  --vp-c-text-2: #81aec6;
+  --vp-c-text-3: #555555;
+
+  --vp-c-brand-1: #8be9fd;
+  --vp-c-brand-2: #49baff;
+  --vp-c-brand-3: #3a9fe6;
+  --vp-c-brand-soft: rgba(139, 233, 253, 0.14);
+
+  --vp-c-tip-1: #50fb7b;
+  --vp-c-tip-2: rgba(80, 251, 123, 0.14);
+  --vp-c-tip-soft: rgba(80, 251, 123, 0.14);
+
+  --vp-c-warning-1: #f0fb8c;
+  --vp-c-warning-2: rgba(240, 251, 140, 0.14);
+  --vp-c-warning-soft: rgba(240, 251, 140, 0.14);
+
+  --vp-c-danger-1: #fc4346;
+  --vp-c-danger-2: rgba(252, 67, 70, 0.14);
+  --vp-c-danger-soft: rgba(252, 67, 70, 0.14);
+
+  --vp-c-divider: rgba(129, 174, 198, 0.2);
+  --vp-c-gutter: rgba(129, 174, 198, 0.2);
+
+  --vp-c-default-1: #81aec6;
+  --vp-c-default-2: rgba(129, 174, 198, 0.2);
+  --vp-c-default-3: rgba(129, 174, 198, 0.1);
+  --vp-c-default-soft: rgba(129, 174, 198, 0.1);
+
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #131318;
+  --vp-button-brand-bg: #8be9fd;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #131318;
+  --vp-button-brand-hover-bg: #49baff;
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #131318;
+  --vp-button-brand-active-bg: #3a9fe6;
+
+  --vp-button-alt-border: rgba(129, 174, 198, 0.3);
+  --vp-button-alt-text: #ebece6;
+  --vp-button-alt-bg: rgba(129, 174, 198, 0.1);
+  --vp-button-alt-hover-border: rgba(129, 174, 198, 0.5);
+  --vp-button-alt-hover-text: #ebece6;
+  --vp-button-alt-hover-bg: rgba(129, 174, 198, 0.15);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #8be9fd 0%, #49baff 50%, #fc4cb4 100%);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(139, 233, 253, 0.15) 0%, transparent 70%);
+  --vp-home-hero-image-filter: blur(40px);
+
+  --vp-code-block-bg: #0d0d12;
+  --vp-code-line-highlight-color: rgba(139, 233, 253, 0.08);
+  --vp-code-tab-text-color: #81aec6;
+  --vp-code-tab-active-text-color: #8be9fd;
+  --vp-code-tab-hover-text-color: #ebece6;
+  --vp-code-tab-active-bar-color: #8be9fd;
+  --vp-code-copy-code-border-color: rgba(129, 174, 198, 0.2);
+  --vp-code-copy-code-bg: #1a1a22;
+  --vp-code-copy-code-hover-bg: #2a2a35;
+  --vp-code-copy-code-hover-border-color: rgba(129, 174, 198, 0.4);
+  --vp-code-copy-code-active-text: #50fb7b;
+
+  --vp-carbon-ads-text-color: #81aec6;
+  --vp-carbon-ads-poweredby-color: #555555;
+  --vp-carbon-ads-bg-color: #1a1a22;
+  --vp-carbon-ads-hover-text-color: #ebece6;
+
+  --vp-sidebar-bg-color: #131318;
+
+  --vp-nav-bg-color: rgba(19, 19, 24, 0.85);
+
+  --vp-input-border-color: rgba(129, 174, 198, 0.3);
+  --vp-input-hover-border-color: #8be9fd;
+}
