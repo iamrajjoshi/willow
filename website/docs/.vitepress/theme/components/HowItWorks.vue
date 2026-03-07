@@ -63,7 +63,7 @@ const steps = [
   font-family: var(--vp-font-family-mono);
   font-weight: 700;
   font-size: 0.9rem;
-  margin-bottom: 16px;
+  margin: 0 auto 16px;
 }
 
 .step-title {
@@ -72,6 +72,7 @@ const steps = [
   font-size: 1.1rem;
   color: var(--willow-pale-bone);
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .step-desc {
@@ -79,6 +80,7 @@ const steps = [
   font-size: 0.9rem;
   line-height: 1.6;
   margin-bottom: 16px;
+  text-align: center;
 }
 
 .step-command {
@@ -92,6 +94,7 @@ const steps = [
   color: var(--willow-phantom-green);
   overflow-x: auto;
   white-space: nowrap;
+  text-align: center;
 }
 
 @media (max-width: 768px) {

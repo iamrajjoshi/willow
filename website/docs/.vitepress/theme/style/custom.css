@@ -71,8 +71,8 @@ html {
 .section-subtitle {
   color: var(--willow-steel-blue);
   text-align: center;
-  max-width: 600px;
-  margin: 0 auto 2.5rem;
+  max-width: 800px;
+  margin: 0 auto 2.5rem !important;
   font-size: 1.05rem;
   line-height: 1.7;
 }
