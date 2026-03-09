@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -115,7 +114,7 @@ func newCmd() *cli.Command {
 
 			var bareDir string
 			var err error
-			t := time.Now()
+			done := tr.Start("resolve repo")
 			if repoFlag := cmd.String("repo"); repoFlag != "" {
 				bareDir, err = config.ResolveRepo(repoFlag)
 				if err != nil {
@@ -127,11 +126,11 @@ func newCmd() *cli.Command {
 					return err
 				}
 			}
-			tr.Step("resolve repo", t)
+			done()
 
-			t = time.Now()
+			done = tr.Start("load config")
 			cfg := config.Load(bareDir)
-			tr.Step("load config", t)
+			done()
 
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			repoName := repoNameFromDir(bareDir)
@@ -142,7 +141,7 @@ func newCmd() *cli.Command {
 			}
 
 			// Resolve base branch: flag → config → auto-detect
-			t = time.Now()
+			done = tr.Start("resolve base branch")
 			baseBranch := cmd.String("base")
 			if baseBranch == "" {
 				baseBranch = cfg.BaseBranch
@@ -153,7 +152,7 @@ func newCmd() *cli.Command {
 					return fmt.Errorf("failed to detect default branch (use --base to specify): %w", err)
 				}
 			}
-			tr.Step("resolve base branch", t)
+			done()
 
 			// Fetch latest from remote (config default, --no-fetch overrides)
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
@@ -161,17 +160,17 @@ func newCmd() *cli.Command {
 				if !cdOnly {
 					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
 				}
-				t = time.Now()
+				done = tr.Start("git fetch")
 				if _, err := repoGit.Run("fetch", "origin", baseBranch); err != nil {
 					return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 				}
-				tr.Step("git fetch", t)
+				done()
 			}
 
 			dirName := strings.ReplaceAll(branch, "/", "-")
 			wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
-			t = time.Now()
+			done = tr.Start("git worktree add")
 			if cmd.Bool("existing") {
 				if !cdOnly {
 					u.Info(fmt.Sprintf("Creating worktree for existing branch %s...", u.Bold(branch)))
@@ -187,30 +186,30 @@ func newCmd() *cli.Command {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			}
-			tr.Step("git worktree add", t)
+			done()
 
-			t = time.Now()
+			done = tr.Start("post-checkout hook")
 			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
-			tr.Step("post-checkout hook", t)
+			done()
 
-			t = time.Now()
+			done = tr.Start("auto setup remote")
 			if *cfg.Defaults.AutoSetupRemote {
 				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
 				if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
 					return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
 				}
 			}
-			tr.Step("auto setup remote", t)
+			done()
 
 			// Run setup hooks
-			t = time.Now()
+			done = tr.Start("setup hooks")
 			if len(cfg.Setup) > 0 && !cdOnly {
 				u.Info("Running setup hooks...")
 				if err := runHooks(cfg.Setup, wtPath, u); err != nil {
 					return err
 				}
 			}
-			tr.Step("setup hooks", t)
+			done()
 
 			tr.Total()
 
