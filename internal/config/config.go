@@ -48,6 +48,10 @@ func WorktreesDir() string {
 	return filepath.Join(WillowHome(), "worktrees")
 }
 
+func TrashDir() string {
+	return filepath.Join(WillowHome(), "trash")
+}
+
 func GlobalConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "willow", "config.json")
