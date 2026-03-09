@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -77,11 +76,11 @@ func cloneCmd() *cli.Command {
 
 			// Bare clone
 			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
-			t := time.Now()
+			done := tr.Start("git clone --bare")
 			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
-			tr.Step("git clone --bare", t)
+			done()
 
 			// If anything below fails, clean up the partial clone
 			cleanup := func() {
@@ -98,12 +97,12 @@ func cloneCmd() *cli.Command {
 			}
 
 			u.Info("Fetching latest from origin...")
-			t = time.Now()
+			done = tr.Start("git fetch origin")
 			if _, err := repoGit.Run("fetch", "origin"); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to fetch from origin: %w", err)
 			}
-			tr.Step("git fetch origin", t)
+			done()
 
 			defaultBranch, err := repoGit.DefaultBranch()
 			if err != nil {
@@ -114,17 +113,17 @@ func cloneCmd() *cli.Command {
 			// Create the initial worktree on the default branch
 			wtPath := filepath.Join(worktreesDir, defaultBranch)
 			u.Info(fmt.Sprintf("Creating worktree %s at %s...", u.Bold(defaultBranch), wtPath))
-			t = time.Now()
+			done = tr.Start("git worktree add")
 			if _, err := repoGit.Run("worktree", "add", wtPath, defaultBranch); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to create initial worktree: %w", err)
 			}
-			tr.Step("git worktree add", t)
+			done()
 
-			t = time.Now()
+			done = tr.Start("post-checkout hook")
 			cfg := config.Load(bareDir)
 			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
-			tr.Step("post-checkout hook", t)
+			done()
 
 			tr.Total()
 
@@ -145,4 +144,3 @@ func repoNameFromURL(url string) string {
 	name := path.Base(url)
 	return strings.TrimSuffix(name, ".git")
 }
-
