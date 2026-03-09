@@ -24,14 +24,20 @@ func New(enabled bool) *Tracer {
 	}
 }
 
-// Step records a completed step and prints its duration.
-func (t *Tracer) Step(label string, start time.Time) {
+var noop = func() {}
+
+// Start begins timing a step and returns a function that records its duration.
+// When tracing is disabled, returns a no-op with zero allocations.
+func (t *Tracer) Start(label string) func() {
 	if !t.enabled {
-		return
+		return noop
 	}
-	d := time.Since(start)
-	t.steps = append(t.steps, step{label: label, duration: d})
-	fmt.Fprintf(os.Stderr, "[trace] %-25s %s\n", label, formatDuration(d))
+	start := time.Now()
+	return func() {
+		d := time.Since(start)
+		t.steps = append(t.steps, step{label: label, duration: d})
+		fmt.Fprintf(os.Stderr, "[trace] %-25s %s\n", label, formatDuration(d))
+	}
 }
 
 // Total prints the total elapsed time since the tracer was created.
