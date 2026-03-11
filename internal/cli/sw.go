@@ -62,7 +62,7 @@ type worktreeWithStatus struct {
 	status *claude.WorktreeStatus
 }
 
-func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, error) {
+func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string {
 	items := make([]worktreeWithStatus, len(worktrees))
 	for i, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
@@ -72,7 +72,6 @@ func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, er
 		}
 	}
 
-	// Sort: BUSY first, then WAIT, then IDLE, then OFFLINE
 	sort.SliceStable(items, func(i, j int) bool {
 		return statusOrder(items[i].status.Status) < statusOrder(items[j].status.Status)
 	})
@@ -97,6 +96,11 @@ func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, er
 		)
 		lines = append(lines, line)
 	}
+	return lines
+}
+
+func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, error) {
+	lines := buildWorktreeLines(worktrees, repoName)
 
 	selected, err := fzf.Run(lines,
 		fzf.WithAnsi(),
@@ -111,6 +115,28 @@ func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, er
 	}
 
 	return extractPathFromLine(selected), nil
+}
+
+func fzfPickWorktrees(worktrees []worktree.Worktree, repoName string) ([]string, error) {
+	lines := buildWorktreeLines(worktrees, repoName)
+
+	selected, err := fzf.RunMulti(lines,
+		fzf.WithAnsi(),
+		fzf.WithReverse(),
+		fzf.WithHeader("Select worktrees (TAB to multi-select)"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if selected == nil {
+		return nil, nil
+	}
+
+	paths := make([]string, len(selected))
+	for i, line := range selected {
+		paths[i] = extractPathFromLine(line)
+	}
+	return paths, nil
 }
 
 func extractPathFromLine(line string) string {

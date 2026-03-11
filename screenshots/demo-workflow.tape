@@ -34,7 +34,7 @@ Sleep 300ms
 Enter
 Sleep 2s
 
-Type "willow rm feature/auth --yes"
+Type "willow rm feature/auth"
 Sleep 300ms
 Enter
 Sleep 2s
