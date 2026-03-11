@@ -56,3 +56,11 @@ func (u *UI) Cyan(s string) string {
 func (u *UI) Dim(s string) string {
 	return dim + s + reset
 }
+
+// ANSI terminal control sequences for TUI rendering
+func CursorHome() string    { return "\033[H" }
+func ClearToEnd() string    { return "\033[J" }
+func HideCursor() string    { return "\033[?25l" }
+func ShowCursor() string    { return "\033[?25h" }
+func AltScreenOn() string   { return "\033[?1049h" }
+func AltScreenOff() string  { return "\033[?1049l" }

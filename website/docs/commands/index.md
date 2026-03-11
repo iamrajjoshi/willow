@@ -101,20 +101,49 @@ When run outside a willow repo, lists all repos and their worktree counts.
 
 ## `ww status`
 
-Rich view of Claude Code agent status across all worktrees.
+Rich view of Claude Code agent status across all worktrees. Shows per-session rows when multiple Claude sessions run in the same worktree.
 
 ```
-myrepo (4 worktrees, 2 agents active)
+myrepo (4 worktrees, 3 sessions active, 1 unread)
 
-  🤖 auth-refactor          BUSY   2m ago
-  ⏳ payments               WAIT   30s ago
-  🟡 main                   IDLE   1h ago
+  🤖 auth-refactor          BUSY    2m ago
+  🤖 auth-refactor          BUSY    5m ago
+  ✅ payments               DONE●   12m ago
+  🟡 main                   IDLE    1h ago
      old-feature            --
 ```
+
+The `●` indicator marks completed sessions you haven't reviewed yet. Switching to a worktree via `ww sw` marks it as read.
 
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output |
+
+## `ww dashboard` (alias: `dash`, `d`)
+
+Live-refreshing TUI showing all Claude Code sessions across all repos. Renders in an alternate screen buffer with no flicker.
+
+```bash
+ww dashboard          # default 2s refresh
+ww dash -i 5          # 5s refresh interval
+```
+
+```
+willow dashboard          3 repos | 5 agents | 2 unread
+
+  STATUS  REPO        BRANCH              DIFF           AGE
+  ────────────────────────────────────────────────────────────
+  🤖 BUSY   evergreen   auth-refactor       3f +42 -12     2m
+  🤖 BUSY   evergreen   auth-refactor       3f +18 -3      5m
+  ✅ DONE●  evergreen   payments            8f +100 -23   12m
+  ⏳ WAIT   willow      dashboard           4f +200 -0     1m
+```
+
+| Flag | Description |
+|------|-------------|
+| `-i, --interval` | Refresh interval in seconds (default: 2) |
+
+Press `Ctrl-C` to exit.
 
 ## `ww cc-setup`
 
@@ -124,7 +153,7 @@ One-time hook installation for Claude Code status tracking.
 2. Installs a hook script at `~/.willow/hooks/claude-status-hook.sh`
 3. Adds hook configuration to `~/.claude/settings.json`
 
-The hook fires on `PostToolUse` and `Stop` events, writing status to `~/.willow/status/<repo>/<worktree>.json`.
+The hook fires on 5 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`. Multiple Claude sessions in the same worktree are tracked independently.
 
 ## `ww shell-init [flags]`
 
@@ -152,7 +181,7 @@ After running `ww cc-setup`, Claude Code automatically reports its state:
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`.
+Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
 
 ## Aliases
 
@@ -161,6 +190,7 @@ Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`.
 | `ww n` | `ww new` |
 | `ww l` | `ww ls` |
 | `ww s` | `ww status` |
+| `ww dash` / `ww d` | `ww dashboard` |
 
 ## Global flags
 
