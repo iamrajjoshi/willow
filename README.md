@@ -221,15 +221,7 @@ ww dashboard          # default 2s refresh
 ww dash -i 5          # 5s refresh interval
 ```
 
-```
-willow dashboard          3 repos | 5 agents | 2 unread
-
-  STATUS  REPO        BRANCH              DIFF           AGE
-  ────────────────────────────────────────────────────────────
-  🤖 BUSY   evergreen   auth-refactor       3f +42 -12     2m
-  ✅ DONE●  evergreen   payments            8f +100 -23   12m
-  ⏳ WAIT   willow      dashboard           4f +200 -0     1m
-```
+![ww dashboard](screenshots/demo-dashboard.gif)
 
 ### `ww cc-setup`
 
