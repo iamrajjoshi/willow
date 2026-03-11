@@ -68,6 +68,9 @@ features:
   <div style="max-width: 720px; margin: 24px auto 0;">
     <HeroTerminal gif="/demo-status.gif" title="ww status" />
   </div>
+  <div style="max-width: 720px; margin: 24px auto 0;">
+    <HeroTerminal gif="/demo-dashboard.gif" title="ww dashboard" />
+  </div>
 </div>
 
 <div class="landing-section">
