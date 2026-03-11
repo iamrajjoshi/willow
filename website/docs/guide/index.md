@@ -60,7 +60,7 @@ Each tab shows `repo/branch` (e.g. `myrepo/auth-refactor`) when inside a willow 
 ww cc-setup
 ```
 
-Installs hooks into `~/.claude/settings.json` that write agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. This powers the status column in `ww ls`, `ww sw`, and `ww status`.
+Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -83,6 +83,9 @@ ww sw
 
 # Check on all agents
 ww status
+
+# Live dashboard across all repos
+ww dashboard
 
 # Clean up when done
 ww rm auth-refactor

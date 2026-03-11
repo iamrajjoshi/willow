@@ -185,7 +185,9 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 		wtDir := filepath.Base(wt.Path)
 		ws := claude.ReadStatus(repoName, wtDir)
 		statusLabel := claude.StatusLabel(ws.Status)
-		// Build the line with padding first, then apply Dim to the dimmed parts
+		if ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir) {
+			statusLabel += "\u25CF" // ●
+		}
 		pathPadded := fmt.Sprintf("%-*s", pathW, wt.Path)
 		agePadded := fmt.Sprintf("%*s", ageW, age)
 		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, wt.Branch, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))

@@ -43,8 +43,10 @@ Running multiple Claude Code sessions on the same repo means constant context-sw
 │       └── payments/             # another agent running here
 └── status/
     └── myrepo/
-        ├── auth-refactor.json    # {"status": "BUSY", ...}
-        └── payments.json         # {"status": "WAIT", ...}
+        ├── auth-refactor/
+        │   └── <session_id>.json   # {"status": "BUSY", ...}
+        └── payments/
+            └── <session_id>.json   # {"status": "WAIT", ...}
 ```
 
 ## Install
@@ -99,7 +101,7 @@ eval "$(willow shell-init --tab-title)"
 ww cc-setup
 ```
 
-Installs hooks into `~/.claude/settings.json` that write agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. This powers the status column in `ww ls`, `ww sw`, and `ww status`.
+Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -202,13 +204,32 @@ List worktrees with status.
 
 ### `ww status`
 
-Rich view of Claude Code agent status.
+Rich view of Claude Code agent status. Shows per-session rows when multiple agents run in the same worktree, with unread indicators (`●`) for completed sessions you haven't reviewed.
 
 ![ww status](screenshots/demo-status.gif)
 
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output |
+
+### `ww dashboard` (alias: `dash`, `d`)
+
+Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, and per-session activity.
+
+```bash
+ww dashboard          # default 2s refresh
+ww dash -i 5          # 5s refresh interval
+```
+
+```
+willow dashboard          3 repos | 5 agents | 2 unread
+
+  STATUS  REPO        BRANCH              DIFF           AGE
+  ────────────────────────────────────────────────────────────
+  🤖 BUSY   evergreen   auth-refactor       3f +42 -12     2m
+  ✅ DONE●  evergreen   payments            8f +100 -23   12m
+  ⏳ WAIT   willow      dashboard           4f +200 -0     1m
+```
 
 ### `ww cc-setup`
 
@@ -234,7 +255,7 @@ After running `ww cc-setup`, Claude Code automatically reports its state:
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Status appears in `ww ls`, `ww sw`, and `ww status`. Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`.
+Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
 
 ## Configuration
 
