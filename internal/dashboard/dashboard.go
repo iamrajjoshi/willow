@@ -186,22 +186,43 @@ func render(sessions []session, sum summary, width int) string {
 	var b strings.Builder
 	u := &ui.UI{}
 
-	header := fmt.Sprintf("willow dashboard          %d repos | %d agents | %d unread",
-		sum.Repos, sum.Agents, sum.Unread)
-	b.WriteString(u.Bold(header))
-	b.WriteString("\n\n")
-
 	if len(sessions) == 0 {
+		title := "willow dashboard"
+		stats := fmt.Sprintf("%d repos | %d agents | %d unread", sum.Repos, sum.Agents, sum.Unread)
+		headerText := title + "  " + stats
+		pad := 0
+		if width > len(headerText) {
+			pad = (width - len(headerText)) / 2
+		}
+		b.WriteString(strings.Repeat(" ", pad))
+		b.WriteString(u.Bold(headerText))
+		b.WriteString("\n\n")
 		b.WriteString(u.Dim("  No active sessions. Claude agents will appear here when running."))
 		b.WriteString("\n")
 		return b.String()
 	}
 
-	// Calculate column widths
+	// Build plain-text status labels to compute column widths
+	type rowLabel struct {
+		text string
+	}
+	labels := make([]rowLabel, len(sessions))
+	statusW := len("STATUS")
 	repoW := len("REPO")
 	branchW := len("BRANCH")
 	diffW := len("DIFF")
-	for _, s := range sessions {
+	for i, s := range sessions {
+		text := string(s.Status)
+		if s.Unread {
+			text += "\u25CF"
+		}
+		if s.Status == claude.StatusBusy && s.Tool != "" {
+			text += " (" + s.Tool + ")"
+		}
+		labels[i] = rowLabel{text: text}
+		if len(text) > statusW {
+			statusW = len(text)
+		}
 		if len(s.Repo) > repoW {
 			repoW = len(s.Repo)
 		}
@@ -213,36 +234,41 @@ func render(sessions []session, sum summary, width int) string {
 		}
 	}
 
-	// Header row
-	headerLine := fmt.Sprintf("  %-8s  %-*s  %-*s  %-*s  %s",
-		"STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF", "AGE")
+	// Table width: 2 (indent) + 2 (icon) + 1 (space) + statusW + 2 + repoW + 2 + branchW + 2 + diffW + 2 + 8 (AGE)
+	tableW := 2 + 2 + 1 + statusW + 2 + repoW + 2 + branchW + 2 + diffW + 2 + 8
+
+	// Title centered over the table
+	title := "willow dashboard"
+	stats := fmt.Sprintf("%d repos | %d agents | %d unread", sum.Repos, sum.Agents, sum.Unread)
+	headerText := title + "  " + stats
+	pad := 0
+	if tableW > len(headerText) {
+		pad = (tableW - len(headerText)) / 2
+	}
+	b.WriteString(strings.Repeat(" ", pad))
+	b.WriteString(u.Bold(headerText))
+	b.WriteString("\n\n")
+
+	// Header row — icon placeholder is 2 spaces to match emoji visual width (2 columns)
+	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s  %s",
+		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF", "AGE")
 	b.WriteString(u.Bold(headerLine))
 	b.WriteString("\n")
 
 	// Separator
-	sepLen := 8 + repoW + branchW + diffW + 20
-	if sepLen > width && width > 0 {
+	sepLen := tableW - 2
+	if sepLen > width-2 && width > 0 {
 		sepLen = width - 2
 	}
 	b.WriteString("  ")
 	b.WriteString(u.Dim(strings.Repeat("\u2500", sepLen)))
 	b.WriteString("\n")
 
-	// Rows
-	for _, s := range sessions {
+	// Rows — status is padded as plain text, no ANSI inside padded fields
+	for i, s := range sessions {
 		icon := claude.StatusIcon(s.Status)
-		label := string(s.Status)
-		if s.Unread {
-			label += "\u25CF" // ●
-		}
-
-		activity := ""
-		if s.Status == claude.StatusBusy && s.Tool != "" {
-			activity = u.Dim(fmt.Sprintf(" (%s)", s.Tool))
-		}
-
-		line := fmt.Sprintf("  %s %-6s%-*s  %-*s  %-*s  %s",
-			icon, label+activity,
+		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s  %s",
+			icon, statusW, labels[i].text,
 			repoW, s.Repo,
 			branchW, s.Branch,
 			diffW, s.DiffStats,
