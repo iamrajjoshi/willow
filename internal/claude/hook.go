@@ -22,11 +22,22 @@ func claudeSettingsPath() string {
 	return filepath.Join(home, ".claude", "settings.json")
 }
 
+// hookEvents lists all Claude Code hook events the willow hook should register for.
+var hookEvents = []string{
+	"UserPromptSubmit",
+	"PreToolUse",
+	"PostToolUse",
+	"Stop",
+	"Notification",
+}
+
 // HookScript returns the shell script content for the Claude status hook.
+// It reads stdin JSON to extract session_id, hook_event_name, and tool_name,
+// and writes per-session status files to ~/.willow/status/<repo>/<worktree>/<session_id>.json.
 func HookScript() string {
 	return `#!/usr/bin/env bash
 # Willow Claude Code status hook
-# Writes agent status to ~/.willow/status/<repo>/<worktree>.json
+# Writes agent status to ~/.willow/status/<repo>/<worktree>/<session_id>.json
 
 set -euo pipefail
 
@@ -63,28 +74,67 @@ if [ -z "$REPO_NAME" ] || [ -z "$WT_NAME" ]; then
   exit 0
 fi
 
-# Determine status from the hook event
-TOOL_NAME="${CLAUDE_TOOL_NAME:-}"
-HOOK_EVENT="${CLAUDE_HOOK_EVENT:-}"
-STATUS="BUSY"
+# Read stdin JSON once
+INPUT="$(cat)"
 
-if [ "$HOOK_EVENT" = "Stop" ]; then
-  STATUS="DONE"
-elif [ "$TOOL_NAME" = "AskUserQuestion" ]; then
-  STATUS="WAIT"
+# Parse fields from stdin JSON using sed
+SESSION_ID="$(echo "$INPUT" | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)"
+HOOK_EVENT="$(echo "$INPUT" | sed -n 's/.*"hook_event_name" *: *"\([^"]*\)".*/\1/p' | head -1)"
+TOOL_NAME="$(echo "$INPUT" | sed -n 's/.*"tool_name" *: *"\([^"]*\)".*/\1/p' | head -1)"
+
+if [ -z "$SESSION_ID" ]; then
+  exit 0
 fi
 
+# Determine status from the hook event
+STATUS="BUSY"
+TOOL_FIELD=""
+
+case "$HOOK_EVENT" in
+  UserPromptSubmit)
+    STATUS="BUSY"
+    ;;
+  PreToolUse)
+    STATUS="BUSY"
+    if [ -n "$TOOL_NAME" ]; then
+      TOOL_FIELD="\"tool\":\"$TOOL_NAME\","
+    fi
+    ;;
+  PostToolUse)
+    if [ "$TOOL_NAME" = "AskUserQuestion" ]; then
+      STATUS="WAIT"
+    else
+      STATUS="BUSY"
+    fi
+    ;;
+  Stop)
+    STATUS="DONE"
+    ;;
+  Notification)
+    # Don't overwrite DONE — only set WAIT if not already DONE
+    DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
+    DEST_FILE="$DEST_DIR/$SESSION_ID.json"
+    if [ -f "$DEST_FILE" ]; then
+      CURRENT="$(sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
+      if [ "$CURRENT" = "DONE" ]; then
+        exit 0
+      fi
+    fi
+    STATUS="WAIT"
+    ;;
+esac
+
 # Write status file
-mkdir -p "$STATUS_DIR/$REPO_NAME"
-cat > "$STATUS_DIR/$REPO_NAME/$WT_NAME.json" <<STATUSEOF
-{"status":"$STATUS","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","worktree":"$WT_NAME"}
+DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
+mkdir -p "$DEST_DIR"
+cat > "$DEST_DIR/$SESSION_ID.json" <<STATUSEOF
+{"status":"$STATUS",${TOOL_FIELD}"session_id":"$SESSION_ID","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","worktree":"$WT_NAME"}
 STATUSEOF
 `
 }
 
 // Install creates the hook script and adds it to ~/.claude/settings.json.
 func Install() error {
-	// Create hook script
 	hookPath := HookScriptPath()
 	if err := os.MkdirAll(filepath.Dir(hookPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create hooks directory: %w", err)
@@ -93,12 +143,10 @@ func Install() error {
 		return fmt.Errorf("failed to write hook script: %w", err)
 	}
 
-	// Create status directory
 	if err := os.MkdirAll(StatusDir(), 0o755); err != nil {
 		return fmt.Errorf("failed to create status directory: %w", err)
 	}
 
-	// Add hook to Claude settings
 	if err := addHookToSettings(hookPath); err != nil {
 		return fmt.Errorf("failed to update Claude settings: %w", err)
 	}
@@ -106,7 +154,8 @@ func Install() error {
 	return nil
 }
 
-// IsInstalled checks if the hook is already configured in ~/.claude/settings.json.
+// IsInstalled checks if the hook is already configured in ~/.claude/settings.json
+// for all required hook events.
 func IsInstalled() bool {
 	settings, err := readClaudeSettings()
 	if err != nil {
@@ -119,7 +168,7 @@ func IsInstalled() bool {
 	}
 
 	hookPath := HookScriptPath()
-	for _, event := range []string{"PostToolUse", "Stop"} {
+	for _, event := range hookEvents {
 		if !eventHasHook(hooksMap, event, hookPath) {
 			return false
 		}
@@ -192,7 +241,7 @@ func addHookToSettings(hookPath string) error {
 		},
 	}
 
-	for _, event := range []string{"PostToolUse", "Stop"} {
+	for _, event := range hookEvents {
 		if eventHasHook(hooksMap, event, hookPath) {
 			continue
 		}

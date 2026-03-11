@@ -15,7 +15,7 @@ func TestReadStatus_MissingFile(t *testing.T) {
 	}
 }
 
-func TestReadStatus_ValidFile(t *testing.T) {
+func TestReadStatus_LegacyFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -97,6 +97,109 @@ func TestReadStatus_InvalidJSON(t *testing.T) {
 	got := ReadStatus(repoName, wtName)
 	if got.Status != StatusOffline {
 		t.Errorf("Status = %q, want %q", got.Status, StatusOffline)
+	}
+}
+
+func TestReadAllSessions_MultipleSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "feature-auth"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	now := time.Now().UTC()
+	sessions := []SessionStatus{
+		{Status: StatusBusy, SessionID: "sess-1", Timestamp: now, Worktree: wtName},
+		{Status: StatusDone, SessionID: "sess-2", Timestamp: now.Add(-1 * time.Minute), Worktree: wtName},
+	}
+	for _, ss := range sessions {
+		data, _ := json.Marshal(ss)
+		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+	}
+
+	got := ReadAllSessions(repoName, wtName)
+	if len(got) != 2 {
+		t.Fatalf("ReadAllSessions returned %d sessions, want 2", len(got))
+	}
+}
+
+func TestReadAllSessions_EmptyDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	sessDir := filepath.Join(home, ".willow", "status", "myrepo", "empty-wt")
+	os.MkdirAll(sessDir, 0o755)
+
+	got := ReadAllSessions("myrepo", "empty-wt")
+	if len(got) != 0 {
+		t.Errorf("ReadAllSessions returned %d sessions, want 0", len(got))
+	}
+}
+
+func TestReadAllSessions_NoDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := ReadAllSessions("nonexistent", "nope")
+	if got != nil {
+		t.Errorf("ReadAllSessions returned %v, want nil", got)
+	}
+}
+
+func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "multi"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	now := time.Now().UTC()
+	for _, ss := range []SessionStatus{
+		{Status: StatusDone, SessionID: "s1", Timestamp: now},
+		{Status: StatusBusy, SessionID: "s2", Timestamp: now},
+	} {
+		data, _ := json.Marshal(ss)
+		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+	}
+
+	got := ReadStatus(repoName, wtName)
+	if got.Status != StatusBusy {
+		t.Errorf("aggregate Status = %q, want %q (BUSY should win)", got.Status, StatusBusy)
+	}
+}
+
+func TestCleanStaleSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "cleanup"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	stale := SessionStatus{Status: StatusDone, SessionID: "old", Timestamp: time.Now().UTC().Add(-3 * time.Hour)}
+	fresh := SessionStatus{Status: StatusBusy, SessionID: "new", Timestamp: time.Now().UTC()}
+
+	for _, ss := range []SessionStatus{stale, fresh} {
+		data, _ := json.Marshal(ss)
+		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+	}
+
+	CleanStaleSessions(repoName, wtName)
+
+	entries, _ := os.ReadDir(sessDir)
+	jsonFiles := 0
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".json" {
+			jsonFiles++
+		}
+	}
+	if jsonFiles != 1 {
+		t.Errorf("after cleanup: %d json files, want 1", jsonFiles)
 	}
 }
 

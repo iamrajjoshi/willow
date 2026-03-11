@@ -43,32 +43,62 @@ func statusCmd() *cli.Command {
 			filtered := filterBareWorktrees(worktrees)
 			repoName := repoNameFromDir(bareDir)
 
-			type statusEntry struct {
+			type sessionEntry struct {
 				Branch    string `json:"branch"`
+				SessionID string `json:"session_id,omitempty"`
 				Status    string `json:"status"`
 				Timestamp string `json:"timestamp,omitempty"`
+				Unread    bool   `json:"unread,omitempty"`
 				Path      string `json:"path"`
 			}
 
-			var entries []statusEntry
+			var entries []sessionEntry
 			activeCount := 0
+			totalUnread := 0
 
 			for _, wt := range filtered {
 				wtDir := filepath.Base(wt.Path)
-				ws := claude.ReadStatus(repoName, wtDir)
-
-				entry := statusEntry{
-					Branch: wt.Branch,
-					Status: string(ws.Status),
-					Path:   wt.Path,
+				sessions := claude.ReadAllSessions(repoName, wtDir)
+				unread := claude.IsUnread(repoName, wtDir)
+				if unread {
+					totalUnread++
 				}
-				if !ws.Timestamp.IsZero() {
-					entry.Timestamp = claude.TimeSince(ws.Timestamp)
-				}
-				entries = append(entries, entry)
 
-				if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
-					activeCount++
+				if len(sessions) > 0 {
+					for _, ss := range sessions {
+						entry := sessionEntry{
+							Branch:    wt.Branch,
+							SessionID: ss.SessionID,
+							Status:    string(ss.Status),
+							Path:      wt.Path,
+						}
+						if !ss.Timestamp.IsZero() {
+							entry.Timestamp = claude.TimeSince(ss.Timestamp)
+						}
+						if ss.Status == claude.StatusDone && unread {
+							entry.Unread = true
+						}
+						entries = append(entries, entry)
+
+						if ss.Status == claude.StatusBusy || ss.Status == claude.StatusDone || ss.Status == claude.StatusWait {
+							activeCount++
+						}
+					}
+				} else {
+					ws := claude.ReadStatus(repoName, wtDir)
+					entry := sessionEntry{
+						Branch: wt.Branch,
+						Status: string(ws.Status),
+						Path:   wt.Path,
+					}
+					if !ws.Timestamp.IsZero() {
+						entry.Timestamp = claude.TimeSince(ws.Timestamp)
+					}
+					entries = append(entries, entry)
+
+					if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
+						activeCount++
+					}
 				}
 			}
 
@@ -78,8 +108,13 @@ func statusCmd() *cli.Command {
 				return enc.Encode(entries)
 			}
 
-			u.Info(fmt.Sprintf("%s (\U0001F333 %d worktrees, \U0001F916 %d active)\n",
-				u.Bold(repoName), len(filtered), activeCount))
+			headerParts := fmt.Sprintf("%s (\U0001F333 %d worktrees, \U0001F916 %d active",
+				u.Bold(repoName), len(filtered), activeCount)
+			if totalUnread > 0 {
+				headerParts += fmt.Sprintf(", %d unread", totalUnread)
+			}
+			headerParts += ")\n"
+			u.Info(headerParts)
 
 			branchW := 0
 			for _, e := range entries {
@@ -90,13 +125,17 @@ func statusCmd() *cli.Command {
 
 			for _, e := range entries {
 				icon := claude.StatusIcon(claude.Status(e.Status))
+				label := e.Status
+				if e.Unread {
+					label += "\u25CF" // ●
+				}
 				var line string
 				if e.Timestamp != "" {
-					line = fmt.Sprintf("  %s %-*s  %-4s  %s",
-						icon, branchW, e.Branch, e.Status, u.Dim(e.Timestamp))
+					line = fmt.Sprintf("  %s %-*s  %-6s  %s",
+						icon, branchW, e.Branch, label, u.Dim(e.Timestamp))
 				} else {
 					line = fmt.Sprintf("  %s %-*s  %s",
-						icon, branchW, e.Branch, e.Status)
+						icon, branchW, e.Branch, label)
 				}
 				u.Info(line)
 			}

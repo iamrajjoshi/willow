@@ -182,20 +182,56 @@ ww status [options]
 |---|---|---|
 | `--json` | Output as JSON | `false` |
 
-Rich view of Claude Code agent status across all worktrees:
+Rich view of Claude Code agent status across all worktrees. Shows per-session rows when multiple Claude Code sessions run in the same worktree:
 
 ```
-myrepo (4 worktrees, 2 agents active)
+myrepo (4 worktrees, 3 sessions active, 1 unread)
 
-  🤖 auth-refactor          BUSY   2m ago
-  ⏳ payments               WAIT   30s ago
-  🟡 main                   IDLE   1h ago
-     old-feature            --
+  🤖 auth-refactor          BUSY    2m ago
+  🤖 auth-refactor          BUSY    5m ago     <- second session, same worktree
+  ✅ payments               DONE●   12m ago
+  🟡 main                   IDLE    30m ago
 ```
+
+The `●` indicator marks DONE sessions that haven't been reviewed yet (see [Unread tracking](#unread-tracking)).
 
 ---
 
-### 2.7 `ww cc-setup` — Install Claude Code hooks
+### 2.7 `ww dashboard` — Live global dashboard
+
+```
+ww dashboard [options]
+```
+
+| Alias | `ww dash`, `ww d` |
+|---|---|
+| `--interval, -i` | Refresh interval in seconds (default: 2) |
+
+Live-refreshing TUI showing all Claude Code sessions across all repos. Renders in an alternate screen buffer with ANSI cursor positioning — no flicker.
+
+```
+willow dashboard          3 repos | 5 agents | 2 unread
+
+  STATUS  REPO        BRANCH              DIFF           AGE
+  ────────────────────────────────────────────────────────────
+  🤖 BUSY   evergreen   auth-refactor       3f +42 -12     2m
+  🤖 BUSY   evergreen   auth-refactor       3f +18 -3      5m
+  ✅ DONE●  evergreen   payments            8f +100 -23   12m
+  ⏳ WAIT   willow      dashboard           4f +200 -0     1m
+  🟡 IDLE   willow      main                --            30m
+```
+
+**Data per tick:**
+- All repos via `config.ListRepos()`
+- Worktrees + sessions per repo
+- Diff stats (`git diff --shortstat`) with 10s cache TTL
+- Unread counts
+
+Press Ctrl-C to exit.
+
+---
+
+### 2.8 `ww cc-setup` — Install Claude Code hooks
 
 ```
 ww cc-setup
@@ -208,16 +244,18 @@ One-time setup to install Claude Code hooks for status tracking.
 2. Installs a Claude Code hook script at `~/.willow/hooks/claude-status-hook.sh`
 3. Adds hook configuration to `~/.claude/settings.json` (user-level, works for all projects)
 
-The hook fires on `PostToolUse` and `Stop` events, writing status to `~/.willow/status/<repo>/<worktree>.json`:
-- Tool use -> `BUSY`
-- `AskUserQuestion` tool -> `WAIT`
-- Stop event -> `IDLE`
+The hook fires on 5 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`:
+- `UserPromptSubmit` -> `BUSY`
+- `PreToolUse` -> `BUSY` (with tool name for dashboard activity)
+- `PostToolUse` + `AskUserQuestion` -> `WAIT`, otherwise `BUSY`
+- `Stop` -> `DONE`
+- `Notification` -> `WAIT` (won't overwrite `DONE`)
 
-**Status file location:** `~/.willow/status/<repo-name>/<worktree-dir-name>.json`
+**Status file location:** `~/.willow/status/<repo-name>/<worktree-dir-name>/<session_id>.json`
 
 ---
 
-### 2.8 `ww shell-init` — Shell integration
+### 2.9 `ww shell-init` — Shell integration
 
 ```bash
 eval "$(willow shell-init)"
@@ -240,6 +278,7 @@ This provides:
 | `ww n` | `ww new` |
 | `ww l` | `ww ls` |
 | `ww s` | `ww status` |
+| `ww dash` / `ww d` | `ww dashboard` |
 
 ---
 
@@ -286,8 +325,11 @@ The local config lives inside the bare repo directory, so it's private to your m
 │       └── payments/
 ├── status/                      # Claude Code agent status (created by ww cc-setup)
 │   └── myrepo/
-│       ├── main.json
-│       └── auth-refactor.json
+│       ├── main/
+│       │   ├── <session_id>.json
+│       │   └── .lastread        # unread tracking marker
+│       └── auth-refactor/
+│           └── <session_id>.json
 └── hooks/                       # Hook scripts (created by ww cc-setup)
     └── claude-status-hook.sh
 ```
@@ -309,7 +351,8 @@ COMMANDS
   rm [branch]     Remove a worktree and its branch
   ls              List worktrees (alias: l)
   status          Show Claude Code agent status (alias: s)
-  setup           Install Claude Code hooks for status tracking
+  dashboard       Live global dashboard (alias: dash, d)
+  cc-setup        Install Claude Code hooks for status tracking
   shell-init      Print shell integration script
   help [command]  Show help for a command
   version         Print version
@@ -359,10 +402,39 @@ claude
 ww status
 ```
 
+### Multiple agents in the same worktree
+
+Multiple Claude Code sessions in the same worktree are tracked separately. Each session writes its own `<session_id>.json` file.
+
+```bash
+# Open two Claude sessions in the same worktree
+ww status
+# Shows both sessions:
+#   🤖 auth-refactor  BUSY   2m ago
+#   🤖 auth-refactor  BUSY   5m ago
+```
+
+### Live monitoring with dashboard
+
+```bash
+ww dashboard    # live TUI across all repos
+ww dash -i 5   # refresh every 5 seconds
+```
+
 ### Switching between worktrees
 
 ```bash
 ww sw    # fzf picker with agent status, cd's into selected worktree
+         # automatically marks sessions as "read" on switch
+```
+
+### Unread tracking {#unread-tracking}
+
+When a Claude session finishes (DONE), it's marked as "unread" until you switch to that worktree via `ww sw`. Unread sessions show a `●` indicator:
+
+```
+  ✅ payments    DONE●   12m ago    <- unread
+  ✅ payments    DONE    12m ago    <- already reviewed
 ```
 
 ### Quick cleanup

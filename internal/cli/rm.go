@@ -206,8 +206,7 @@ func rmCmd() *cli.Command {
 			done = tr.Start("cleanup status")
 			repoName := repoNameFromDir(bareDir)
 			wtDir := filepath.Base(wt.Path)
-			statusFile := filepath.Join(claude.StatusDir(), repoName, wtDir+".json")
-			os.Remove(statusFile)
+			claude.RemoveStatusDir(repoName, wtDir)
 			done()
 
 			u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))

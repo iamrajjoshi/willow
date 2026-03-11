@@ -47,6 +47,10 @@ func swCmd() *cli.Command {
 				return nil
 			}
 
+			// Mark sessions as read when switching to a worktree
+			wtDir := filepath.Base(selected)
+			claude.MarkRead(repoName, wtDir)
+
 			fmt.Println(selected)
 			return nil
 		},
