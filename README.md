@@ -175,7 +175,7 @@ Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by
 
 ### `ww rm [branch] [flags]`
 
-Remove a worktree. Without arguments, opens fzf picker.
+Remove a worktree. Without arguments, opens fzf picker with multi-select (TAB to toggle, Ctrl-A to select all).
 
 ```bash
 ww rm auth-refactor              # direct removal
@@ -188,7 +188,6 @@ ww rm auth-refactor --prune      # also run git worktree prune
 |------|-------------|
 | `-f, --force` | Skip safety checks |
 | `--keep-branch` | Keep the local branch |
-| `-y, --yes` | Skip confirmation |
 | `--prune` | Run `git worktree prune` after |
 
 ### `ww ls [repo]`

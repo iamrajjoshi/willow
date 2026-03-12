@@ -123,18 +123,16 @@ ww rm [branch] [options]
 |---|---|---|
 | `-f, --force` | Skip safety checks (uncommitted changes, unpushed commits) | `false` |
 | `--keep-branch` | Remove the worktree directory but keep the local branch | `false` |
-| `-y, --yes` | Skip confirmation prompt | `false` |
 | `-r, --repo <name>` | Target a willow-managed repo by name | Auto-detected |
 | `--prune` | Run `git worktree prune` after removal | `false` |
 
-**With argument:** Direct removal with safety checks and confirmation.
+**With argument:** Direct removal with safety warnings (no confirmation).
 
-**Without argument:** Launches fzf picker (same list as `ww sw` with Claude status). User selects, then existing safety checks + confirmation apply.
+**Without argument:** Launches fzf picker with multi-select (TAB to toggle, Ctrl-A to select all). Selected worktrees are removed in sequence.
 
 **Safety checks (unless `--force`):**
 - Warns if there are uncommitted changes
 - Warns if there are unpushed commits
-- Prompts for confirmation
 
 **Examples:**
 

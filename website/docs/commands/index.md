@@ -59,7 +59,7 @@ Active agents sorted first, offline sorted last. Requires [fzf](https://github.c
 
 ## `ww rm [branch] [flags]`
 
-Remove a worktree. Without arguments, opens fzf picker.
+Remove a worktree. Without arguments, opens fzf picker with multi-select (TAB to toggle, Ctrl-A to select all).
 
 ```bash
 ww rm auth-refactor              # direct removal
@@ -72,13 +72,11 @@ ww rm auth-refactor --prune      # also run git worktree prune
 |------|-------------|---------|
 | `-f, --force` | Skip safety checks | `false` |
 | `--keep-branch` | Keep the local branch | `false` |
-| `-y, --yes` | Skip confirmation | `false` |
 | `--prune` | Run `git worktree prune` after | `false` |
 
 **Safety checks** (unless `--force`):
 - Warns if there are uncommitted changes
 - Warns if there are unpushed commits
-- Prompts for confirmation
 
 ## `ww ls [repo]`
 
