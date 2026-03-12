@@ -81,7 +81,7 @@ func ReadStatus(repoName, worktreeDir string) *WorktreeStatus {
 func aggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 	best := &WorktreeStatus{Status: StatusOffline}
 	for _, ss := range sessions {
-		effective := effectiveStatus(ss.Status, ss.Timestamp)
+		effective := EffectiveStatus(ss.Status, ss.Timestamp)
 		if statusPriority(effective) < statusPriority(best.Status) {
 			best = &WorktreeStatus{
 				Status:    effective,
@@ -93,7 +93,7 @@ func aggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 	return best
 }
 
-func effectiveStatus(s Status, ts time.Time) Status {
+func EffectiveStatus(s Status, ts time.Time) Status {
 	if (s == StatusBusy || s == StatusDone || s == StatusWait) && time.Since(ts) > 5*time.Minute {
 		return StatusIdle
 	}
@@ -127,7 +127,7 @@ func readLegacyStatus(repoName, worktreeDir string) *WorktreeStatus {
 		return &WorktreeStatus{Status: StatusOffline}
 	}
 
-	ws.Status = effectiveStatus(ws.Status, ws.Timestamp)
+	ws.Status = EffectiveStatus(ws.Status, ws.Timestamp)
 	return &ws
 }
 

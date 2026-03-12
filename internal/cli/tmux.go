@@ -23,6 +23,7 @@ func tmuxCmd() *cli.Command {
 		Usage: "Tmux integration for worktree management",
 		Commands: []*cli.Command{
 			tmuxPickCmd(),
+			tmuxSwCmd(),
 			tmuxPreviewCmd(),
 			tmuxListCmd(),
 			tmuxStatusBarCmd(),
@@ -128,6 +129,40 @@ func tmuxPickCmd() *cli.Command {
 	}
 }
 
+func tmuxSwCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "sw",
+		Usage: "Switch to a worktree's tmux session (used by shell integration)",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:      "path",
+				UsageText: "<worktree-path>",
+			},
+		},
+		Hidden: true,
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			wtPath := cmd.StringArg("path")
+			if wtPath == "" {
+				return fmt.Errorf("worktree path is required")
+			}
+
+			wtDir := filepath.Base(wtPath)
+			repoName := filepath.Base(filepath.Dir(wtPath))
+
+			sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+			if !tmux.SessionExists(sessName) {
+				cfg := loadRepoConfig(repoName)
+				if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout); err != nil {
+					return fmt.Errorf("failed to create session: %w", err)
+				}
+			}
+
+			claude.MarkRead(repoName, wtDir)
+			return tmux.SwitchClient(sessName)
+		},
+	}
+}
+
 func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 	wtPath := tmux.ExtractPathFromLine(selection)
 	item := findItemByPath(items, wtPath)
@@ -137,7 +172,8 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 
 	sessName := tmux.SessionNameForWorktree(item.RepoName, item.WtDirName)
 	if !tmux.SessionExists(sessName) {
-		if err := tmux.NewSession(sessName, item.WtPath); err != nil {
+		cfg := loadRepoConfig(item.RepoName)
+		if err := tmux.NewSession(sessName, item.WtPath, cfg.Tmux.Layout); err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 	}
@@ -174,7 +210,8 @@ func tmuxPickNew(self, query, repoFilter string) error {
 
 	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 	if !tmux.SessionExists(sessName) {
-		if err := tmux.NewSession(sessName, wtPath); err != nil {
+		cfg := loadRepoConfig(repoName)
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout); err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 	}
@@ -198,6 +235,14 @@ func tmuxPickDelete(self, selection string, items []tmux.PickerItem) error {
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func loadRepoConfig(repoName string) *config.Config {
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return config.DefaultConfig()
+	}
+	return config.Load(bareDir)
 }
 
 func findItemByPath(items []tmux.PickerItem, path string) *tmux.PickerItem {
@@ -280,6 +325,8 @@ func tmuxStatusBarCmd() *cli.Command {
 
 			totalWt := 0
 			activeAgents := 0
+			currentStatuses := make(map[string]claude.Status)
+
 			for _, repoName := range repos {
 				bareDir, err := config.ResolveRepo(repoName)
 				if err != nil {
@@ -297,9 +344,18 @@ func tmuxStatusBarCmd() *cli.Command {
 					totalWt++
 					wtDir := filepath.Base(wt.Path)
 					ws := claude.ReadStatus(repoName, wtDir)
+					currentStatuses[repoName+"/"+wtDir] = ws.Status
 					if ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait || ws.Status == claude.StatusDone {
 						activeAgents++
 					}
+				}
+			}
+
+			transitioned := tmux.CheckTransitions(currentStatuses)
+			if len(transitioned) > 0 {
+				cfg := config.Load("")
+				if cfg.Tmux.Notification == nil || *cfg.Tmux.Notification {
+					tmux.Notify(cfg.Tmux.NotifyCommand)
 				}
 			}
 

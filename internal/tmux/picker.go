@@ -30,6 +30,7 @@ type PickerItem struct {
 	Status     claude.Status
 	Unread     bool
 	HasSession bool
+	Sessions   []*claude.SessionStatus
 }
 
 func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
@@ -61,6 +62,7 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 			}
 			wtDir := filepath.Base(wt.Path)
 			ws := claude.ReadStatus(repoName, wtDir)
+			sessions := claude.ReadAllSessions(repoName, wtDir)
 			sessName := SessionNameForWorktree(repoName, wtDir)
 			items = append(items, PickerItem{
 				RepoName:   repoName,
@@ -70,6 +72,7 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				Status:     ws.Status,
 				Unread:     ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
 				HasSession: SessionExists(sessName),
+				Sessions:   sessions,
 			})
 		}
 	}
@@ -82,11 +85,8 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 }
 
 // FormatPickerLines produces ANSI-colored lines for the fzf picker.
-//
-// Format: [color]icon STATUS dot[reset] | name             | [dim]~/path[reset]
-// Example: \033[0;32m🤖 BUSY   ●\033[0m | auth-refactor     | \033[2m~/.willow/worktrees/evergreen/auth-refactor\033[0m
-//
-// When multiple repos are present, repo name is prepended to the name column.
+// When a worktree has multiple active Claude sessions, sub-rows are shown
+// indented below the parent row.
 func FormatPickerLines(items []PickerItem) []string {
 	multiRepo := hasMultipleRepos(items)
 
@@ -117,8 +117,41 @@ func FormatPickerLines(items []PickerItem) []string {
 			colorDim, shortenPath(item.WtPath), colorReset,
 		)
 		lines = append(lines, line)
+
+		// Show sub-rows for multiple active sessions
+		activeSessions := filterActiveSessions(item.Sessions)
+		if len(activeSessions) > 1 {
+			for _, ss := range activeSessions {
+				effStatus := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+				subColor := statusColor(effStatus)
+				subIcon := claude.StatusIcon(effStatus)
+				subLabel := fmt.Sprintf("%-5s", claude.StatusLabel(effStatus))
+				toolInfo := ""
+				if ss.Tool != "" {
+					toolInfo = fmt.Sprintf(" %s(%s)%s", colorDim, ss.Tool, colorReset)
+				}
+				timeAgo := claude.TimeSince(ss.Timestamp)
+				subLine := fmt.Sprintf("  %s%s %s%s | %s\u2514 %s%s %s%s%s | %s%s%s",
+					subColor, subIcon, subLabel, colorReset,
+					colorDim, truncate(ss.SessionID, 8), toolInfo, timeAgo, colorDim, colorReset,
+					colorDim, shortenPath(item.WtPath), colorReset,
+				)
+				lines = append(lines, subLine)
+			}
+		}
 	}
 	return lines
+}
+
+func filterActiveSessions(sessions []*claude.SessionStatus) []*claude.SessionStatus {
+	var active []*claude.SessionStatus
+	for _, ss := range sessions {
+		eff := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+		if eff != claude.StatusIdle && eff != claude.StatusOffline {
+			active = append(active, ss)
+		}
+	}
+	return active
 }
 
 func displayName(item PickerItem, multiRepo bool) string {
@@ -136,9 +169,15 @@ func ExtractPathFromLine(line string) string {
 		return ""
 	}
 	raw := strings.TrimSpace(parts[len(parts)-1])
-	// Strip ANSI escape codes
 	raw = stripAnsi(raw)
 	return expandHome(raw)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func stripAnsi(s string) string {

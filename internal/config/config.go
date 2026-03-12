@@ -20,9 +20,18 @@ type Config struct {
 }
 
 type TmuxConfig struct {
-	ReloadInterval int    `json:"reloadInterval,omitempty"`
-	Notification   *bool  `json:"notification,omitempty"`
-	NotifyCommand  string `json:"notifyCommand,omitempty"`
+	ReloadInterval int          `json:"reloadInterval,omitempty"`
+	Notification   *bool        `json:"notification,omitempty"`
+	NotifyCommand  string       `json:"notifyCommand,omitempty"`
+	Layout         []WindowSpec `json:"layout,omitempty"`
+}
+
+// WindowSpec defines a tmux window to create when starting a new session.
+// If no layout is configured, a single default window is created.
+type WindowSpec struct {
+	Name   string `json:"name"`
+	Panes  int    `json:"panes,omitempty"`
+	Layout string `json:"layout,omitempty"` // tmux layout: even-horizontal, even-vertical, main-horizontal, main-vertical, tiled
 }
 
 type Defaults struct {
@@ -204,6 +213,9 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Tmux.NotifyCommand != "" {
 		base.Tmux.NotifyCommand = overlay.Tmux.NotifyCommand
+	}
+	if overlay.Tmux.Layout != nil {
+		base.Tmux.Layout = overlay.Tmux.Layout
 	}
 }
 

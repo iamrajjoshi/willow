@@ -106,13 +106,19 @@ func runFzf(lines []string, extraArgs []string, cfg *config) ([]string, int, err
 	outputChan := make(chan string, 128)
 	opts.Output = outputChan
 
-	code, err := fzflib.Run(opts)
-
+	// Drain output channel concurrently to prevent deadlock
 	var results []string
+	done := make(chan struct{})
+	go func() {
+		for s := range outputChan {
+			results = append(results, s)
+		}
+		close(done)
+	}()
+
+	code, err := fzflib.Run(opts)
 	close(outputChan)
-	for s := range outputChan {
-		results = append(results, s)
-	}
+	<-done
 
 	return results, code, err
 }
