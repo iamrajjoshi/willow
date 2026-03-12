@@ -224,7 +224,7 @@ func TestRm_RemovesWorktreeAndBranch(t *testing.T) {
 		t.Fatalf("new failed: %v", err)
 	}
 
-	if err := runApp("rm", "to-remove", "--yes"); err != nil {
+	if err := runApp("rm", "to-remove"); err != nil {
 		t.Fatalf("rm failed: %v", err)
 	}
 
@@ -259,7 +259,7 @@ func TestRm_KeepBranch(t *testing.T) {
 		t.Fatalf("new failed: %v", err)
 	}
 
-	if err := runApp("rm", "keep-me", "--yes", "--keep-branch"); err != nil {
+	if err := runApp("rm", "keep-me", "--keep-branch"); err != nil {
 		t.Fatalf("rm --keep-branch failed: %v", err)
 	}
 
