@@ -36,6 +36,10 @@ ww() {
   if [ "$1" = "sw" ]; then
     local dir
     dir="$(command willow sw "${@:2}")" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
     cd "$dir" || return
     return
   fi
@@ -119,6 +123,10 @@ ww() {
   if [ "$1" = "sw" ]; then
     local dir
     dir="$(command willow sw "${@:2}")" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
     cd "$dir" || return
     return
   fi
@@ -191,6 +199,10 @@ function ww
   if test (count $argv) -gt 0; and test "$argv[1]" = "sw"
     set -l dir (command willow sw $argv[2..])
     or return
+    if test -n "$TMUX"; and test -n "$dir"
+      command willow tmux sw "$dir"
+      return
+    end
     cd $dir
     return
   end

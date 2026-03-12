@@ -23,6 +23,14 @@ The local config lives inside the bare repo directory, so it's private to your m
   "defaults": {
     "fetch": true,
     "autoSetupRemote": true
+  },
+  "tmux": {
+    "notification": true,
+    "notifyCommand": "afplay /System/Library/Sounds/Glass.aiff",
+    "layout": [
+      { "name": "claude", "panes": 1 },
+      { "name": "dev", "panes": 4, "layout": "tiled" }
+    ]
   }
 }
 ```
@@ -38,6 +46,9 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `teardown` | `string[]` | Commands to run before removing a worktree |
 | `defaults.fetch` | `boolean` | Whether to fetch before creating a worktree |
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
+| `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
+| `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
+| `tmux.layout` | `WindowSpec[]` | Tmux window/pane layout for new sessions (see [Tmux Integration](/tmux/)) |
 
 ## Directory structure
 
