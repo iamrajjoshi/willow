@@ -19,7 +19,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 ### Requirements
 
 - [git](https://git-scm.com/)
-- [fzf](https://github.com/junegunn/fzf) — for `ww sw` and `ww rm` interactive picker
+- [tmux](https://github.com/tmux/tmux) — optional, for `ww tmux` integration
 
 ## Shell integration
 
@@ -90,6 +90,16 @@ ww dashboard
 # Clean up when done
 ww rm auth-refactor
 ```
+
+## Tmux integration
+
+If you use tmux, willow can manage sessions per worktree with a popup picker:
+
+```bash
+ww tmux install    # prints tmux.conf lines to add
+```
+
+Then `prefix + w` opens a popup with all worktrees, live Claude output preview, and status colors. See [Tmux Integration](/tmux/) for full details.
 
 ## Terminal setup
 

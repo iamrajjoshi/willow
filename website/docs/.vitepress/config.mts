@@ -27,6 +27,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/' },
       { text: 'Commands', link: '/commands/' },
+      { text: 'Tmux', link: '/tmux/' },
       { text: 'Configuration', link: '/configuration/' },
     ],
 
@@ -41,6 +42,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'Commands', link: '/commands/' },
+          { text: 'Tmux Integration', link: '/tmux/' },
           { text: 'Configuration', link: '/configuration/' },
         ],
       },
