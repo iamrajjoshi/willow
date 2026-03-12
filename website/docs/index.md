@@ -20,7 +20,10 @@ features:
     details: See which agents are BUSY, WAIT, DONE, or IDLE in real time with Claude Code hook integration.
   - icon: ⚡
     title: fzf-Powered Switching
-    details: Switch between worktrees instantly with an fzf picker that shows agent status.
+    details: Switch between worktrees instantly with an fzf picker that shows agent status. fzf is embedded — no external dependency.
+  - icon: 🖥️
+    title: Native Tmux Integration
+    details: Popup worktree picker, live Claude output preview, status bar widget, and audio notifications. One keybinding does it all.
   - icon: 🌿
     title: Git-Native
     details: Thin wrapper around git worktree. No custom database — state comes from git itself.

@@ -142,7 +142,7 @@ One-time hook installation for Claude Code status tracking.
 2. Installs a hook script at `~/.willow/hooks/claude-status-hook.sh`
 3. Adds hook configuration to `~/.claude/settings.json`
 
-The hook fires on 5 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`. Multiple Claude sessions in the same worktree are tracked independently.
+The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
 
 ## `ww shell-init [flags]`
 
@@ -171,6 +171,19 @@ After running `ww cc-setup`, Claude Code automatically reports its state:
 | | `--` | No activity detected |
 
 Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
+
+## `ww tmux`
+
+Tmux integration for worktree management. See the [Tmux Integration](/tmux/) page for full documentation.
+
+```bash
+ww tmux pick              # interactive worktree picker (for tmux popup)
+ww tmux list              # formatted picker lines (for fzf reload)
+ww tmux status-bar        # tmux status-right widget
+ww tmux install           # print tmux.conf lines to add
+```
+
+Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a `prefix + w` keybinding for the picker popup.
 
 ## Aliases
 
