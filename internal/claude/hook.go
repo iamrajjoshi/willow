@@ -29,6 +29,7 @@ var hookEvents = []string{
 	"PostToolUse",
 	"Stop",
 	"Notification",
+	"SessionEnd",
 }
 
 // HookScript returns the shell script content for the Claude status hook.
@@ -91,6 +92,11 @@ STATUS="BUSY"
 TOOL_FIELD=""
 
 case "$HOOK_EVENT" in
+  SessionEnd)
+    DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
+    rm -f "$DEST_DIR/$SESSION_ID.json"
+    exit 0
+    ;;
   UserPromptSubmit)
     STATUS="BUSY"
     ;;

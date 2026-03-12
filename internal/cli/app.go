@@ -85,6 +85,7 @@ func NewApp() *cli.Command {
 			lsCmd(),
 			statusCmd(),
 			dashboardCmd(),
+			tmuxCmd(),
 			setupCmd(),
 			shellInitCmd(),
 			gcCmd(),

@@ -10,12 +10,19 @@ import (
 )
 
 type Config struct {
-	BaseBranch        string   `json:"baseBranch,omitempty"`
-	BranchPrefix      string   `json:"branchPrefix,omitempty"`
-	PostCheckoutHook  string   `json:"postCheckoutHook,omitempty"`
-	Setup             []string `json:"setup,omitempty"`
-	Teardown          []string `json:"teardown,omitempty"`
-	Defaults          Defaults `json:"defaults"`
+	BaseBranch       string     `json:"baseBranch,omitempty"`
+	BranchPrefix     string     `json:"branchPrefix,omitempty"`
+	PostCheckoutHook string     `json:"postCheckoutHook,omitempty"`
+	Setup            []string   `json:"setup,omitempty"`
+	Teardown         []string   `json:"teardown,omitempty"`
+	Defaults         Defaults   `json:"defaults"`
+	Tmux             TmuxConfig `json:"tmux,omitempty"`
+}
+
+type TmuxConfig struct {
+	ReloadInterval int    `json:"reloadInterval,omitempty"`
+	Notification   *bool  `json:"notification,omitempty"`
+	NotifyCommand  string `json:"notifyCommand,omitempty"`
 }
 
 type Defaults struct {
@@ -188,6 +195,15 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Defaults.AutoSetupRemote != nil {
 		base.Defaults.AutoSetupRemote = overlay.Defaults.AutoSetupRemote
+	}
+	if overlay.Tmux.ReloadInterval != 0 {
+		base.Tmux.ReloadInterval = overlay.Tmux.ReloadInterval
+	}
+	if overlay.Tmux.Notification != nil {
+		base.Tmux.Notification = overlay.Tmux.Notification
+	}
+	if overlay.Tmux.NotifyCommand != "" {
+		base.Tmux.NotifyCommand = overlay.Tmux.NotifyCommand
 	}
 }
 
