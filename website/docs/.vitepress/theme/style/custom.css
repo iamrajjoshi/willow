@@ -43,6 +43,13 @@ html {
   color: var(--willow-neon-cyan) !important;
 }
 
+/* Feature grid — 5 columns so all cards fit on one row */
+@media (min-width: 960px) {
+  .VPFeatures .item.grid-4 {
+    width: calc(100% / 5);
+  }
+}
+
 /* Nav glass effect */
 .VPNav {
   backdrop-filter: blur(12px) !important;
