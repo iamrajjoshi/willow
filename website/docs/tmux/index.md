@@ -22,12 +22,7 @@ Then reload: `tmux source ~/.tmux.conf`
 
 Press `prefix + w` to open the worktree picker in a popup:
 
-```
-🤖 BUSY   ● | auth-refactor     | ~/.willow/worktrees/evergreen/auth-refactor
-⏳ WAIT     | payments          | ~/.willow/worktrees/evergreen/payments
-✅ DONE   ● | dashboard         | ~/.willow/worktrees/willow/dashboard
-   --       | main              | ~/.willow/worktrees/willow/main
-```
+<HeroTerminal gif="/demo-tmux-picker.gif" title="ww tmux pick" />
 
 The right panel shows a live preview of the tmux pane content (Claude Code output).
 
