@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
@@ -104,7 +105,7 @@ func tmuxPickCmd() *cli.Command {
 
 				switch result.Key {
 				case "ctrl-n":
-					if err := tmuxPickNew(self, result.Query, repoFilter); err != nil {
+					if err := tmuxPickNew(self, result.Query, repoFilter, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					}
 					continue
@@ -182,15 +183,17 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 	return tmux.SwitchClient(sessName)
 }
 
-func tmuxPickNew(self, query, repoFilter string) error {
+func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error {
 	if query == "" {
 		return fmt.Errorf("enter a branch name first")
 	}
 
-	args := []string{"new", query, "--cd"}
-	if repoFilter != "" {
-		args = append(args, "--repo", repoFilter)
+	repo, err := resolveRepo(repoFilter, items)
+	if err != nil {
+		return err
 	}
+
+	args := []string{"new", query, "--cd", "--repo", repo}
 
 	cmd := exec.Command(self, args...)
 	cmd.Stderr = os.Stderr
@@ -217,6 +220,49 @@ func tmuxPickNew(self, query, repoFilter string) error {
 	}
 
 	return tmux.SwitchClient(sessName)
+}
+
+func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
+	if repoFilter != "" {
+		return repoFilter, nil
+	}
+
+	repos, err := config.ListRepos()
+	if err != nil || len(repos) == 0 {
+		return "", fmt.Errorf("no repos found — run 'ww clone' first")
+	}
+
+	currentRepo := ""
+	if sess, err := tmux.CurrentSession(); err == nil {
+		if parts := strings.SplitN(sess, "/", 2); len(parts) == 2 {
+			currentRepo = parts[0]
+		}
+	}
+	activeRepos := make(map[string]bool)
+	for _, item := range items {
+		if item.Status == claude.StatusBusy || item.Status == claude.StatusWait || item.Status == claude.StatusDone {
+			activeRepos[item.RepoName] = true
+		}
+	}
+	sort.SliceStable(repos, func(i, j int) bool {
+		ci := repos[i] == currentRepo
+		cj := repos[j] == currentRepo
+		if ci != cj {
+			return ci
+		}
+		ai := activeRepos[repos[i]]
+		aj := activeRepos[repos[j]]
+		if ai != aj {
+			return ai
+		}
+		return repos[i] < repos[j]
+	})
+
+	selected, err := fzf.Run(repos, fzf.WithHeader("Pick a repo"), fzf.WithReverse())
+	if err != nil || selected == "" {
+		return "", fmt.Errorf("no repo selected")
+	}
+	return selected, nil
 }
 
 func tmuxPickDelete(self, selection string, items []tmux.PickerItem) error {
