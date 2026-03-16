@@ -1,7 +1,9 @@
 package git
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +34,33 @@ func (g *Git) Run(args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// RunStream captures stdout and returns it, while streaming stderr to the
+// given writer in real-time. Useful for commands like `git fetch --progress`
+// where progress output goes to stderr.
+func (g *Git) RunStream(stderr io.Writer, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	if g.Verbose {
+		if g.Dir != "" {
+			fmt.Fprintf(os.Stderr, "$ git -C %s %s\n", g.Dir, strings.Join(args, " "))
+		} else {
+			fmt.Fprintf(os.Stderr, "$ git %s\n", strings.Join(args, " "))
+		}
+	}
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func (g *Git) BareRepoDir() (string, error) {

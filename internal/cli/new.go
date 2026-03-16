@@ -157,12 +157,17 @@ func newCmd() *cli.Command {
 			// Fetch latest from remote (config default, --no-fetch overrides)
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 			if shouldFetch {
-				if !cdOnly {
-					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
-				}
 				done = tr.Start("git fetch")
-				if _, err := repoGit.Run("fetch", "origin", baseBranch); err != nil {
-					return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", baseBranch)
+					if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", baseBranch); err != nil {
+						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
+					}
+				} else {
+					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
+					if _, err := repoGit.Run("fetch", "origin", baseBranch); err != nil {
+						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
+					}
 				}
 				done()
 			}
@@ -172,18 +177,28 @@ func newCmd() *cli.Command {
 
 			done = tr.Start("git worktree add")
 			if cmd.Bool("existing") {
-				if !cdOnly {
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Creating worktree for existing branch %s...\n", branch)
+					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, branch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
+				} else {
 					u.Info(fmt.Sprintf("Creating worktree for existing branch %s...", u.Bold(branch)))
-				}
-				if _, err := repoGit.Run("worktree", "add", wtPath, branch); err != nil {
-					return fmt.Errorf("failed to create worktree: %w", err)
+					if _, err := repoGit.Run("worktree", "add", wtPath, branch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
 				}
 			} else {
-				if !cdOnly {
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, "origin/"+baseBranch)
+					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
+				} else {
 					u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold("origin/"+baseBranch)))
-				}
-				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
-					return fmt.Errorf("failed to create worktree: %w", err)
+					if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
 				}
 			}
 			done()

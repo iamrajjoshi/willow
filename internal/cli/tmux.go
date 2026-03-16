@@ -107,8 +107,9 @@ func tmuxPickCmd() *cli.Command {
 				case "ctrl-n":
 					if err := tmuxPickNew(self, result.Query, repoFilter, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
 					}
-					continue
+					return nil
 
 				case "ctrl-d":
 					if result.Selection == "" {
