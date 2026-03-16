@@ -17,6 +17,9 @@ const (
 	StatusWait    Status = "WAIT"
 	StatusIdle    Status = "IDLE"
 	StatusOffline Status = "--"
+
+	staleTimeout   = 2 * time.Minute
+	cleanupTimeout = 30 * time.Minute
 )
 
 type WorktreeStatus struct {
@@ -41,6 +44,8 @@ func StatusDir() string {
 // ReadAllSessions reads all session status files from the directory-based layout:
 // ~/.willow/status/<repo>/<worktree>/*.json
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
+	CleanStaleSessions(repoName, worktreeDir)
+
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -94,7 +99,7 @@ func aggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 }
 
 func EffectiveStatus(s Status, ts time.Time) Status {
-	if (s == StatusBusy || s == StatusDone || s == StatusWait) && time.Since(ts) > 5*time.Minute {
+	if (s == StatusBusy || s == StatusDone || s == StatusWait) && time.Since(ts) > staleTimeout {
 		return StatusIdle
 	}
 	return s
@@ -131,7 +136,7 @@ func readLegacyStatus(repoName, worktreeDir string) *WorktreeStatus {
 	return &ws
 }
 
-// CleanStaleSessions removes session files older than 2 hours.
+// CleanStaleSessions removes session files older than 30 minutes.
 func CleanStaleSessions(repoName, worktreeDir string) {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -152,7 +157,7 @@ func CleanStaleSessions(repoName, worktreeDir string) {
 			os.Remove(filepath.Join(dir, e.Name()))
 			continue
 		}
-		if time.Since(ss.Timestamp) > 2*time.Hour {
+		if time.Since(ss.Timestamp) > cleanupTimeout {
 			os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}

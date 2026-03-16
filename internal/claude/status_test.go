@@ -181,7 +181,7 @@ func TestCleanStaleSessions(t *testing.T) {
 	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
 	os.MkdirAll(sessDir, 0o755)
 
-	stale := SessionStatus{Status: StatusDone, SessionID: "old", Timestamp: time.Now().UTC().Add(-3 * time.Hour)}
+	stale := SessionStatus{Status: StatusDone, SessionID: "old", Timestamp: time.Now().UTC().Add(-1 * time.Hour)}
 	fresh := SessionStatus{Status: StatusBusy, SessionID: "new", Timestamp: time.Now().UTC()}
 
 	for _, ss := range []SessionStatus{stale, fresh} {

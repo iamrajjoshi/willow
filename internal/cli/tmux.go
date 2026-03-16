@@ -75,8 +75,8 @@ func tmuxPickCmd() *cli.Command {
 					}
 				}
 
-				previewCmd := fmt.Sprintf("%s tmux preview {}", self)
-				reloadCmd := fmt.Sprintf("sleep 2 && %s tmux list", self)
+				previewCmd := fmt.Sprintf("%s tmux preview -- {}", self)
+				reloadCmd := fmt.Sprintf("%s tmux list", self)
 				if repoFilter != "" {
 					reloadCmd += fmt.Sprintf(" --repo %s", repoFilter)
 				}
@@ -193,7 +193,7 @@ func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error 
 		return err
 	}
 
-	args := []string{"new", query, "--cd", "--repo", repo}
+	args := []string{"new", "--cd", "--repo", repo, "--", query}
 
 	cmd := exec.Command(self, args...)
 	cmd.Stderr = os.Stderr
@@ -230,6 +230,10 @@ func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
 	repos, err := config.ListRepos()
 	if err != nil || len(repos) == 0 {
 		return "", fmt.Errorf("no repos found — run 'ww clone' first")
+	}
+
+	if len(repos) == 1 {
+		return repos[0], nil
 	}
 
 	currentRepo := ""
