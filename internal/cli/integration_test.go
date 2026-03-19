@@ -551,3 +551,93 @@ func TestRm_ScopedToCurrentRepo(t *testing.T) {
 		t.Error("worktree should be removed")
 	}
 }
+
+func TestGc_EmptyTrash(t *testing.T) {
+	setupTestEnv(t)
+
+	if err := runApp("gc"); err != nil {
+		t.Fatalf("gc failed: %v", err)
+	}
+}
+
+func TestGc_CleansTrash(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "gcrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "gcrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+
+	if err := runApp("new", "gc-branch", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+	if err := runApp("rm", "gc-branch"); err != nil {
+		t.Fatalf("rm failed: %v", err)
+	}
+
+	if err := runApp("gc"); err != nil {
+		t.Fatalf("gc failed: %v", err)
+	}
+
+	trashDir := filepath.Join(home, ".willow", "trash")
+	trashEntries, err := os.ReadDir(trashDir)
+	if err == nil && len(trashEntries) > 0 {
+		t.Errorf("trash dir should be empty after gc, has %d entries", len(trashEntries))
+	}
+}
+
+func TestNew_WithRepoFlag(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "newrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	os.Chdir(home)
+
+	if err := runApp("new", "remote-branch", "-r", "newrepo", "--no-fetch"); err != nil {
+		t.Fatalf("new -r newrepo remote-branch failed: %v", err)
+	}
+
+	newWtDir := filepath.Join(home, ".willow", "worktrees", "newrepo", "remote-branch")
+	if _, err := os.Stat(newWtDir); os.IsNotExist(err) {
+		t.Errorf("worktree not created at %s", newWtDir)
+	}
+}
+
+func TestLs_PathOnly(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "pathrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "pathrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+
+	if err := runApp("ls", "--path-only"); err != nil {
+		t.Fatalf("ls --path-only failed: %v", err)
+	}
+}
+
+func TestLs_WithRepoArg(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "lsarg"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	os.Chdir(home)
+
+	if err := runApp("ls", "lsarg"); err != nil {
+		t.Fatalf("ls lsarg failed: %v", err)
+	}
+}
