@@ -302,3 +302,252 @@ func TestLs_ListsWorktrees(t *testing.T) {
 		t.Fatalf("ls --json failed: %v", err)
 	}
 }
+
+// --- Cross-repo integration tests ---
+
+func TestSw_WithRepoFlag(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "swrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	// Create a second worktree so there's something to switch to
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "swrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+	if err := runApp("new", "sw-target", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// Move outside the repo
+	os.Chdir(home)
+
+	// sw -r swrepo sw-target should work (direct switch by name)
+	if err := runApp("sw", "-r", "swrepo", "sw-target"); err != nil {
+		t.Fatalf("sw -r swrepo sw-target failed: %v", err)
+	}
+}
+
+func TestSw_DirectNameFromAnywhere(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "swany"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "swany")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+	if err := runApp("new", "unique-branch", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// Move outside repo
+	os.Chdir(home)
+
+	// Should find unique-branch across all repos
+	if err := runApp("sw", "unique-branch"); err != nil {
+		t.Fatalf("sw unique-branch from outside repo: %v", err)
+	}
+}
+
+func TestStatus_WithRepoFlag(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "strepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	// Move outside repo
+	os.Chdir(home)
+
+	// status -r strepo should work
+	if err := runApp("status", "-r", "strepo"); err != nil {
+		t.Fatalf("status -r strepo failed: %v", err)
+	}
+}
+
+func TestStatus_CrossRepoFromAnywhere(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "st1"); err != nil {
+		t.Fatalf("clone st1 failed: %v", err)
+	}
+	if err := runApp("clone", origin, "st2"); err != nil {
+		t.Fatalf("clone st2 failed: %v", err)
+	}
+
+	// Move outside repos
+	os.Chdir(home)
+
+	// status should show both repos
+	if err := runApp("status"); err != nil {
+		t.Fatalf("status from outside repo: %v", err)
+	}
+}
+
+func TestStatus_JsonCrossRepo(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "json1"); err != nil {
+		t.Fatalf("clone json1 failed: %v", err)
+	}
+	if err := runApp("clone", origin, "json2"); err != nil {
+		t.Fatalf("clone json2 failed: %v", err)
+	}
+
+	os.Chdir(home)
+
+	if err := runApp("status", "--json"); err != nil {
+		t.Fatalf("status --json from outside repo: %v", err)
+	}
+}
+
+func TestRm_WithRepoFlagFromAnywhere(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "rmrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "rmrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+	if err := runApp("new", "rm-target", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// Move outside repo
+	os.Chdir(home)
+
+	// rm -r rmrepo rm-target should work
+	if err := runApp("rm", "-r", "rmrepo", "rm-target"); err != nil {
+		t.Fatalf("rm -r rmrepo rm-target failed: %v", err)
+	}
+
+	// Verify it was removed
+	removedDir := filepath.Join(worktreeDir, "rm-target")
+	if _, err := os.Stat(removedDir); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}
+
+func TestRm_CrossRepoByNameFromAnywhere(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "rmany"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "rmany")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+	if err := runApp("new", "cross-rm-branch", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	os.Chdir(home)
+
+	// Should find cross-rm-branch across repos and remove it
+	if err := runApp("rm", "cross-rm-branch"); err != nil {
+		t.Fatalf("rm cross-rm-branch from outside repo: %v", err)
+	}
+
+	removedDir := filepath.Join(worktreeDir, "cross-rm-branch")
+	if _, err := os.Stat(removedDir); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}
+
+func TestLs_RepoListShowsActiveUnread(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "lsrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	// Move outside repo to trigger repo list mode
+	os.Chdir(home)
+
+	// ls from outside repo should show repo list with columns (no error)
+	if err := runApp("ls"); err != nil {
+		t.Fatalf("ls from outside repo: %v", err)
+	}
+}
+
+func TestSw_ScopedToCurrentRepo(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "scoped"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "scoped")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "scoped-branch", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// sw from inside repo should still work (scoped to current repo)
+	if err := runApp("sw", "scoped-branch"); err != nil {
+		t.Fatalf("sw scoped-branch from inside repo: %v", err)
+	}
+}
+
+func TestStatus_ScopedToCurrentRepo(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "stscoped"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "stscoped")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+
+	// status from inside repo should still be scoped
+	if err := runApp("status"); err != nil {
+		t.Fatalf("status from inside repo: %v", err)
+	}
+}
+
+func TestRm_ScopedToCurrentRepo(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "rmscoped"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "rmscoped")
+	entries, _ := os.ReadDir(worktreeDir)
+	os.Chdir(filepath.Join(worktreeDir, entries[0].Name()))
+
+	if err := runApp("new", "scoped-rm", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// rm from inside repo should be scoped
+	if err := runApp("rm", "scoped-rm"); err != nil {
+		t.Fatalf("rm scoped-rm from inside repo: %v", err)
+	}
+
+	removedDir := filepath.Join(worktreeDir, "scoped-rm")
+	if _, err := os.Stat(removedDir); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}

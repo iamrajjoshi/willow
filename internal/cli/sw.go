@@ -18,15 +18,73 @@ func swCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "sw",
 		Usage: "Switch to a worktree (fzf picker)",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:      "name",
+				UsageText: "[name]",
+			},
+		},
+		ShellComplete: completeWorktreesWithFlag,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 
-			bareDir, err := requireWillowRepo(g)
+			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
 				return err
 			}
 
+			multiRepo := len(repos) > 1
+			name := cmd.StringArg("name")
+
+			if name != "" {
+				allWts := collectAllWorktrees(repos, g.Verbose)
+				rwt, err := findCrossRepoWorktree(allWts, name)
+				if err != nil {
+					return err
+				}
+				wtDir := filepath.Base(rwt.Worktree.Path)
+				claude.MarkRead(rwt.Repo.Name, wtDir)
+				fmt.Println(rwt.Worktree.Path)
+				return nil
+			}
+
+			if multiRepo {
+				allWts := collectAllWorktrees(repos, g.Verbose)
+				if len(allWts) == 0 {
+					return fmt.Errorf("no worktrees found")
+				}
+
+				lines := buildCrossRepoWorktreeLines(allWts)
+				selected, err := fzf.Run(lines,
+					fzf.WithAnsi(),
+					fzf.WithReverse(),
+					fzf.WithHeader("Select worktree"),
+				)
+				if err != nil {
+					return err
+				}
+				if selected == "" {
+					return nil
+				}
+
+				path := extractPathFromLine(selected)
+				if rwt := repoWorktreeByPath(allWts, path); rwt != nil {
+					claude.MarkRead(rwt.Repo.Name, filepath.Base(path))
+				}
+				fmt.Println(path)
+				return nil
+			}
+
+			// Single repo mode
+			bareDir := repos[0].BareDir
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			worktrees, err := worktree.List(repoGit)
 			if err != nil {
@@ -38,7 +96,7 @@ func swCmd() *cli.Command {
 				return fmt.Errorf("no worktrees found")
 			}
 
-			repoName := repoNameFromDir(bareDir)
+			repoName := repos[0].Name
 			selected, err := fzfPickWorktree(filtered, repoName)
 			if err != nil {
 				return err
@@ -47,10 +105,8 @@ func swCmd() *cli.Command {
 				return nil
 			}
 
-			// Mark sessions as read when switching to a worktree
 			wtDir := filepath.Base(selected)
 			claude.MarkRead(repoName, wtDir)
-
 			fmt.Println(selected)
 			return nil
 		},
@@ -93,6 +149,49 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 			statusW, label,
 			branchW, item.wt.Branch,
 			item.wt.Path,
+		)
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
+	type item struct {
+		rwt    repoWorktree
+		status *claude.WorktreeStatus
+	}
+	items := make([]item, len(rwts))
+	for i, rwt := range rwts {
+		wtDir := filepath.Base(rwt.Worktree.Path)
+		items[i] = item{
+			rwt:    rwt,
+			status: claude.ReadStatus(rwt.Repo.Name, wtDir),
+		}
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return statusOrder(items[i].status.Status) < statusOrder(items[j].status.Status)
+	})
+
+	nameW := 0
+	statusW := 4
+	for _, it := range items {
+		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.Branch
+		if len(display) > nameW {
+			nameW = len(display)
+		}
+	}
+
+	var lines []string
+	for _, it := range items {
+		icon := claude.StatusIcon(it.status.Status)
+		label := claude.StatusLabel(it.status.Status)
+		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.Branch
+		line := fmt.Sprintf("%s %-*s  %-*s  %s",
+			icon,
+			statusW, label,
+			nameW, display,
+			it.rwt.Worktree.Path,
 		)
 		lines = append(lines, line)
 	}

@@ -111,7 +111,7 @@ func printRepoList(flags Flags) error {
 		}
 	}
 
-	header := fmt.Sprintf("  %-*s  %s", nameW, "REPO", "WORKTREES")
+	header := fmt.Sprintf("  %-*s  %-9s  %-6s  %s", nameW, "REPO", "WORKTREES", "ACTIVE", "UNREAD")
 	u.Info(u.Bold(header))
 
 	for _, r := range repos {
@@ -125,12 +125,23 @@ func printRepoList(flags Flags) error {
 			continue
 		}
 		count := 0
+		activeCount := 0
+		unreadCount := 0
 		for _, wt := range wts {
-			if !wt.IsBare {
-				count++
+			if wt.IsBare {
+				continue
+			}
+			count++
+			wtDir := filepath.Base(wt.Path)
+			ws := claude.ReadStatus(r, wtDir)
+			if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
+				activeCount++
+			}
+			if claude.IsUnread(r, wtDir) {
+				unreadCount++
 			}
 		}
-		line := fmt.Sprintf("  %-*s  %d", nameW, r, count)
+		line := fmt.Sprintf("  %-*s  %-9d  %-6d  %d", nameW, r, count, activeCount, unreadCount)
 		u.Info(line)
 	}
 	return nil
