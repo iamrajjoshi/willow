@@ -234,6 +234,86 @@ func TestTimeSince(t *testing.T) {
 	if got := TimeSince(time.Now().Add(-5 * time.Minute)); got != "5m ago" {
 		t.Errorf("TimeSince(5m) = %q, want '5m ago'", got)
 	}
+
+	if got := TimeSince(time.Now().Add(-3 * time.Hour)); got != "3h ago" {
+		t.Errorf("TimeSince(3h) = %q, want '3h ago'", got)
+	}
+
+	if got := TimeSince(time.Now().Add(-48 * time.Hour)); got != "2d ago" {
+		t.Errorf("TimeSince(48h) = %q, want '2d ago'", got)
+	}
+}
+
+func TestEffectiveStatus_Fresh(t *testing.T) {
+	now := time.Now()
+	if got := EffectiveStatus(StatusBusy, now); got != StatusBusy {
+		t.Errorf("fresh BUSY = %q, want BUSY", got)
+	}
+	if got := EffectiveStatus(StatusDone, now); got != StatusDone {
+		t.Errorf("fresh DONE = %q, want DONE", got)
+	}
+	if got := EffectiveStatus(StatusWait, now); got != StatusWait {
+		t.Errorf("fresh WAIT = %q, want WAIT", got)
+	}
+	if got := EffectiveStatus(StatusIdle, now); got != StatusIdle {
+		t.Errorf("fresh IDLE = %q, want IDLE", got)
+	}
+}
+
+func TestEffectiveStatus_Stale(t *testing.T) {
+	stale := time.Now().Add(-5 * time.Minute)
+	if got := EffectiveStatus(StatusBusy, stale); got != StatusIdle {
+		t.Errorf("stale BUSY = %q, want IDLE", got)
+	}
+	if got := EffectiveStatus(StatusDone, stale); got != StatusIdle {
+		t.Errorf("stale DONE = %q, want IDLE", got)
+	}
+	if got := EffectiveStatus(StatusWait, stale); got != StatusIdle {
+		t.Errorf("stale WAIT = %q, want IDLE", got)
+	}
+	// IDLE stays IDLE regardless of staleness
+	if got := EffectiveStatus(StatusIdle, stale); got != StatusIdle {
+		t.Errorf("stale IDLE = %q, want IDLE", got)
+	}
+}
+
+func TestStatusPriority_Ordering(t *testing.T) {
+	if statusPriority(StatusBusy) >= statusPriority(StatusWait) {
+		t.Error("BUSY should have higher priority than WAIT")
+	}
+	if statusPriority(StatusWait) >= statusPriority(StatusDone) {
+		t.Error("WAIT should have higher priority than DONE")
+	}
+	if statusPriority(StatusDone) >= statusPriority(StatusIdle) {
+		t.Error("DONE should have higher priority than IDLE")
+	}
+	if statusPriority(StatusIdle) >= statusPriority(StatusOffline) {
+		t.Error("IDLE should have higher priority than OFFLINE")
+	}
+}
+
+func TestReadStatus_WaitAggregation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "wait-test"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	now := time.Now().UTC()
+	for _, ss := range []SessionStatus{
+		{Status: StatusWait, SessionID: "s1", Timestamp: now},
+		{Status: StatusDone, SessionID: "s2", Timestamp: now},
+	} {
+		data, _ := json.Marshal(ss)
+		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+	}
+
+	got := ReadStatus(repoName, wtName)
+	if got.Status != StatusWait {
+		t.Errorf("aggregate Status = %q, want %q (WAIT should win over DONE)", got.Status, StatusWait)
+	}
 }
 
 func TestHookScript_NotEmpty(t *testing.T) {
