@@ -15,6 +15,11 @@ go build -o bin/willow ./cmd/willow
 - `internal/git/` - Git command execution helpers
 - `internal/config/` - Configuration types and path resolution
 - `internal/worktree/` - Worktree data model
+- `internal/fzf/` - Embedded fzf wrapper (uses `github.com/junegunn/fzf` as a Go library, no external binary)
+- `internal/claude/` - Claude Code status tracking (hooks, session status, unread markers)
+- `internal/tmux/` - Tmux CLI primitives, picker logic, and notifications
+- `internal/dashboard/` - Live TUI dashboard
+- `website/` - VitePress docs site (https://getwillow.dev)
 
 ## Conventions
 
@@ -33,3 +38,19 @@ go build -o bin/willow ./cmd/willow
 - Writing commit messages should follow the conventional commit format (https://www.conventionalcommits.org/en/v1.0.0/)
 
 - Use pull requests for code review and merging changes into the main branch.
+
+## Releases
+
+Releases are automated via GoReleaser + GitHub Actions:
+
+1. Push a version tag: `git tag v0.X.0 && git push origin v0.X.0`
+2. The `.github/workflows/release.yml` workflow runs GoReleaser
+3. GoReleaser builds cross-platform binaries, creates the GitHub release, and auto-updates the Homebrew formula in `iamrajjoshi/homebrew-tap`
+4. Users upgrade via `brew upgrade willow`
+
+Key files:
+- `.goreleaser.yaml` - Build config, archive format, Homebrew tap push (uses `HOMEBREW_TAP_GITHUB_TOKEN` secret)
+- `.github/workflows/release.yml` - Triggered on `v*` tags
+- Version is injected via ldflags: `-X github.com/iamrajjoshi/willow/internal/cli.version={{.Version}}`
+
+When creating a release via `gh release create`, the tag push triggers the workflow. Do NOT manually upload binaries — GoReleaser handles everything including the homebrew-tap formula update.
