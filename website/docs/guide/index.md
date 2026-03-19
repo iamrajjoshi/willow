@@ -110,7 +110,7 @@ Recommended Ghostty layout per worktree:
 │ Tab: myrepo/auth-refactor           │
 ├──────────────────┬──────────────────┤
 │  claude          │  claude          │
-│  (agent 1)       │  (agent 2)      │
+│  (agent 1)       │  (agent 2)       │
 ├──────────────────┴──────────────────┤
 │  shell (git diff, tests, etc.)      │
 └─────────────────────────────────────┘
