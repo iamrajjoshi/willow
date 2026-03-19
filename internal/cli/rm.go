@@ -11,6 +11,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -28,7 +29,7 @@ func rmCmd() *cli.Command {
 				UsageText: "[branch]",
 			},
 		},
-		ShellComplete: completeWorktrees,
+		ShellComplete: completeWorktreesWithFlag,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "force",
@@ -56,86 +57,134 @@ func rmCmd() *cli.Command {
 			u := flags.NewUI()
 
 			done := tr.Start("resolve repo")
-			var bareDir string
-			var err error
-			if repoFlag := cmd.String("repo"); repoFlag != "" {
-				bareDir, err = config.ResolveRepo(repoFlag)
-				if err != nil {
-					return err
-				}
-			} else {
-				bareDir, err = requireWillowRepo(g)
-				if err != nil {
-					return err
-				}
-			}
-			done()
-
-			done = tr.Start("list worktrees")
-			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
-			worktrees, err := worktree.List(repoGit)
+			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
-				return fmt.Errorf("failed to list worktrees: %w", err)
+				return err
 			}
 			done()
 
-			filtered := filterBareWorktrees(worktrees)
-
-			done = tr.Start("resolve targets")
+			multiRepo := len(repos) > 1
 			target := cmd.StringArg("branch")
-			var targets []worktree.Worktree
-
-			if target == "" {
-				repoName := repoNameFromDir(bareDir)
-				selectedPaths, err := fzfPickWorktrees(filtered, repoName)
-				if err != nil {
-					return err
-				}
-				if selectedPaths == nil {
-					return nil
-				}
-				for _, sp := range selectedPaths {
-					for i := range filtered {
-						if filtered[i].Path == sp {
-							targets = append(targets, filtered[i])
-							break
-						}
-					}
-				}
-				if len(targets) == 0 {
-					return fmt.Errorf("selected worktrees not found")
-				}
-			} else {
-				wt, err := findWorktree(filtered, target)
-				if err != nil {
-					return err
-				}
-				targets = []worktree.Worktree{*wt}
-			}
-			done()
-
 			force := cmd.Bool("force")
 			keepBranch := cmd.Bool("keep-branch")
 
-			done = tr.Start("load config")
-			cfg := config.Load(bareDir)
-			done()
+			if multiRepo {
+				done = tr.Start("collect worktrees")
+				allWts := collectAllWorktrees(repos, g.Verbose)
+				if len(allWts) == 0 {
+					return fmt.Errorf("no worktrees found")
+				}
+				done()
 
-			for _, wt := range targets {
-				if err := removeWorktree(tr, u, repoGit, &wt, bareDir, cfg, force, keepBranch, g.Verbose); err != nil {
-					return err
+				done = tr.Start("resolve targets")
+				var targets []repoWorktree
+				if target == "" {
+					lines := buildCrossRepoWorktreeLines(allWts)
+					selected, err := fzf.RunMulti(lines,
+						fzf.WithAnsi(),
+						fzf.WithReverse(),
+						fzf.WithHeader("Select worktrees (TAB to multi-select)"),
+					)
+					if err != nil {
+						return err
+					}
+					if selected == nil {
+						return nil
+					}
+					for _, line := range selected {
+						path := extractPathFromLine(line)
+						if rwt := repoWorktreeByPath(allWts, path); rwt != nil {
+							targets = append(targets, *rwt)
+						}
+					}
+					if len(targets) == 0 {
+						return fmt.Errorf("selected worktrees not found")
+					}
+				} else {
+					rwt, err := findCrossRepoWorktree(allWts, target)
+					if err != nil {
+						return err
+					}
+					targets = []repoWorktree{*rwt}
+				}
+				done()
+
+				for i := range targets {
+					repoGit := &git.Git{Dir: targets[i].Repo.BareDir, Verbose: g.Verbose}
+					cfg := config.Load(targets[i].Repo.BareDir)
+					if err := removeWorktree(tr, u, repoGit, &targets[i].Worktree, targets[i].Repo.BareDir, cfg, force, keepBranch, g.Verbose); err != nil {
+						return err
+					}
+				}
+			} else {
+				bareDir := repos[0].BareDir
+
+				done = tr.Start("list worktrees")
+				repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
+				worktrees, err := worktree.List(repoGit)
+				if err != nil {
+					return fmt.Errorf("failed to list worktrees: %w", err)
+				}
+				done()
+
+				filtered := filterBareWorktrees(worktrees)
+
+				done = tr.Start("resolve targets")
+				var targets []worktree.Worktree
+
+				if target == "" {
+					repoName := repoNameFromDir(bareDir)
+					selectedPaths, err := fzfPickWorktrees(filtered, repoName)
+					if err != nil {
+						return err
+					}
+					if selectedPaths == nil {
+						return nil
+					}
+					for _, sp := range selectedPaths {
+						for i := range filtered {
+							if filtered[i].Path == sp {
+								targets = append(targets, filtered[i])
+								break
+							}
+						}
+					}
+					if len(targets) == 0 {
+						return fmt.Errorf("selected worktrees not found")
+					}
+				} else {
+					wt, err := findWorktree(filtered, target)
+					if err != nil {
+						return err
+					}
+					targets = []worktree.Worktree{*wt}
+				}
+				done()
+
+				done = tr.Start("load config")
+				cfg := config.Load(bareDir)
+				done()
+
+				repoGit2 := &git.Git{Dir: bareDir, Verbose: g.Verbose}
+				for _, wt := range targets {
+					if err := removeWorktree(tr, u, repoGit2, &wt, bareDir, cfg, force, keepBranch, g.Verbose); err != nil {
+						return err
+					}
 				}
 			}
 
 			if cmd.Bool("prune") {
-				done = tr.Start("git worktree prune")
-				u.Info("Pruning stale worktrees...")
-				if _, err := repoGit.Run("worktree", "prune"); err != nil {
-					u.Warn(fmt.Sprintf("Prune failed: %v", err))
-				} else {
-					u.Success("Pruned stale worktrees")
+				for _, r := range repos {
+					repoGit := &git.Git{Dir: r.BareDir, Verbose: g.Verbose}
+					done = tr.Start("git worktree prune")
+					u.Info("Pruning stale worktrees...")
+					if _, err := repoGit.Run("worktree", "prune"); err != nil {
+						u.Warn(fmt.Sprintf("Prune failed: %v", err))
+					} else {
+						u.Success("Pruned stale worktrees")
+					}
+					done()
 				}
-				done()
 			}
 
 			tr.Total()
