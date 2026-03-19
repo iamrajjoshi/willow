@@ -251,3 +251,243 @@ func TestLoad_EmptyBareDir(t *testing.T) {
 		t.Error("Defaults.Fetch should be true")
 	}
 }
+
+func TestWillowHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := WillowHome()
+	want := filepath.Join(home, ".willow")
+	if got != want {
+		t.Errorf("WillowHome() = %q, want %q", got, want)
+	}
+}
+
+func TestReposDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := ReposDir()
+	want := filepath.Join(home, ".willow", "repos")
+	if got != want {
+		t.Errorf("ReposDir() = %q, want %q", got, want)
+	}
+}
+
+func TestWorktreesDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := WorktreesDir()
+	want := filepath.Join(home, ".willow", "worktrees")
+	if got != want {
+		t.Errorf("WorktreesDir() = %q, want %q", got, want)
+	}
+}
+
+func TestTrashDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := TrashDir()
+	want := filepath.Join(home, ".willow", "trash")
+	if got != want {
+		t.Errorf("TrashDir() = %q, want %q", got, want)
+	}
+}
+
+func TestListRepos_Empty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repos, err := ListRepos()
+	if err != nil {
+		t.Fatalf("ListRepos() error: %v", err)
+	}
+	if len(repos) != 0 {
+		t.Errorf("expected 0 repos, got %d", len(repos))
+	}
+}
+
+func TestListRepos_WithRepos(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	reposDir := filepath.Join(home, ".willow", "repos")
+	os.MkdirAll(filepath.Join(reposDir, "alpha.git"), 0o755)
+	os.MkdirAll(filepath.Join(reposDir, "beta.git"), 0o755)
+	// Non-.git dir should be ignored
+	os.MkdirAll(filepath.Join(reposDir, "notarepo"), 0o755)
+
+	repos, err := ListRepos()
+	if err != nil {
+		t.Fatalf("ListRepos() error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+	names := map[string]bool{}
+	for _, r := range repos {
+		names[r] = true
+	}
+	if !names["alpha"] || !names["beta"] {
+		t.Errorf("expected alpha and beta, got %v", names)
+	}
+}
+
+func TestResolveRepo_Found(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoDir := filepath.Join(home, ".willow", "repos", "myrepo.git")
+	os.MkdirAll(repoDir, 0o755)
+
+	got, err := ResolveRepo("myrepo")
+	if err != nil {
+		t.Fatalf("ResolveRepo error: %v", err)
+	}
+	if got != repoDir {
+		t.Errorf("ResolveRepo = %q, want %q", got, repoDir)
+	}
+}
+
+func TestResolveRepo_NotFound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	_, err := ResolveRepo("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent repo")
+	}
+}
+
+func TestIsWillowRepo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	reposDir := filepath.Join(home, ".willow", "repos")
+	repoDir := filepath.Join(reposDir, "myrepo.git")
+	os.MkdirAll(repoDir, 0o755)
+
+	if !IsWillowRepo(repoDir) {
+		t.Error("path under repos dir should be a willow repo")
+	}
+	if IsWillowRepo("/some/other/path") {
+		t.Error("arbitrary path should not be a willow repo")
+	}
+}
+
+func TestResolveRepoFromDir_InsideWorktree(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoDir := filepath.Join(home, ".willow", "repos", "myrepo.git")
+	os.MkdirAll(repoDir, 0o755)
+
+	wtDir := filepath.Join(home, ".willow", "worktrees", "myrepo", "feature-auth")
+	os.MkdirAll(wtDir, 0o755)
+
+	got, ok := ResolveRepoFromDir(wtDir)
+	if !ok {
+		t.Fatal("expected ok=true for path inside worktrees")
+	}
+	if got != repoDir {
+		t.Errorf("ResolveRepoFromDir = %q, want %q", got, repoDir)
+	}
+}
+
+func TestResolveRepoFromDir_OutsideWorktrees(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".willow", "worktrees"), 0o755)
+
+	_, ok := ResolveRepoFromDir(home)
+	if ok {
+		t.Error("expected ok=false for path outside worktrees")
+	}
+}
+
+func TestResolveRepoFromDir_WorktreesRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".willow", "worktrees"), 0o755)
+
+	_, ok := ResolveRepoFromDir(filepath.Join(home, ".willow", "worktrees"))
+	if ok {
+		t.Error("worktrees root itself should return false")
+	}
+}
+
+func TestMerge_TmuxConfig(t *testing.T) {
+	base := DefaultConfig()
+	overlay := &Config{
+		Tmux: TmuxConfig{
+			ReloadInterval: 5,
+			Notification:   BoolPtr(true),
+			NotifyCommand:  "say done",
+			Layout: []WindowSpec{
+				{Name: "editor", Panes: 2},
+			},
+		},
+	}
+
+	merge(base, overlay)
+
+	if base.Tmux.ReloadInterval != 5 {
+		t.Errorf("ReloadInterval = %d, want 5", base.Tmux.ReloadInterval)
+	}
+	if base.Tmux.Notification == nil || !*base.Tmux.Notification {
+		t.Error("Notification should be true")
+	}
+	if base.Tmux.NotifyCommand != "say done" {
+		t.Errorf("NotifyCommand = %q, want %q", base.Tmux.NotifyCommand, "say done")
+	}
+	if len(base.Tmux.Layout) != 1 || base.Tmux.Layout[0].Name != "editor" {
+		t.Errorf("Layout = %v, want [{editor 2 }]", base.Tmux.Layout)
+	}
+}
+
+func TestMerge_TmuxConfigPartial(t *testing.T) {
+	base := &Config{
+		Tmux: TmuxConfig{
+			ReloadInterval: 3,
+			NotifyCommand:  "original",
+		},
+	}
+	overlay := &Config{
+		Tmux: TmuxConfig{
+			NotifyCommand: "updated",
+		},
+	}
+
+	merge(base, overlay)
+
+	if base.Tmux.ReloadInterval != 3 {
+		t.Errorf("ReloadInterval = %d, want 3 (unchanged)", base.Tmux.ReloadInterval)
+	}
+	if base.Tmux.NotifyCommand != "updated" {
+		t.Errorf("NotifyCommand = %q, want %q", base.Tmux.NotifyCommand, "updated")
+	}
+}
+
+func TestMerge_PostCheckoutHook(t *testing.T) {
+	base := &Config{}
+	overlay := &Config{PostCheckoutHook: ".hooks/post-checkout"}
+
+	merge(base, overlay)
+
+	if base.PostCheckoutHook != ".hooks/post-checkout" {
+		t.Errorf("PostCheckoutHook = %q, want %q", base.PostCheckoutHook, ".hooks/post-checkout")
+	}
+}
+
+func TestMerge_TeardownHooks(t *testing.T) {
+	base := &Config{Teardown: []string{"cleanup.sh"}}
+	overlay := &Config{Teardown: []string{"new-cleanup.sh"}}
+
+	merge(base, overlay)
+
+	if len(base.Teardown) != 1 || base.Teardown[0] != "new-cleanup.sh" {
+		t.Errorf("Teardown = %v, want [new-cleanup.sh]", base.Teardown)
+	}
+}
