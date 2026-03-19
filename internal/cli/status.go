@@ -13,6 +13,76 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+type sessionEntry struct {
+	Repo      string `json:"repo,omitempty"`
+	Branch    string `json:"branch"`
+	SessionID string `json:"session_id,omitempty"`
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp,omitempty"`
+	Unread    bool   `json:"unread,omitempty"`
+	Path      string `json:"path"`
+}
+
+type repoStatus struct {
+	Name          string
+	Entries       []sessionEntry
+	WorktreeCount int
+	ActiveCount   int
+	UnreadCount   int
+}
+
+func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatus {
+	rs := repoStatus{Name: repoName, WorktreeCount: len(worktrees)}
+	for _, wt := range worktrees {
+		wtDir := filepath.Base(wt.Path)
+		sessions := claude.ReadAllSessions(repoName, wtDir)
+		unread := claude.IsUnread(repoName, wtDir)
+		if unread {
+			rs.UnreadCount++
+		}
+
+		if len(sessions) > 0 {
+			for _, ss := range sessions {
+				entry := sessionEntry{
+					Repo:      repoName,
+					Branch:    wt.Branch,
+					SessionID: ss.SessionID,
+					Status:    string(ss.Status),
+					Path:      wt.Path,
+				}
+				if !ss.Timestamp.IsZero() {
+					entry.Timestamp = claude.TimeSince(ss.Timestamp)
+				}
+				if ss.Status == claude.StatusDone && unread {
+					entry.Unread = true
+				}
+				rs.Entries = append(rs.Entries, entry)
+
+				if ss.Status == claude.StatusBusy || ss.Status == claude.StatusDone || ss.Status == claude.StatusWait {
+					rs.ActiveCount++
+				}
+			}
+		} else {
+			ws := claude.ReadStatus(repoName, wtDir)
+			entry := sessionEntry{
+				Repo:   repoName,
+				Branch: wt.Branch,
+				Status: string(ws.Status),
+				Path:   wt.Path,
+			}
+			if !ws.Timestamp.IsZero() {
+				entry.Timestamp = claude.TimeSince(ws.Timestamp)
+			}
+			rs.Entries = append(rs.Entries, entry)
+
+			if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
+				rs.ActiveCount++
+			}
+		}
+	}
+	return rs
+}
+
 func statusCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "status",
@@ -23,121 +93,78 @@ func statusCmd() *cli.Command {
 				Name:  "json",
 				Usage: "Output as JSON",
 			},
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 			u := flags.NewUI()
 
-			bareDir, err := requireWillowRepo(g)
+			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
 				return err
 			}
 
-			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
-			worktrees, err := worktree.List(repoGit)
-			if err != nil {
-				return fmt.Errorf("failed to list worktrees: %w", err)
-			}
-
-			filtered := filterBareWorktrees(worktrees)
-			repoName := repoNameFromDir(bareDir)
-
-			type sessionEntry struct {
-				Branch    string `json:"branch"`
-				SessionID string `json:"session_id,omitempty"`
-				Status    string `json:"status"`
-				Timestamp string `json:"timestamp,omitempty"`
-				Unread    bool   `json:"unread,omitempty"`
-				Path      string `json:"path"`
-			}
-
-			var entries []sessionEntry
-			activeCount := 0
-			totalUnread := 0
-
-			for _, wt := range filtered {
-				wtDir := filepath.Base(wt.Path)
-				sessions := claude.ReadAllSessions(repoName, wtDir)
-				unread := claude.IsUnread(repoName, wtDir)
-				if unread {
-					totalUnread++
+			var allStatuses []repoStatus
+			for _, r := range repos {
+				repoGit := &git.Git{Dir: r.BareDir, Verbose: g.Verbose}
+				wts, err := worktree.List(repoGit)
+				if err != nil {
+					continue
 				}
-
-				if len(sessions) > 0 {
-					for _, ss := range sessions {
-						entry := sessionEntry{
-							Branch:    wt.Branch,
-							SessionID: ss.SessionID,
-							Status:    string(ss.Status),
-							Path:      wt.Path,
-						}
-						if !ss.Timestamp.IsZero() {
-							entry.Timestamp = claude.TimeSince(ss.Timestamp)
-						}
-						if ss.Status == claude.StatusDone && unread {
-							entry.Unread = true
-						}
-						entries = append(entries, entry)
-
-						if ss.Status == claude.StatusBusy || ss.Status == claude.StatusDone || ss.Status == claude.StatusWait {
-							activeCount++
-						}
-					}
-				} else {
-					ws := claude.ReadStatus(repoName, wtDir)
-					entry := sessionEntry{
-						Branch: wt.Branch,
-						Status: string(ws.Status),
-						Path:   wt.Path,
-					}
-					if !ws.Timestamp.IsZero() {
-						entry.Timestamp = claude.TimeSince(ws.Timestamp)
-					}
-					entries = append(entries, entry)
-
-					if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
-						activeCount++
-					}
-				}
+				filtered := filterBareWorktrees(wts)
+				allStatuses = append(allStatuses, collectRepoStatus(r.Name, filtered))
 			}
 
 			if cmd.Bool("json") {
+				var allEntries []sessionEntry
+				for _, rs := range allStatuses {
+					allEntries = append(allEntries, rs.Entries...)
+				}
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(entries)
+				return enc.Encode(allEntries)
 			}
 
-			headerParts := fmt.Sprintf("%s (\U0001F333 %d worktrees, \U0001F916 %d active",
-				u.Bold(repoName), len(filtered), activeCount)
-			if totalUnread > 0 {
-				headerParts += fmt.Sprintf(", %d unread", totalUnread)
-			}
-			headerParts += ")\n"
-			u.Info(headerParts)
+			for i, rs := range allStatuses {
+				if i > 0 {
+					u.Info("")
+				}
+				headerParts := fmt.Sprintf("%s (\U0001F333 %d worktrees, \U0001F916 %d active",
+					u.Bold(rs.Name), rs.WorktreeCount, rs.ActiveCount)
+				if rs.UnreadCount > 0 {
+					headerParts += fmt.Sprintf(", %d unread", rs.UnreadCount)
+				}
+				headerParts += ")\n"
+				u.Info(headerParts)
 
-			branchW := 0
-			for _, e := range entries {
-				if len(e.Branch) > branchW {
-					branchW = len(e.Branch)
+				branchW := 0
+				for _, e := range rs.Entries {
+					if len(e.Branch) > branchW {
+						branchW = len(e.Branch)
+					}
 				}
-			}
 
-			for _, e := range entries {
-				icon := claude.StatusIcon(claude.Status(e.Status))
-				label := e.Status
-				if e.Unread {
-					label += "\u25CF" // ●
+				for _, e := range rs.Entries {
+					icon := claude.StatusIcon(claude.Status(e.Status))
+					label := e.Status
+					if e.Unread {
+						label += "\u25CF" // bullet
+					}
+					var line string
+					if e.Timestamp != "" {
+						line = fmt.Sprintf("  %s %-*s  %-6s  %s",
+							icon, branchW, e.Branch, label, u.Dim(e.Timestamp))
+					} else {
+						line = fmt.Sprintf("  %s %-*s  %s",
+							icon, branchW, e.Branch, label)
+					}
+					u.Info(line)
 				}
-				var line string
-				if e.Timestamp != "" {
-					line = fmt.Sprintf("  %s %-*s  %-6s  %s",
-						icon, branchW, e.Branch, label, u.Dim(e.Timestamp))
-				} else {
-					line = fmt.Sprintf("  %s %-*s  %s",
-						icon, branchW, e.Branch, label)
-				}
-				u.Info(line)
 			}
 
 			return nil
