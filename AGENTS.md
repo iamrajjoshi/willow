@@ -4,9 +4,19 @@ Git worktree manager CLI.
 
 ## Build
 
+Requires Go 1.26.0+ (see `go.mod`).
+
 ```
 go build -o bin/willow ./cmd/willow
 ```
+
+## Test
+
+```
+go test ./... -count=1 -v
+```
+
+CI runs this on both ubuntu and macos via `.github/workflows/test.yml`.
 
 ## Project Structure
 
@@ -27,13 +37,12 @@ go build -o bin/willow ./cmd/willow
 - CLI framework: `github.com/urfave/cli/v3`
 - Each command lives in its own file under `internal/cli/` (e.g. `new.go`, `ls.go`)
 - Action signature: `func(_ context.Context, cmd *cli.Command) error`
-- Spec is in `SPEC.md`
 - Don't add comments that just repeat the code, only leave comments that provide additional context or clarify complex logic.
 - Follow the Go community's style guide for code formatting and readability.
 
 ## Workflow Conventions
 - When creating branches, use a consistent naming convention (e.g. `feat--<branch_name>`, `fix--<branch_name>`, `release--<branch_name>`)
-- Use emojis to indicate the type of change (✨ for feature, 🐛 for bug fix, 📝 for docs, 📦 for dependency updates, 🚀 for deployements, 🎨 for design changes, 🔧 for chore, ♻️ for refactoring, 🧹 for cleanup, 🧪 for tests)
+- Use emojis to indicate the type of change (✨ for feature, 🐛 for bug fix, 📝 for docs, 📦 for dependency updates, 🚀 for deployments, 🎨 for design changes, 🔧 for chore, ♻️ for refactoring, 🧹 for cleanup, 🧪 for tests)
 - The commit title should be in the format `:emoji <type>(<scope>): <subject>` and make sure that it is concise and descriptive.
 - Writing commit messages should follow the conventional commit format (https://www.conventionalcommits.org/en/v1.0.0/)
 
