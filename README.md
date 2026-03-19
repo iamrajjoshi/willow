@@ -288,7 +288,7 @@ Recommended Ghostty layout per worktree:
 │ Tab: myrepo/auth-refactor           │
 ├──────────────────┬──────────────────┤
 │  claude          │  claude          │
-│  (agent 1)       │  (agent 2)      │
+│  (agent 1)       │  (agent 2)       │
 ├──────────────────┴──────────────────┤
 │  shell (git diff, tests, etc.)      │
 └─────────────────────────────────────┘
@@ -322,11 +322,6 @@ Deployed automatically to GitHub Pages on push to `main` when `website/` changes
 ## Releasing
 
 Releases are automated via [GoReleaser](https://goreleaser.com/) and GitHub Actions.
-
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
 
 ## License
 
