@@ -48,7 +48,8 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
 | `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
-| `tmux.layout` | `WindowSpec[]` | Tmux window/pane layout for new sessions (see [Tmux Integration](/tmux/)) |
+| `tmux.layout` | `string[]` | Raw tmux subcommands to run after session creation (e.g. `["split-window -h", "select-layout even-horizontal"]`) |
+| `tmux.postWorktreeCreate` | `string[]` | Commands sent to every pane after session setup (e.g. `["cd website"]`) |
 
 ## Directory structure
 

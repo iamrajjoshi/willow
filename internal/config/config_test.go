@@ -425,8 +425,9 @@ func TestMerge_TmuxConfig(t *testing.T) {
 			ReloadInterval: 5,
 			Notification:   BoolPtr(true),
 			NotifyCommand:  "say done",
-			Layout: []WindowSpec{
-				{Name: "editor", Panes: 2},
+			Layout: []string{
+				"split-window -h",
+				"select-layout even-horizontal",
 			},
 		},
 	}
@@ -442,8 +443,8 @@ func TestMerge_TmuxConfig(t *testing.T) {
 	if base.Tmux.NotifyCommand != "say done" {
 		t.Errorf("NotifyCommand = %q, want %q", base.Tmux.NotifyCommand, "say done")
 	}
-	if len(base.Tmux.Layout) != 1 || base.Tmux.Layout[0].Name != "editor" {
-		t.Errorf("Layout = %v, want [{editor 2 }]", base.Tmux.Layout)
+	if len(base.Tmux.Layout) != 2 || base.Tmux.Layout[0] != "split-window -h" {
+		t.Errorf("Layout = %v, want [split-window -h, select-layout even-horizontal]", base.Tmux.Layout)
 	}
 }
 
@@ -522,6 +523,28 @@ func TestMerge_NotifyWaitCommand(t *testing.T) {
 
 	if base.Tmux.NotifyWaitCommand != "updated" {
 		t.Errorf("NotifyWaitCommand = %q, want %q", base.Tmux.NotifyWaitCommand, "updated")
+	}
+}
+
+func TestMerge_PostWorktreeCreate(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd old"}}}
+	overlay := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd website", "nvm use"}}}
+
+	merge(base, overlay)
+
+	if len(base.Tmux.PostWorktreeCreate) != 2 || base.Tmux.PostWorktreeCreate[0] != "cd website" {
+		t.Errorf("PostWorktreeCreate = %v, want [cd website, nvm use]", base.Tmux.PostWorktreeCreate)
+	}
+}
+
+func TestMerge_PostWorktreeCreate_NilDoesNotOverride(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd website"}}}
+	overlay := &Config{}
+
+	merge(base, overlay)
+
+	if len(base.Tmux.PostWorktreeCreate) != 1 || base.Tmux.PostWorktreeCreate[0] != "cd website" {
+		t.Errorf("PostWorktreeCreate = %v, want [cd website]", base.Tmux.PostWorktreeCreate)
 	}
 }
 
