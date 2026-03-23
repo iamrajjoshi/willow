@@ -10,7 +10,17 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 )
 
-const defaultNotifyCommand = "afplay /System/Library/Sounds/Glass.aiff"
+const (
+	defaultNotifyCommand     = "afplay /System/Library/Sounds/Glass.aiff"
+	defaultNotifyWaitCommand = "afplay /System/Library/Sounds/Funk.aiff"
+)
+
+// Transition describes a status change for a worktree.
+type Transition struct {
+	Key        string        // "repo/wtDir"
+	FromStatus claude.Status
+	ToStatus   claude.Status
+}
 
 func stateFilePath() string {
 	return filepath.Join(config.WillowHome(), "tmux-states.json")
@@ -37,23 +47,48 @@ func saveState(state StatusBarState) {
 }
 
 // CheckTransitions compares current statuses against saved state and returns
-// worktree keys that transitioned from BUSY to a non-BUSY status.
-func CheckTransitions(current map[string]claude.Status) []string {
+// typed transitions from BUSY to a non-BUSY status.
+func CheckTransitions(current map[string]claude.Status) []Transition {
 	prev := loadState()
-	var transitioned []string
+	var transitions []Transition
 
 	newState := make(StatusBarState)
 	for key, status := range current {
 		newState[key] = string(status)
 		if prevStatus, ok := prev[key]; ok {
 			if prevStatus == string(claude.StatusBusy) && status != claude.StatusBusy {
-				transitioned = append(transitioned, key)
+				transitions = append(transitions, Transition{
+					Key:        key,
+					FromStatus: claude.StatusBusy,
+					ToStatus:   status,
+				})
 			}
 		}
 	}
 
 	saveState(newState)
-	return transitioned
+	return transitions
+}
+
+// NotifyWithContext sends notifications for transitions, skipping the current
+// tmux session and using different sounds for WAIT vs DONE.
+func NotifyWithContext(transitions []Transition, cfg *config.Config) {
+	currentSession, _ := CurrentSession()
+	for _, t := range transitions {
+		if t.Key == currentSession {
+			continue
+		}
+		switch t.ToStatus {
+		case claude.StatusWait:
+			cmd := cfg.Tmux.NotifyWaitCommand
+			if cmd == "" {
+				cmd = defaultNotifyWaitCommand
+			}
+			Notify(cmd)
+		case claude.StatusDone:
+			Notify(cfg.Tmux.NotifyCommand)
+		}
+	}
 }
 
 // Notify runs the notification command (sound).

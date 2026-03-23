@@ -491,3 +491,47 @@ func TestMerge_TeardownHooks(t *testing.T) {
 		t.Errorf("Teardown = %v, want [new-cleanup.sh]", base.Teardown)
 	}
 }
+
+func TestMerge_SwitcherPreview_NilDoesNotOverride(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{SwitcherPreview: BoolPtr(false)}}
+	overlay := &Config{}
+
+	merge(base, overlay)
+
+	if base.Tmux.SwitcherPreview == nil || *base.Tmux.SwitcherPreview != false {
+		t.Error("SwitcherPreview should remain false when overlay is nil")
+	}
+}
+
+func TestMerge_SwitcherPreview_Override(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{SwitcherPreview: BoolPtr(true)}}
+	overlay := &Config{Tmux: TmuxConfig{SwitcherPreview: BoolPtr(false)}}
+
+	merge(base, overlay)
+
+	if base.Tmux.SwitcherPreview == nil || *base.Tmux.SwitcherPreview != false {
+		t.Error("SwitcherPreview should be false after override")
+	}
+}
+
+func TestMerge_NotifyWaitCommand(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{NotifyWaitCommand: "original"}}
+	overlay := &Config{Tmux: TmuxConfig{NotifyWaitCommand: "updated"}}
+
+	merge(base, overlay)
+
+	if base.Tmux.NotifyWaitCommand != "updated" {
+		t.Errorf("NotifyWaitCommand = %q, want %q", base.Tmux.NotifyWaitCommand, "updated")
+	}
+}
+
+func TestMerge_NotifyWaitCommand_EmptyDoesNotOverride(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{NotifyWaitCommand: "original"}}
+	overlay := &Config{}
+
+	merge(base, overlay)
+
+	if base.Tmux.NotifyWaitCommand != "original" {
+		t.Errorf("NotifyWaitCommand = %q, want %q", base.Tmux.NotifyWaitCommand, "original")
+	}
+}
