@@ -159,7 +159,7 @@ func tmuxSwCmd() *cli.Command {
 			sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 			if !tmux.SessionExists(sessName) {
 				cfg := loadRepoConfig(repoName)
-				if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout); err != nil {
+				if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.PostWorktreeCreate); err != nil {
 					return fmt.Errorf("failed to create session: %w", err)
 				}
 			}
@@ -180,7 +180,7 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 	sessName := tmux.SessionNameForWorktree(item.RepoName, item.WtDirName)
 	if !tmux.SessionExists(sessName) {
 		cfg := loadRepoConfig(item.RepoName)
-		if err := tmux.NewSession(sessName, item.WtPath, cfg.Tmux.Layout); err != nil {
+		if err := tmux.NewSession(sessName, item.WtPath, cfg.Tmux.Layout, cfg.Tmux.PostWorktreeCreate); err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 	}
@@ -220,7 +220,7 @@ func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error 
 	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 	if !tmux.SessionExists(sessName) {
 		cfg := loadRepoConfig(repoName)
-		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout); err != nil {
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.PostWorktreeCreate); err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 	}
