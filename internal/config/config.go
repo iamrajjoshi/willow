@@ -20,10 +20,12 @@ type Config struct {
 }
 
 type TmuxConfig struct {
-	ReloadInterval int          `json:"reloadInterval,omitempty"`
-	Notification   *bool        `json:"notification,omitempty"`
-	NotifyCommand  string       `json:"notifyCommand,omitempty"`
-	Layout         []WindowSpec `json:"layout,omitempty"`
+	ReloadInterval   int          `json:"reloadInterval,omitempty"`
+	Notification     *bool        `json:"notification,omitempty"`
+	NotifyCommand    string       `json:"notifyCommand,omitempty"`
+	NotifyWaitCommand string      `json:"notifyWaitCommand,omitempty"`
+	SwitcherPreview  *bool        `json:"switcherPreview,omitempty"`
+	Layout           []WindowSpec `json:"layout,omitempty"`
 }
 
 // WindowSpec defines a tmux window to create when starting a new session.
@@ -213,6 +215,12 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Tmux.NotifyCommand != "" {
 		base.Tmux.NotifyCommand = overlay.Tmux.NotifyCommand
+	}
+	if overlay.Tmux.NotifyWaitCommand != "" {
+		base.Tmux.NotifyWaitCommand = overlay.Tmux.NotifyWaitCommand
+	}
+	if overlay.Tmux.SwitcherPreview != nil {
+		base.Tmux.SwitcherPreview = overlay.Tmux.SwitcherPreview
 	}
 	if overlay.Tmux.Layout != nil {
 		base.Tmux.Layout = overlay.Tmux.Layout

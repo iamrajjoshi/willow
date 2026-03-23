@@ -89,6 +89,7 @@ func NewApp() *cli.Command {
 			setupCmd(),
 			shellInitCmd(),
 			gcCmd(),
+			refreshStatusCmd(),
 		},
 	}
 }
