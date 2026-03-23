@@ -14,7 +14,7 @@ Enter
 Type "bash /Users/raj.joshi/code/willow/screenshots/seed-demo-data.sh"
 Enter
 Sleep 500ms
-Type "cd ~/.willow/worktrees/evergreen/master"
+Type "cd ~/.willow/worktrees/acme-app/main"
 Enter
 Sleep 500ms
 Type "clear"
