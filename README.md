@@ -267,6 +267,10 @@ Config merges two tiers (local wins):
   "defaults": {
     "fetch": true,
     "autoSetupRemote": true
+  },
+  "tmux": {
+    "layout": ["split-window -h", "select-layout even-horizontal"],
+    "postWorktreeCreate": ["cd website"]
   }
 }
 ```

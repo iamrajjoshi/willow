@@ -69,21 +69,38 @@ Set `"notification": false` to disable sound.
 
 ## Session layout
 
-By default, `willow tmux` creates a single window with one pane for each worktree session. You can customize this with the `tmux.layout` config field:
+By default, `willow tmux` creates a single window with one pane for each worktree session. You can customize this with `tmux.layout` — a list of raw tmux subcommands that run after session creation. The `-t` (target session) and `-c` (working directory) flags are auto-injected when not present.
 
 ```jsonc
 {
   "tmux": {
     "layout": [
-      { "name": "claude", "panes": 1 },
-      { "name": "dev", "panes": 4, "layout": "tiled" },
-      { "name": "scratch", "panes": 1 }
+      "split-window -h",
+      "select-layout even-horizontal"
     ]
   }
 }
 ```
 
-Each entry creates a tmux window. The `layout` field accepts any tmux layout: `even-horizontal`, `even-vertical`, `main-horizontal`, `main-vertical`, `tiled`.
+Any tmux subcommand works: `split-window`, `new-window`, `select-layout`, `resize-pane`, etc.
+
+### Pane init commands
+
+Use `tmux.postWorktreeCreate` to send shell commands to every pane after the layout is set up. These run once when a session is first created.
+
+```jsonc
+{
+  "tmux": {
+    "layout": [
+      "split-window -h",
+      "select-layout even-horizontal"
+    ],
+    "postWorktreeCreate": ["cd website"]
+  }
+}
+```
+
+This creates two side-by-side panes, each starting in the `website/` subdirectory.
 
 ## Shell integration
 

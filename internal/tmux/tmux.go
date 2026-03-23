@@ -5,8 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/iamrajjoshi/willow/internal/config"
 )
 
 func InTmux() bool {
@@ -26,56 +24,69 @@ func SessionExists(name string) bool {
 	return err == nil
 }
 
-// NewSession creates a tmux session with windows/panes based on config layout.
-// If no layout is configured, a single default window is created.
-func NewSession(name, dir string, layout []config.WindowSpec) error {
-	if len(layout) == 0 {
-		_, err := run("new-session", "-d", "-s", name, "-c", dir)
+func SendKeys(target string, keys ...string) error {
+	args := append([]string{"send-keys", "-t", target}, keys...)
+	_, err := run(args...)
+	return err
+}
+
+// NewSession creates a tmux session and applies layout commands.
+// Layout entries are raw tmux subcommands (e.g. "split-window -h").
+// The session target (-t) and working directory (-c) are auto-injected.
+// After layout setup, postWorktreeCreate commands are sent to every pane.
+func NewSession(name, dir string, layout []string, postWorktreeCreate []string) error {
+	if _, err := run("new-session", "-d", "-s", name, "-c", dir); err != nil {
 		return err
 	}
 
-	// Create session with first window
-	firstWin := layout[0]
-	winName := firstWin.Name
-	if winName == "" {
-		winName = "main"
-	}
-	if _, err := run("new-session", "-d", "-s", name, "-n", winName, "-c", dir); err != nil {
-		return err
+	for _, cmd := range layout {
+		args := prepareLayoutCmd(strings.Fields(cmd), name, dir)
+		run(args...)
 	}
 
-	// Add panes to first window
-	createPanes(name, winName, dir, firstWin)
-
-	// Create additional windows
-	for _, spec := range layout[1:] {
-		wName := spec.Name
-		if wName == "" {
-			wName = "window"
+	for _, paneID := range listSessionPanes(name) {
+		for _, cmd := range postWorktreeCreate {
+			SendKeys(paneID, cmd, "Enter")
 		}
-		if _, err := run("new-window", "-t", name, "-n", wName, "-c", dir); err != nil {
-			continue
-		}
-		createPanes(name, wName, dir, spec)
 	}
 
-	// Select first window
-	run("select-window", "-t", name+":"+layout[0].Name)
 	return nil
 }
 
-func createPanes(session, window, dir string, spec config.WindowSpec) {
-	target := session + ":" + window
-	panes := spec.Panes
-	if panes <= 1 {
-		return
+func prepareLayoutCmd(args []string, session, dir string) []string {
+	if len(args) == 0 {
+		return args
 	}
-	for i := 1; i < panes; i++ {
-		run("split-window", "-t", target, "-c", dir)
+
+	subcmd := args[0]
+	rest := args[1:]
+
+	hasFlag := func(flag string) bool {
+		for _, a := range rest {
+			if a == flag {
+				return true
+			}
+		}
+		return false
 	}
-	if spec.Layout != "" {
-		run("select-layout", "-t", target, spec.Layout)
+
+	if !hasFlag("-t") {
+		rest = append([]string{"-t", session}, rest...)
 	}
+
+	if (subcmd == "split-window" || subcmd == "new-window") && !hasFlag("-c") {
+		rest = append(rest, "-c", dir)
+	}
+
+	return append([]string{subcmd}, rest...)
+}
+
+func listSessionPanes(session string) []string {
+	out, err := run("list-panes", "-t", session, "-s", "-F", "#{pane_id}")
+	if err != nil || out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
 }
 
 func KillSession(name string) error {
