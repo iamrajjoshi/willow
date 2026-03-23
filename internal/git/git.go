@@ -99,6 +99,25 @@ func (g *Git) IsDirty() (bool, error) {
 	return out != "", nil
 }
 
+// MergedBranches returns branches that have been merged into origin/<base>.
+func (g *Git) MergedBranches(base string) ([]string, error) {
+	out, err := g.Run("branch", "--merged", "origin/"+base, "--format=%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	var branches []string
+	for _, b := range strings.Split(out, "\n") {
+		b = strings.TrimSpace(b)
+		if b != "" && b != base {
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
+}
+
 func (g *Git) HasUnpushedCommits() (bool, error) {
 	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
 	if err != nil {

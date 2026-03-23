@@ -16,6 +16,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
@@ -33,6 +34,7 @@ type session struct {
 	DiffStats string
 	Age       string
 	Unread    bool
+	WtDirName string
 }
 
 type summary struct {
@@ -52,12 +54,54 @@ var (
 	diffCacheTTL = 10 * time.Second
 )
 
+func readKey(tty *os.File) chan byte {
+	ch := make(chan byte, 1)
+	go func() {
+		buf := make([]byte, 3)
+		for {
+			n, err := tty.Read(buf)
+			if err != nil {
+				return
+			}
+			if n == 1 {
+				ch <- buf[0]
+			} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
+				// Arrow keys: ESC [ A/B
+				ch <- buf[2]
+			}
+		}
+	}()
+	return ch
+}
+
+func setRawMode(tty *os.File) {
+	cmd := exec.Command("stty", "raw", "-echo")
+	cmd.Stdin = tty
+	cmd.Run()
+}
+
+func restoreMode(tty *os.File) {
+	cmd := exec.Command("stty", "-raw", "echo")
+	cmd.Stdin = tty
+	cmd.Run()
+}
+
 func Run(ctx context.Context, cfg Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	// Open /dev/tty for keyboard input
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		return fmt.Errorf("open /dev/tty: %w", err)
+	}
+	defer tty.Close()
+
+	setRawMode(tty)
+	defer restoreMode(tty)
 
 	// Enter alternate screen, hide cursor
 	fmt.Print(ui.AltScreenOn())
@@ -76,8 +120,15 @@ func Run(ctx context.Context, cfg Config) error {
 	ticker := time.NewTicker(cfg.RefreshInterval)
 	defer ticker.Stop()
 
+	selectedIdx := 0
+	keyCh := readKey(tty)
+
 	// Initial render
-	renderTick(cols)
+	sessions, sum := collectData()
+	output := render(sessions, sum, cols, selectedIdx)
+	fmt.Print(ui.CursorHome())
+	fmt.Print(output)
+	fmt.Print(ui.ClearToEnd())
 
 	for {
 		select {
@@ -88,17 +139,48 @@ func Run(ctx context.Context, cfg Config) error {
 		case <-winchCh:
 			cols = termWidth()
 		case <-ticker.C:
-			renderTick(cols)
+			sessions, sum = collectData()
+			if selectedIdx >= len(sessions) && len(sessions) > 0 {
+				selectedIdx = len(sessions) - 1
+			}
+			output = render(sessions, sum, cols, selectedIdx)
+			fmt.Print(ui.CursorHome())
+			fmt.Print(output)
+			fmt.Print(ui.ClearToEnd())
+		case key := <-keyCh:
+			switch key {
+			case 'j', 'B': // down: j or arrow-down (ESC[B)
+				if selectedIdx < len(sessions)-1 {
+					selectedIdx++
+				}
+			case 'k', 'A': // up: k or arrow-up (ESC[A)
+				if selectedIdx > 0 {
+					selectedIdx--
+				}
+			case 'q', 3: // q or Ctrl+C
+				return nil
+			case 'r': // refresh
+				sessions, sum = collectData()
+				if selectedIdx >= len(sessions) && len(sessions) > 0 {
+					selectedIdx = len(sessions) - 1
+				}
+			case 13: // Enter — switch to tmux session
+				if selectedIdx < len(sessions) {
+					s := sessions[selectedIdx]
+					sessionName := tmux.SessionNameForWorktree(s.Repo, s.WtDirName)
+					restoreMode(tty)
+					fmt.Print(ui.ShowCursor())
+					fmt.Print(ui.AltScreenOff())
+					tmux.SwitchClient(sessionName)
+					return nil
+				}
+			}
+			output = render(sessions, sum, cols, selectedIdx)
+			fmt.Print(ui.CursorHome())
+			fmt.Print(output)
+			fmt.Print(ui.ClearToEnd())
 		}
 	}
-}
-
-func renderTick(cols int) {
-	sessions, sum := collectData()
-	output := render(sessions, sum, cols)
-	fmt.Print(ui.CursorHome())
-	fmt.Print(output)
-	fmt.Print(ui.ClearToEnd())
 }
 
 func collectData() ([]session, summary) {
@@ -154,6 +236,7 @@ func collectData() ([]session, summary) {
 						DiffStats: diff,
 						Age:       claude.TimeSince(ss.Timestamp),
 						Unread:    ss.Status == claude.StatusDone && unread,
+						WtDirName: wtDir,
 					}
 					sessions = append(sessions, s)
 					if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait || ss.Status == claude.StatusDone {
@@ -172,6 +255,7 @@ func collectData() ([]session, summary) {
 					DiffStats: diff,
 					Age:       claude.TimeSince(ws.Timestamp),
 					Unread:    ws.Status == claude.StatusDone && unread,
+					WtDirName: wtDir,
 				}
 				sessions = append(sessions, s)
 				sum.Agents++
@@ -182,7 +266,7 @@ func collectData() ([]session, summary) {
 	return sessions, sum
 }
 
-func render(sessions []session, sum summary, width int) string {
+func render(sessions []session, sum summary, width int, selectedIdx int) string {
 	var b strings.Builder
 	u := &ui.UI{}
 
@@ -273,9 +357,19 @@ func render(sessions []session, sum summary, width int) string {
 			branchW, s.Branch,
 			diffW, s.DiffStats,
 			u.Dim(s.Age))
-		b.WriteString(line)
+		if i == selectedIdx {
+			b.WriteString("\033[7m") // inverse video
+			b.WriteString(line)
+			b.WriteString("\033[0m")
+		} else {
+			b.WriteString(line)
+		}
 		b.WriteString("\n")
 	}
+
+	b.WriteString("\n")
+	b.WriteString(u.Dim("  j/k: navigate | Enter: switch | r: refresh | q: quit"))
+	b.WriteString("\n")
 
 	return b.String()
 }
@@ -294,7 +388,7 @@ func getDiffStats(wtPath, baseBranch string) string {
 		return "--"
 	}
 
-	stats := parseShortstat(out)
+	stats := ParseShortstat(out)
 
 	diffCacheMu.Lock()
 	diffCache[wtPath] = cachedDiff{stats: stats, at: time.Now()}
@@ -303,7 +397,8 @@ func getDiffStats(wtPath, baseBranch string) string {
 	return stats
 }
 
-func parseShortstat(out string) string {
+// ParseShortstat converts git diff --shortstat output into a compact summary.
+func ParseShortstat(out string) string {
 	if out == "" {
 		return "--"
 	}

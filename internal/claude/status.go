@@ -202,6 +202,115 @@ func TimeSince(t time.Time) string {
 	}
 }
 
+// SessionFileInfo holds a parsed session with its repo/worktree metadata.
+type SessionFileInfo struct {
+	RepoName    string
+	WorktreeDir string
+	Session     SessionStatus
+}
+
+// RemoveSessionFile removes a single session file.
+func RemoveSessionFile(repoName, worktreeDir, sessionID string) error {
+	path := filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".json")
+	return os.Remove(path)
+}
+
+// ScanAllSessions walks ~/.willow/status/ and returns all parsed sessions.
+func ScanAllSessions() ([]SessionFileInfo, error) {
+	statusDir := StatusDir()
+	var results []SessionFileInfo
+
+	repos, err := os.ReadDir(statusDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	for _, repo := range repos {
+		if !repo.IsDir() {
+			continue
+		}
+		repoName := repo.Name()
+		wtEntries, err := os.ReadDir(filepath.Join(statusDir, repoName))
+		if err != nil {
+			continue
+		}
+		for _, wt := range wtEntries {
+			if !wt.IsDir() {
+				continue
+			}
+			wtDir := wt.Name()
+			sessEntries, err := os.ReadDir(filepath.Join(statusDir, repoName, wtDir))
+			if err != nil {
+				continue
+			}
+			for _, se := range sessEntries {
+				if se.IsDir() || !strings.HasSuffix(se.Name(), ".json") {
+					continue
+				}
+				data, err := os.ReadFile(filepath.Join(statusDir, repoName, wtDir, se.Name()))
+				if err != nil {
+					continue
+				}
+				var ss SessionStatus
+				if err := json.Unmarshal(data, &ss); err != nil {
+					continue
+				}
+				results = append(results, SessionFileInfo{
+					RepoName:    repoName,
+					WorktreeDir: wtDir,
+					Session:     ss,
+				})
+			}
+		}
+	}
+	return results, nil
+}
+
+// CleanEmptyStatusDirs removes empty worktree/repo directories under StatusDir().
+func CleanEmptyStatusDirs() error {
+	statusDir := StatusDir()
+	repos, err := os.ReadDir(statusDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, repo := range repos {
+		if !repo.IsDir() {
+			continue
+		}
+		repoPath := filepath.Join(statusDir, repo.Name())
+		wtEntries, err := os.ReadDir(repoPath)
+		if err != nil {
+			continue
+		}
+		for _, wt := range wtEntries {
+			if !wt.IsDir() {
+				continue
+			}
+			wtPath := filepath.Join(repoPath, wt.Name())
+			entries, err := os.ReadDir(wtPath)
+			if err != nil {
+				continue
+			}
+			if len(entries) == 0 {
+				os.Remove(wtPath)
+			}
+		}
+		// Re-check if repo dir is now empty
+		wtEntries, err = os.ReadDir(repoPath)
+		if err == nil && len(wtEntries) == 0 {
+			os.Remove(repoPath)
+		}
+	}
+	return nil
+}
+
 // RemoveStatusDir removes the entire session directory for a worktree.
 func RemoveStatusDir(repoName, worktreeDir string) {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)

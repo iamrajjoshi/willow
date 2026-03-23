@@ -11,6 +11,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/dashboard"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/tmux"
@@ -86,10 +87,14 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
 					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-D: Delete"),
-					fzf.WithPreview(previewCmd, "right:50%:wrap:follow"),
 					fzf.WithExpectKeys("ctrl-n", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(fmt.Sprintf("start:reload-sync(%s)", reloadCmd)),
+				}
+
+				cfg := config.Load("")
+				if cfg.Tmux.SwitcherPreview == nil || *cfg.Tmux.SwitcherPreview {
+					opts = append(opts, fzf.WithPreview(previewCmd, "right:50%:wrap:follow"))
 				}
 				if startPos > 0 {
 					opts = append(opts, fzf.WithBind(fmt.Sprintf("start:pos(%d)", startPos)))
@@ -321,23 +326,62 @@ func tmuxPreviewCmd() *cli.Command {
 			repoName := filepath.Base(filepath.Dir(wtPath))
 
 			sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+
+			// Metadata header
+			fmt.Printf("\033[0;34m\u2500\u2500 %s/%s \u2500\u2500\033[0m\n\n", repoName, wtDir)
+			printPreviewMetadata(wtPath, repoName)
+
 			if !tmux.SessionExists(sessName) {
 				fmt.Printf("\033[2mSession '%s' is offline.\033[0m\n\n", sessName)
 				fmt.Println("Press Enter to start the session.")
 				return nil
 			}
 
+			fmt.Printf("\033[0;34m\u2500\u2500 tmux pane \u2500\u2500\033[0m\n\n")
+
 			content, err := tmux.CapturePane(sessName)
 			if err != nil {
 				fmt.Printf("\033[2mCould not capture pane: %v\033[0m\n", err)
 				return nil
 			}
-
-			fmt.Printf("\033[0;34m\u2500\u2500 %s \u2500\u2500\033[0m\n\n", sessName)
 			fmt.Print(content)
 			return nil
 		},
 	}
+}
+
+func printPreviewMetadata(wtPath, repoName string) {
+	g := &git.Git{Dir: wtPath}
+	repoCfg := loadRepoConfig(repoName)
+	baseBranch := repoCfg.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	if branch, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+		fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
+	}
+
+	if diffOut, err := g.Run("diff", "--shortstat", fmt.Sprintf("origin/%s...HEAD", baseBranch)); err == nil {
+		stats := dashboard.ParseShortstat(diffOut)
+		fmt.Printf("  \033[1mDiff:\033[0m    %s\n", stats)
+	}
+
+	if lastCommit, err := g.Run("log", "-1", "--format=%s (%cr)", "--no-walk"); err == nil {
+		fmt.Printf("  \033[1mCommit:\033[0m  %s\n", lastCommit)
+	}
+
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		prCmd := exec.Command(ghPath, "pr", "view", "--json", "state,title", "-q", ".state + \" \\u2014 \" + .title")
+		prCmd.Dir = wtPath
+		if prOut, err := prCmd.Output(); err == nil {
+			prInfo := strings.TrimSpace(string(prOut))
+			if prInfo != "" {
+				fmt.Printf("  \033[1mPR:\033[0m      %s\n", prInfo)
+			}
+		}
+	}
+	fmt.Println()
 }
 
 func tmuxListCmd() *cli.Command {
@@ -395,6 +439,16 @@ func tmuxStatusBarCmd() *cli.Command {
 					totalWt++
 					wtDir := filepath.Base(wt.Path)
 					ws := claude.ReadStatus(repoName, wtDir)
+
+					// Self-heal: clean orphaned BUSY/WAIT sessions when tmux session is gone
+					sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !tmux.SessionExists(sessName) {
+						for _, ss := range claude.ReadAllSessions(repoName, wtDir) {
+							claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
+						}
+						ws = &claude.WorktreeStatus{Status: claude.StatusOffline}
+					}
+
 					currentStatuses[repoName+"/"+wtDir] = ws.Status
 					if ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait || ws.Status == claude.StatusDone {
 						activeAgents++
@@ -402,11 +456,11 @@ func tmuxStatusBarCmd() *cli.Command {
 				}
 			}
 
-			transitioned := tmux.CheckTransitions(currentStatuses)
-			if len(transitioned) > 0 {
+			transitions := tmux.CheckTransitions(currentStatuses)
+			if len(transitions) > 0 {
 				cfg := config.Load("")
 				if cfg.Tmux.Notification == nil || *cfg.Tmux.Notification {
-					tmux.Notify(cfg.Tmux.NotifyCommand)
+					tmux.NotifyWithContext(transitions, cfg)
 				}
 			}
 
