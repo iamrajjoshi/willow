@@ -10,6 +10,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -23,15 +24,16 @@ const (
 )
 
 type PickerItem struct {
-	RepoName   string
-	Branch     string
-	WtDirName  string
-	WtPath     string
-	Status     claude.Status
-	Unread     bool
-	HasSession bool
-	Sessions   []*claude.SessionStatus
-	Merged     bool
+	RepoName    string
+	Branch      string
+	WtDirName   string
+	WtPath      string
+	Status      claude.Status
+	Unread      bool
+	HasSession  bool
+	Sessions    []*claude.SessionStatus
+	Merged      bool
+	StackPrefix string // tree-drawing prefix for stacked branches (e.g., "├─ ")
 }
 
 func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
@@ -92,16 +94,68 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 		}
 	}
 
-	sort.SliceStable(items, func(i, j int) bool {
-		oi, oj := statusOrder(items[i].Status), statusOrder(items[j].Status)
-		// Merged items sort last
-		if items[i].Merged != items[j].Merged {
-			return !items[i].Merged
-		}
-		return oi < oj
-	})
+	// Compute stack prefixes and reorder: stacked branches grouped by tree, then non-stacked by status
+	items = applyStackOrder(items, repoNames)
 
 	return items, nil
+}
+
+func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
+	// Build branch set for tree line computation
+	branchSet := make(map[string]bool)
+	for _, item := range items {
+		branchSet[item.Branch] = true
+	}
+
+	// Build item lookup by branch
+	itemMap := make(map[string]*PickerItem)
+	for i := range items {
+		itemMap[items[i].Branch] = &items[i]
+	}
+
+	// Load stacks for each repo and compute tree lines
+	stackedBranches := make(map[string]bool)
+	var stackedItems []PickerItem
+
+	for _, repoName := range repoNames {
+		bareDir, err := config.ResolveRepo(repoName)
+		if err != nil {
+			continue
+		}
+		st := stack.Load(bareDir)
+		if st.IsEmpty() {
+			continue
+		}
+
+		treeLines := st.TreeLines(branchSet)
+		for _, tl := range treeLines {
+			if item, ok := itemMap[tl.Branch]; ok {
+				item.StackPrefix = tl.Prefix
+				stackedBranches[tl.Branch] = true
+				stackedItems = append(stackedItems, *item)
+			}
+		}
+	}
+
+	// Collect non-stacked items
+	var nonStacked []PickerItem
+	for _, item := range items {
+		if !stackedBranches[item.Branch] {
+			nonStacked = append(nonStacked, item)
+		}
+	}
+
+	// Sort non-stacked by status (merged last)
+	sort.SliceStable(nonStacked, func(i, j int) bool {
+		if nonStacked[i].Merged != nonStacked[j].Merged {
+			return !nonStacked[i].Merged
+		}
+		return statusOrder(nonStacked[i].Status) < statusOrder(nonStacked[j].Status)
+	})
+
+	// Stacked first (in tree order), then non-stacked (by status)
+	result := append(stackedItems, nonStacked...)
+	return result
 }
 
 // FormatPickerLines produces ANSI-colored lines for the fzf picker.
@@ -178,10 +232,14 @@ func filterActiveSessions(sessions []*claude.SessionStatus) []*claude.SessionSta
 }
 
 func displayName(item PickerItem, multiRepo bool) string {
+	name := item.Branch
 	if multiRepo {
-		return item.RepoName + "/" + item.Branch
+		name = item.RepoName + "/" + item.Branch
 	}
-	return item.Branch
+	if item.StackPrefix != "" {
+		name = item.StackPrefix + name
+	}
+	return name
 }
 
 // ExtractPathFromLine pulls the worktree path from the last pipe-delimited field,

@@ -12,6 +12,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -252,8 +253,15 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			// Fetch latest from remote (config default, --no-fetch overrides)
-			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
+			// Determine if base is a local branch (for stacked PRs) or remote
+			localBase := repoGit.LocalBranchExists(baseBranch)
+			gitRef := "origin/" + baseBranch
+			if localBase {
+				gitRef = baseBranch
+			}
+
+			// Fetch latest from remote (only for remote bases)
+			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") && !localBase
 			if shouldFetch {
 				done = tr.Start("git fetch")
 				if cdOnly {
@@ -275,16 +283,23 @@ func newCmd() *cli.Command {
 
 			done = tr.Start("git worktree add")
 			if cdOnly {
-				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, "origin/"+baseBranch)
-				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, gitRef)
+				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			} else {
-				u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold("origin/"+baseBranch)))
-				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+				u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold(gitRef)))
+				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			}
+			done()
+
+			// Record parent in stack for stacked PRs
+			done = tr.Start("record stack parent")
+			st := stack.Load(bareDir)
+			st.SetParent(branch, baseBranch)
+			st.Save(bareDir)
 			done()
 
 			return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, baseBranch, cdOnly)

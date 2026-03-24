@@ -88,6 +88,54 @@ wwc auth-refactor                        # checkout + cd (shell integration)
 | `--no-fetch` | Skip fetching from remote | `false` |
 | `--cd` | Print only the path (for scripting) | `false` |
 
+## Stacked PRs
+
+Create a chain of branches where each builds on the previous:
+
+```bash
+ww new feature-a -b main              # start a stack
+ww new feature-b -b feature-a         # stack on top
+ww new feature-c -b feature-b         # third layer
+```
+
+When `--base` points to a local branch (another worktree), willow forks from it directly and records the parent relationship in `branches.json` per repo. Stacked branches are shown as a tree in `ww ls` and the tmux picker:
+
+```
+  BRANCH                    STATUS  PATH                                           AGE
+  ├─ feature-a              BUSY    ~/.willow/worktrees/repo/feature-a             2h
+  │  └─ feature-b           DONE    ~/.willow/worktrees/repo/feature-b             1h
+  │     └─ feature-c        --      ~/.willow/worktrees/repo/feature-c             30m
+  standalone                --      ~/.willow/worktrees/repo/standalone             1d
+```
+
+Removing a stacked branch re-parents its children to the removed branch's parent. Use `--force` if the branch has children.
+
+## `ww sync [branch]`
+
+Rebase stacked worktrees onto their parents in topological order. Like `git machete traverse` but for worktrees.
+
+```bash
+ww sync                    # sync all stacks in current repo
+ww sync feature-b          # sync only feature-b and its descendants
+ww sync -r myrepo          # target specific repo
+ww sync --abort            # abort any in-progress rebases
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--no-fetch` | Skip `git fetch origin` | `false` |
+| `--abort` | Abort in-progress rebases across all stacked worktrees | `false` |
+
+**How it works:**
+1. Fetches `origin` once
+2. Processes branches in topological order (parents before children)
+3. For root branches (parent is `main`): rebases onto `origin/main`
+4. For stacked branches: rebases onto the local parent (which was just synced)
+5. On conflict: stops descendants of the conflicting branch, continues other stacks
+
+Dirty worktrees and in-progress rebases are skipped with a warning.
+
 ## `ww sw`
 
 Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.

@@ -34,6 +34,7 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 | `Ctrl-N` | Create new worktree from typed query (also accepts PR URLs) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
 | `Ctrl-P` | Browse open PRs and create a worktree for the selected one |
+| `Ctrl-S` | Sync stacked worktrees (selected branch's subtree, or all) |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
 | `Esc` | Close picker |
 

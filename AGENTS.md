@@ -28,6 +28,7 @@ CI runs this on both ubuntu and macos via `.github/workflows/test.yml`.
 - `internal/fzf/` - Embedded fzf wrapper (uses `github.com/junegunn/fzf` as a Go library, no external binary)
 - `internal/claude/` - Claude Code status tracking (hooks, session status, unread markers)
 - `internal/tmux/` - Tmux CLI primitives, picker logic, and notifications
+- `internal/stack/` - Stacked branch tracking (branches.json per repo, topo sort, tree display)
 - `internal/dashboard/` - Live TUI dashboard
 - `website/` - VitePress docs site (https://getwillow.dev)
 

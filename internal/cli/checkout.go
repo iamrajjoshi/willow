@@ -10,6 +10,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
@@ -196,21 +197,35 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
+			// Local branch as base (for stacked PRs) or remote
+			localBase := repoGit.LocalBranchExists(baseBranch)
+			gitRef := "origin/" + baseBranch
+			if localBase {
+				gitRef = baseBranch
+			}
+
 			dirName := strings.ReplaceAll(branch, "/", "-")
 			wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
 			done = tr.Start("git worktree add (new)")
 			if cdOnly {
-				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, "origin/"+baseBranch)
-				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, gitRef)
+				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			} else {
-				u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold("origin/"+baseBranch)))
-				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+				u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold(gitRef)))
+				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
 					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			}
+			done()
+
+			// Record parent in stack
+			done = tr.Start("record stack parent")
+			st := stack.Load(repo.BareDir)
+			st.SetParent(branch, baseBranch)
+			st.Save(repo.BareDir)
 			done()
 
 			return finishWorktree(tr, cfg, g, u, wtPath, repo.Name, branch, baseBranch, cdOnly)
