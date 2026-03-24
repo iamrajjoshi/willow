@@ -61,7 +61,7 @@ func TestReadStatus_StaleBusyBecomesIdle(t *testing.T) {
 	}
 }
 
-func TestReadStatus_StaleDoneBecomesIdle(t *testing.T) {
+func TestReadStatus_StaleDoneStaysDone(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -79,8 +79,8 @@ func TestReadStatus_StaleDoneBecomesIdle(t *testing.T) {
 	os.WriteFile(filepath.Join(statusDir, wtName+".json"), data, 0o644)
 
 	got := ReadStatus(repoName, wtName)
-	if got.Status != StatusIdle {
-		t.Errorf("Status = %q, want %q (stale DONE should become IDLE)", got.Status, StatusIdle)
+	if got.Status != StatusDone {
+		t.Errorf("Status = %q, want %q (stale DONE should stay DONE)", got.Status, StatusDone)
 	}
 }
 
@@ -265,8 +265,8 @@ func TestEffectiveStatus_Stale(t *testing.T) {
 	if got := EffectiveStatus(StatusBusy, stale); got != StatusIdle {
 		t.Errorf("stale BUSY = %q, want IDLE", got)
 	}
-	if got := EffectiveStatus(StatusDone, stale); got != StatusIdle {
-		t.Errorf("stale DONE = %q, want IDLE", got)
+	if got := EffectiveStatus(StatusDone, stale); got != StatusDone {
+		t.Errorf("stale DONE = %q, want DONE", got)
 	}
 	if got := EffectiveStatus(StatusWait, stale); got != StatusIdle {
 		t.Errorf("stale WAIT = %q, want IDLE", got)

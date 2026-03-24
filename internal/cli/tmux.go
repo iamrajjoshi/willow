@@ -438,15 +438,18 @@ func tmuxStatusBarCmd() *cli.Command {
 					}
 					totalWt++
 					wtDir := filepath.Base(wt.Path)
-					ws := claude.ReadStatus(repoName, wtDir)
+					sessions := claude.ReadAllSessions(repoName, wtDir)
+					ws := claude.AggregateStatus(sessions)
 
 					// Self-heal: clean orphaned BUSY/WAIT sessions when tmux session is gone
 					sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !tmux.SessionExists(sessName) {
-						for _, ss := range claude.ReadAllSessions(repoName, wtDir) {
-							claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
+						for _, ss := range sessions {
+							if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait {
+								claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
+							}
 						}
-						ws = &claude.WorktreeStatus{Status: claude.StatusOffline}
+						ws = claude.AggregateStatus(claude.ReadAllSessions(repoName, wtDir))
 					}
 
 					currentStatuses[repoName+"/"+wtDir] = ws.Status

@@ -43,22 +43,23 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 
 		if len(sessions) > 0 {
 			for _, ss := range sessions {
+				effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
 				entry := sessionEntry{
 					Repo:      repoName,
 					Branch:    wt.Branch,
 					SessionID: ss.SessionID,
-					Status:    string(ss.Status),
+					Status:    string(effective),
 					Path:      wt.Path,
 				}
 				if !ss.Timestamp.IsZero() {
 					entry.Timestamp = claude.TimeSince(ss.Timestamp)
 				}
-				if ss.Status == claude.StatusDone && unread {
+				if effective == claude.StatusDone && unread {
 					entry.Unread = true
 				}
 				rs.Entries = append(rs.Entries, entry)
 
-				if ss.Status == claude.StatusBusy || ss.Status == claude.StatusDone || ss.Status == claude.StatusWait {
+				if effective == claude.StatusBusy || effective == claude.StatusDone || effective == claude.StatusWait {
 					rs.ActiveCount++
 				}
 			}
