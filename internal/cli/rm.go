@@ -277,7 +277,9 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	// Remove from stack (re-parents children to this branch's parent)
 	if st.IsTracked(wt.Branch) {
 		st.Remove(wt.Branch)
-		st.Save(bareDir)
+		if err := st.Save(bareDir); err != nil {
+			u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
+		}
 	}
 
 	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
