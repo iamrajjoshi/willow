@@ -9,7 +9,7 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "alias willow=/Users/raj.joshi/code/willow/bin/willow"
+Type "alias willow=/Users/raj/code/willow/bin/willow"
 Enter
 Type "cd ~/.willow/worktrees/willow/main"
 Enter
@@ -19,7 +19,7 @@ Enter
 Sleep 300ms
 Show
 
-Type "willow new feature/auth --no-fetch"
+Type "willow new feat/search --no-fetch"
 Sleep 300ms
 Enter
 Sleep 2s
@@ -34,7 +34,7 @@ Sleep 300ms
 Enter
 Sleep 2s
 
-Type "willow rm feature/auth"
+Type "willow rm feat/search"
 Sleep 300ms
 Enter
 Sleep 2s

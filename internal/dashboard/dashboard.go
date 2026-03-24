@@ -75,13 +75,16 @@ func readKey(tty *os.File) chan byte {
 }
 
 func setRawMode(tty *os.File) {
-	cmd := exec.Command("stty", "raw", "-echo")
+	// Use -icanon instead of raw so output post-processing (ONLCR) stays enabled.
+	// stty raw also sets -opost which turns \n into bare LF, breaking ANSI cursor
+	// positioning that relies on \n returning the cursor to column 0.
+	cmd := exec.Command("stty", "-echo", "-icanon", "min", "1", "time", "0")
 	cmd.Stdin = tty
 	cmd.Run()
 }
 
 func restoreMode(tty *os.File) {
-	cmd := exec.Command("stty", "-raw", "echo")
+	cmd := exec.Command("stty", "echo", "icanon")
 	cmd.Stdin = tty
 	cmd.Run()
 }

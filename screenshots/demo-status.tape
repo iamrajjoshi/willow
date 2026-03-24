@@ -9,12 +9,12 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "alias willow=/Users/raj.joshi/code/willow/bin/willow"
+Type "alias willow=/Users/raj/code/willow/bin/willow"
 Enter
-Type "bash /Users/raj.joshi/code/willow/screenshots/seed-demo-data.sh"
+Type "bash /Users/raj/code/willow/screenshots/seed-demo-data.sh"
 Enter
 Sleep 500ms
-Type "cd ~/.willow/worktrees/evergreen/master"
+Type "cd ~/.willow/worktrees/willow/main"
 Enter
 Sleep 500ms
 Type "clear"
