@@ -43,9 +43,8 @@ func StatusDir() string {
 
 // ReadAllSessions reads all session status files from the directory-based layout:
 // ~/.willow/status/<repo>/<worktree>/*.json
+// Stale sessions (>30 min) and corrupt files are cleaned up in the same pass.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
-	CleanStaleSessions(repoName, worktreeDir)
-
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -57,12 +56,18 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
 		var ss SessionStatus
 		if err := json.Unmarshal(data, &ss); err != nil {
+			os.Remove(path)
+			continue
+		}
+		if time.Since(ss.Timestamp) > cleanupTimeout {
+			os.Remove(path)
 			continue
 		}
 		sessions = append(sessions, &ss)
@@ -76,14 +81,14 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 func ReadStatus(repoName, worktreeDir string) *WorktreeStatus {
 	sessions := ReadAllSessions(repoName, worktreeDir)
 	if len(sessions) > 0 {
-		return aggregateStatus(sessions)
+		return AggregateStatus(sessions)
 	}
 
 	// Legacy single-file fallback
 	return readLegacyStatus(repoName, worktreeDir)
 }
 
-func aggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
+func AggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 	best := &WorktreeStatus{Status: StatusOffline}
 	for _, ss := range sessions {
 		effective := EffectiveStatus(ss.Status, ss.Timestamp)
@@ -99,7 +104,7 @@ func aggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 }
 
 func EffectiveStatus(s Status, ts time.Time) Status {
-	if (s == StatusBusy || s == StatusDone || s == StatusWait) && time.Since(ts) > staleTimeout {
+	if (s == StatusBusy || s == StatusWait) && time.Since(ts) > staleTimeout {
 		return StatusIdle
 	}
 	return s

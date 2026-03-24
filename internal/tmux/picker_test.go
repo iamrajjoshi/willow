@@ -213,13 +213,13 @@ func TestFilterActiveSessions(t *testing.T) {
 			3,
 		},
 		{
-			"stale BUSY becomes idle and is filtered",
+			"stale BUSY/WAIT become idle, stale DONE stays",
 			[]*claude.SessionStatus{
 				{Status: claude.StatusBusy, Timestamp: stale},
 				{Status: claude.StatusDone, Timestamp: stale},
 				{Status: claude.StatusWait, Timestamp: stale},
 			},
-			0,
+			1,
 		},
 	}
 	for _, tt := range tests {
