@@ -117,12 +117,12 @@ case "$HOOK_EVENT" in
     STATUS="DONE"
     ;;
   Notification)
-    # Don't overwrite DONE — only set WAIT if not already DONE
+    # Don't overwrite DONE or BUSY — only set WAIT if currently idle/unknown
     DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
     DEST_FILE="$DEST_DIR/$SESSION_ID.json"
     if [ -f "$DEST_FILE" ]; then
       CURRENT="$(sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
-      if [ "$CURRENT" = "DONE" ]; then
+      if [ "$CURRENT" = "DONE" ] || [ "$CURRENT" = "BUSY" ]; then
         exit 0
       fi
     fi

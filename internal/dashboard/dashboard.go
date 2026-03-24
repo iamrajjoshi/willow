@@ -227,19 +227,20 @@ func collectData() ([]session, summary) {
 
 			if len(allSessions) > 0 {
 				for _, ss := range allSessions {
+					effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
 					s := session{
 						Repo:      repoName,
 						Branch:    wt.Branch,
 						SessionID: ss.SessionID,
-						Status:    ss.Status,
+						Status:    effective,
 						Tool:      ss.Tool,
 						DiffStats: diff,
 						Age:       claude.TimeSince(ss.Timestamp),
-						Unread:    ss.Status == claude.StatusDone && unread,
+						Unread:    effective == claude.StatusDone && unread,
 						WtDirName: wtDir,
 					}
 					sessions = append(sessions, s)
-					if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait || ss.Status == claude.StatusDone {
+					if effective == claude.StatusBusy || effective == claude.StatusWait || effective == claude.StatusDone {
 						sum.Agents++
 					}
 				}
