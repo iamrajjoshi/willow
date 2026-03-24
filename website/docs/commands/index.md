@@ -59,6 +59,30 @@ ww new https://github.com/org/repo/pull/123
 
 This also works from the tmux picker — paste a PR URL and press `Ctrl-N`.
 
+## `ww checkout <branch-or-pr-url>` (alias: `co`)
+
+Smart switch-or-create. Figures out the right action based on what exists:
+
+1. **Worktree exists** for that branch → switch to it (like `ww sw`)
+2. **Branch exists on remote** but no worktree → create a worktree for it (like `ww new -e`)
+3. **Branch doesn't exist** → create a new branch + worktree (like `ww new`)
+4. **PR URL** → resolve the branch via `gh`, then apply the logic above
+
+```bash
+ww checkout auth-refactor                # switch if exists, create if not
+ww checkout https://github.com/org/repo/pull/123  # checkout a PR
+ww checkout brand-new-feature            # creates new branch + worktree
+ww checkout brand-new -b develop         # new branch forked from develop
+wwc auth-refactor                        # checkout + cd (shell integration)
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `-b, --base` | Base branch (only when creating a new branch) | Config default / auto-detected |
+| `--no-fetch` | Skip fetching from remote | `false` |
+| `--cd` | Print only the path (for scripting) | `false` |
+
 ## `ww sw`
 
 Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
@@ -206,6 +230,7 @@ Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a
 | Alias | Command |
 |-------|---------|
 | `ww n` | `ww new` |
+| `ww co` | `ww checkout` |
 | `ww l` | `ww ls` |
 | `ww s` | `ww status` |
 | `ww dash` / `ww d` | `ww dashboard` |

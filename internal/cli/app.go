@@ -80,6 +80,7 @@ func NewApp() *cli.Command {
 		Commands: []*cli.Command{
 			cloneCmd(),
 			newCmd(),
+			checkoutCmd(),
 			swCmd(),
 			rmCmd(),
 			lsCmd(),
