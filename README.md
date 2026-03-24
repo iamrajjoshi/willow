@@ -143,12 +143,14 @@ ww clone git@github.com:org/repo.git --force    # re-clone from scratch
 
 ### `ww new <branch> [flags]`
 
-Create a new worktree with a new branch.
+Create a new worktree with a new branch, an existing branch, or a GitHub PR.
 
 ```bash
 ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
+ww new -e                              # pick from remote branches (fzf)
+ww new https://github.com/org/repo/pull/123  # checkout a PR
 ww new feature/auth -r myrepo          # target a specific repo
 wwn feature/auth                       # create + cd (shell integration)
 ```
@@ -157,7 +159,7 @@ wwn feature/auth                       # create + cd (shell integration)
 |------|-------------|
 | `-b, --base` | Base branch to fork from |
 | `-r, --repo` | Target repo by name |
-| `-e, --existing` | Use an existing branch |
+| `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) |
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
 

@@ -31,9 +31,18 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 | Key | Action |
 |-----|--------|
 | `Enter` | Switch to worktree (creates tmux session if needed) |
-| `Ctrl-N` | Create new worktree from typed query |
+| `Ctrl-N` | Create new worktree from typed query (also accepts PR URLs) |
+| `Ctrl-E` | Browse existing remote branches and create a worktree |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
 | `Esc` | Close picker |
+
+### GitHub PR support
+
+Paste a GitHub PR URL into the picker's query field and press `Ctrl-N`. Willow resolves the branch via `gh` and creates a worktree for it — no need to look up the branch name manually. Requires the [GitHub CLI](https://cli.github.com/).
+
+### Existing branch picker
+
+Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Select one to create a worktree and switch to it immediately.
 
 ### Features
 

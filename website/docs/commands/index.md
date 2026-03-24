@@ -25,12 +25,14 @@ ww clone git@github.com:org/repo.git --force    # re-clone from scratch
 
 ## `ww new <branch> [flags]`
 
-Create a new worktree with a new branch.
+Create a new worktree with a new branch, an existing branch, or a GitHub PR.
 
 ```bash
 ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
+ww new -e                              # pick from remote branches (fzf)
+ww new https://github.com/org/repo/pull/123  # checkout a PR
 ww new feature/auth -r myrepo          # target a specific repo
 wwn feature/auth                       # create + cd (shell integration)
 ```
@@ -39,9 +41,23 @@ wwn feature/auth                       # create + cd (shell integration)
 |------|-------------|---------|
 | `-b, --base` | Base branch to fork from | Config default / auto-detected |
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
-| `-e, --existing` | Use an existing branch | `false` |
+| `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) | `false` |
 | `--no-fetch` | Skip fetching from remote | `false` |
 | `--cd` | Print only the path (for scripting) | `false` |
+
+### Existing branch picker
+
+Running `ww new -e` without a branch name opens an fzf picker showing all remote branches that don't already have worktrees. Select one to create a worktree for it.
+
+### GitHub PR support
+
+Pass a GitHub PR URL as the branch argument and willow will resolve the branch name via `gh`, fetch it, and create the worktree. Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+
+```bash
+ww new https://github.com/org/repo/pull/123
+```
+
+This also works from the tmux picker — paste a PR URL and press `Ctrl-N`.
 
 ## `ww sw`
 
