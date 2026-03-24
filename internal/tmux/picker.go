@@ -107,14 +107,15 @@ func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
 		branchSet[item.Branch] = true
 	}
 
-	// Build item lookup by branch
+	// Build item lookup by repo/branch to avoid collisions across repos
 	itemMap := make(map[string]*PickerItem)
 	for i := range items {
-		itemMap[items[i].Branch] = &items[i]
+		key := items[i].RepoName + "/" + items[i].Branch
+		itemMap[key] = &items[i]
 	}
 
 	// Load stacks for each repo and compute tree lines
-	stackedBranches := make(map[string]bool)
+	stackedKeys := make(map[string]bool)
 	var stackedItems []PickerItem
 
 	for _, repoName := range repoNames {
@@ -129,9 +130,10 @@ func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
 
 		treeLines := st.TreeLines(branchSet)
 		for _, tl := range treeLines {
-			if item, ok := itemMap[tl.Branch]; ok {
+			key := repoName + "/" + tl.Branch
+			if item, ok := itemMap[key]; ok {
 				item.StackPrefix = tl.Prefix
-				stackedBranches[tl.Branch] = true
+				stackedKeys[key] = true
 				stackedItems = append(stackedItems, *item)
 			}
 		}
@@ -140,7 +142,8 @@ func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
 	// Collect non-stacked items
 	var nonStacked []PickerItem
 	for _, item := range items {
-		if !stackedBranches[item.Branch] {
+		key := item.RepoName + "/" + item.Branch
+		if !stackedKeys[key] {
 			nonStacked = append(nonStacked, item)
 		}
 	}
@@ -166,9 +169,12 @@ func FormatPickerLines(items []PickerItem) []string {
 
 	nameW := 0
 	for _, item := range items {
-		label := displayName(item, multiRepo)
-		if len(label) > nameW {
-			nameW = len(label)
+		plain := displayName(item, multiRepo)
+		if item.Merged {
+			plain += " [merged]"
+		}
+		if len(plain) > nameW {
+			nameW = len(plain)
 		}
 	}
 
@@ -183,14 +189,22 @@ func FormatPickerLines(items []PickerItem) []string {
 			dot = "\u25CF"
 		}
 
-		name := displayName(item, multiRepo)
+		namePlain := displayName(item, multiRepo)
+		name := namePlain
 		if item.Merged {
+			namePlain += " [merged]"
 			name += fmt.Sprintf(" %s[merged]%s", colorDim, colorReset)
 		}
+		// Pad based on plain text width to avoid ANSI miscount
+		padding := nameW - len(namePlain)
+		if padding < 0 {
+			padding = 0
+		}
+		nameCol := name + strings.Repeat(" ", padding)
 
-		line := fmt.Sprintf("%s%s %s%s%s | %-*s | %s%s%s",
+		line := fmt.Sprintf("%s%s %s%s%s | %s | %s%s%s",
 			color, icon, label, dot, colorReset,
-			nameW, name,
+			nameCol,
 			colorDim, shortenPath(item.WtPath), colorReset,
 		)
 		lines = append(lines, line)
