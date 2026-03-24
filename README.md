@@ -187,6 +187,34 @@ wwc auth-refactor                        # checkout + cd (shell integration)
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
 
+### Stacked PRs
+
+Create stacked branches with `--base`:
+
+```bash
+ww new feature-a -b main              # start a stack
+ww new feature-b -b feature-a         # stack on top
+ww new feature-c -b feature-b         # third layer
+```
+
+Stacked branches are shown as a tree in `ww ls` and the tmux picker. Parent relationships are tracked in `branches.json` per repo.
+
+### `ww sync [branch]`
+
+Rebase stacked worktrees onto their parents in topological order.
+
+```bash
+ww sync                    # sync all stacks in current repo
+ww sync feature-b          # sync feature-b and its descendants only
+ww sync --abort            # abort any in-progress rebases
+```
+
+| Flag | Description |
+|------|-------------|
+| `-r, --repo` | Target repo by name |
+| `--no-fetch` | Skip fetching from remote |
+| `--abort` | Abort in-progress rebases |
+
 ### `ww sw`
 
 Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.

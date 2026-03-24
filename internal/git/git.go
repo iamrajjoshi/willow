@@ -145,6 +145,49 @@ func (g *Git) RemoteBranchExists(branch string) bool {
 	return strings.TrimSpace(out) != ""
 }
 
+// LocalBranchExists checks if a local branch exists in the repo.
+func (g *Git) LocalBranchExists(branch string) bool {
+	out, _ := g.Run("branch", "--list", branch)
+	return strings.TrimSpace(out) != ""
+}
+
+// Rebase runs git rebase <onto> in the current directory.
+func (g *Git) Rebase(onto string) error {
+	_, err := g.Run("rebase", onto)
+	return err
+}
+
+// RebaseAbort aborts an in-progress rebase.
+func (g *Git) RebaseAbort() error {
+	_, err := g.Run("rebase", "--abort")
+	return err
+}
+
+// IsRebaseInProgress checks if a rebase is currently in progress.
+func (g *Git) IsRebaseInProgress() bool {
+	gitDir, err := g.Run("rev-parse", "--git-dir")
+	if err != nil {
+		return false
+	}
+	for _, dir := range []string{"rebase-merge", "rebase-apply"} {
+		if _, err := os.Stat(filepath.Join(gitDir, dir)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// CommitsAhead returns the number of commits HEAD is ahead of base.
+func (g *Git) CommitsAhead(base string) (int, error) {
+	out, err := g.Run("rev-list", "--count", base+"..HEAD")
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	fmt.Sscanf(strings.TrimSpace(out), "%d", &count)
+	return count, nil
+}
+
 func (g *Git) HasUnpushedCommits() (bool, error) {
 	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
 	if err != nil {

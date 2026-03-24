@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -671,6 +672,49 @@ func TestIsPRURL(t *testing.T) {
 		if got := isPRURL(tt.input); got != tt.want {
 			t.Errorf("isPRURL(%q) = %v, want %v", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestNew_StackedBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	// Create feature-a from main
+	if err := runApp("new", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-a failed: %v", err)
+	}
+
+	// Create feature-b stacked on feature-a
+	if err := runApp("new", "feature-b", "-b", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-b -b feature-a failed: %v", err)
+	}
+
+	// Verify worktrees exist
+	if _, err := os.Stat(filepath.Join(worktreeDir, "feature-a")); os.IsNotExist(err) {
+		t.Error("feature-a worktree not created")
+	}
+	if _, err := os.Stat(filepath.Join(worktreeDir, "feature-b")); os.IsNotExist(err) {
+		t.Error("feature-b worktree not created")
+	}
+
+	// Verify stack was recorded
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	data, err := os.ReadFile(filepath.Join(bareDir, "branches.json"))
+	if err != nil {
+		t.Fatalf("branches.json not found: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "feature-a") || !strings.Contains(content, "feature-b") {
+		t.Errorf("branches.json missing expected entries: %s", content)
 	}
 }
 

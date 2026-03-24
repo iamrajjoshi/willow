@@ -12,6 +12,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -163,6 +164,13 @@ func completeRepos(ctx context.Context, cmd *cli.Command) {
 	}
 }
 
+type lsRow struct {
+	branch      string
+	prefix      string // tree-drawing prefix
+	merged      bool
+	wt          worktree.Worktree
+}
+
 func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, repoGit *git.Git) {
 	u := flags.NewUI()
 
@@ -183,22 +191,62 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		mergedSet[b] = true
 	}
 
+	// Load stack for tree display
+	st := stack.Load(repoGit.Dir)
+	branchSet := make(map[string]bool)
+	wtMap := make(map[string]worktree.Worktree)
+	for _, wt := range worktrees {
+		branchSet[wt.Branch] = true
+		wtMap[wt.Branch] = wt
+	}
+
+	// Build ordered rows: stacked branches in tree order, then non-stacked
+	var rows []lsRow
+	stackedBranches := make(map[string]bool)
+
+	if !st.IsEmpty() {
+		treeLines := st.TreeLines(branchSet)
+		for _, tl := range treeLines {
+			if wt, ok := wtMap[tl.Branch]; ok {
+				stackedBranches[tl.Branch] = true
+				rows = append(rows, lsRow{
+					branch: tl.Branch,
+					prefix: tl.Prefix,
+					merged: mergedSet[tl.Branch],
+					wt:     wt,
+				})
+			}
+		}
+	}
+
+	// Non-stacked branches
+	for _, wt := range worktrees {
+		if !stackedBranches[wt.Branch] {
+			rows = append(rows, lsRow{
+				branch: wt.Branch,
+				merged: mergedSet[wt.Branch],
+				wt:     wt,
+			})
+		}
+	}
+
+	// Calculate column widths
 	branchW := len("BRANCH")
 	statusW := len("STATUS")
 	pathW := len("PATH")
 	ageW := len("AGE")
-	for _, wt := range worktrees {
-		display := wt.Branch
-		if mergedSet[wt.Branch] {
+	for _, row := range rows {
+		display := row.prefix + row.branch
+		if row.merged {
 			display += " [merged]"
 		}
 		if len(display) > branchW {
 			branchW = len(display)
 		}
-		if len(wt.Path) > pathW {
-			pathW = len(wt.Path)
+		if len(row.wt.Path) > pathW {
+			pathW = len(row.wt.Path)
 		}
-		age := worktreeAge(wt.Path)
+		age := worktreeAge(row.wt.Path)
 		if len(age) > ageW {
 			ageW = len(age)
 		}
@@ -207,19 +255,19 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %*s", branchW, "BRANCH", statusW, "STATUS", pathW, "PATH", ageW, "AGE")
 	u.Info(u.Bold(header))
 
-	for _, wt := range worktrees {
-		age := worktreeAge(wt.Path)
-		wtDir := filepath.Base(wt.Path)
+	for _, row := range rows {
+		age := worktreeAge(row.wt.Path)
+		wtDir := filepath.Base(row.wt.Path)
 		ws := claude.ReadStatus(repoName, wtDir)
 		statusLabel := claude.StatusLabel(ws.Status)
 		if ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir) {
 			statusLabel += "\u25CF" // ●
 		}
-		branchDisplay := wt.Branch
-		if mergedSet[wt.Branch] {
+		branchDisplay := row.prefix + row.branch
+		if row.merged {
 			branchDisplay += " " + u.Dim("[merged]")
 		}
-		pathPadded := fmt.Sprintf("%-*s", pathW, wt.Path)
+		pathPadded := fmt.Sprintf("%-*s", pathW, row.wt.Path)
 		agePadded := fmt.Sprintf("%*s", ageW, age)
 		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, branchDisplay, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
