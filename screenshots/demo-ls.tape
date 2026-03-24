@@ -9,7 +9,7 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "alias willow=/Users/raj.joshi/code/willow/bin/willow"
+Type "alias willow=/Users/raj/code/willow/bin/willow"
 Enter
 Type "cd ~/.willow/worktrees/willow/main"
 Enter
