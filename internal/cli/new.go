@@ -6,12 +6,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
+	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
 
@@ -106,12 +109,9 @@ func newCmd() *cli.Command {
 			g := flags.NewGit()
 			u := flags.NewUI()
 			cdOnly := cmd.Bool("cd")
+			existing := cmd.Bool("existing")
 
-			branch := cmd.StringArg("branch")
-			if branch == "" {
-				return fmt.Errorf("branch name is required\n\nUsage: ww new <branch> [flags]")
-			}
-
+			// Resolve repo
 			var bareDir string
 			var err error
 			done := tr.Start("resolve repo")
@@ -135,6 +135,83 @@ func newCmd() *cli.Command {
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			repoName := repoNameFromDir(bareDir)
 
+			branch := cmd.StringArg("branch")
+
+			// PR URL auto-detection: resolve to branch name and force existing mode
+			if branch != "" && isPRURL(branch) {
+				done = tr.Start("resolve PR branch")
+				prBranch, ok := resolvePRBranch(branch, bareDir)
+				if !ok {
+					return fmt.Errorf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
+				}
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
+				} else {
+					u.Info(fmt.Sprintf("Resolved PR to branch %s", u.Bold(prBranch)))
+				}
+				branch = prBranch
+				existing = true
+				done()
+			}
+
+			// Existing-branch picker: -e with no branch arg
+			if existing && branch == "" {
+				done = tr.Start("pick existing branch")
+				branch, err = pickExistingBranch(repoGit)
+				if err != nil {
+					return err
+				}
+				if branch == "" {
+					return nil // user cancelled
+				}
+				done()
+			}
+
+			if branch == "" {
+				return fmt.Errorf("branch name is required\n\nUsage: ww new <branch> [flags]")
+			}
+
+			if existing {
+				// --- Existing branch path ---
+				// No branch prefix for existing branches
+				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
+				if shouldFetch {
+					done = tr.Start("git fetch branch")
+					if cdOnly {
+						fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", branch)
+						if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", branch); err != nil {
+							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
+						}
+					} else {
+						u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(branch)))
+						if _, err := repoGit.Run("fetch", "origin", branch); err != nil {
+							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
+						}
+					}
+					done()
+				}
+
+				dirName := strings.ReplaceAll(branch, "/", "-")
+				wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
+
+				done = tr.Start("git worktree add")
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Creating worktree for existing branch %s...\n", branch)
+					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, branch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
+				} else {
+					u.Info(fmt.Sprintf("Creating worktree for existing branch %s...", u.Bold(branch)))
+					if _, err := repoGit.Run("worktree", "add", wtPath, branch); err != nil {
+						return fmt.Errorf("failed to create worktree: %w", err)
+					}
+				}
+				done()
+
+				return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, "", cdOnly)
+			}
+
+			// --- New branch path ---
 			// Apply branch prefix from config
 			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
 				branch = cfg.BranchPrefix + "/" + branch
@@ -176,67 +253,124 @@ func newCmd() *cli.Command {
 			wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
 			done = tr.Start("git worktree add")
-			if cmd.Bool("existing") {
-				if cdOnly {
-					fmt.Fprintf(os.Stderr, "Creating worktree for existing branch %s...\n", branch)
-					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, branch); err != nil {
-						return fmt.Errorf("failed to create worktree: %w", err)
-					}
-				} else {
-					u.Info(fmt.Sprintf("Creating worktree for existing branch %s...", u.Bold(branch)))
-					if _, err := repoGit.Run("worktree", "add", wtPath, branch); err != nil {
-						return fmt.Errorf("failed to create worktree: %w", err)
-					}
+			if cdOnly {
+				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, "origin/"+baseBranch)
+				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			} else {
-				if cdOnly {
-					fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, "origin/"+baseBranch)
-					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
-						return fmt.Errorf("failed to create worktree: %w", err)
-					}
-				} else {
-					u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold("origin/"+baseBranch)))
-					if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
-						return fmt.Errorf("failed to create worktree: %w", err)
-					}
+				u.Info(fmt.Sprintf("Creating worktree %s from %s...", u.Bold(branch), u.Bold("origin/"+baseBranch)))
+				if _, err := repoGit.Run("worktree", "add", wtPath, "-b", branch, "origin/"+baseBranch); err != nil {
+					return fmt.Errorf("failed to create worktree: %w", err)
 				}
 			}
 			done()
 
-			done = tr.Start("post-checkout hook")
-			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
-			done()
-
-			done = tr.Start("auto setup remote")
-			if *cfg.Defaults.AutoSetupRemote {
-				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
-				if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
-					return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
-				}
-			}
-			done()
-
-			// Run setup hooks
-			done = tr.Start("setup hooks")
-			if len(cfg.Setup) > 0 && !cdOnly {
-				u.Info("Running setup hooks...")
-				if err := runHooks(cfg.Setup, wtPath, u); err != nil {
-					return err
-				}
-			}
-			done()
-
-			tr.Total()
-
-			if cdOnly {
-				fmt.Println(wtPath)
-				return nil
-			}
-
-			u.Success(fmt.Sprintf("Created worktree %s", u.Bold(branch)))
-			u.Info(fmt.Sprintf("  path:   %s", u.Dim(wtPath)))
-			u.Info(fmt.Sprintf("  base:   %s", u.Dim("origin/"+baseBranch)))
-			return nil
+			return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, baseBranch, cdOnly)
 		},
 	}
+}
+
+func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, branch, baseBranch string, cdOnly bool) error {
+	done := tr.Start("post-checkout hook")
+	runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
+	done()
+
+	done = tr.Start("auto setup remote")
+	if *cfg.Defaults.AutoSetupRemote {
+		wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
+		if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
+			return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
+		}
+	}
+	done()
+
+	done = tr.Start("setup hooks")
+	if len(cfg.Setup) > 0 && !cdOnly {
+		u.Info("Running setup hooks...")
+		if err := runHooks(cfg.Setup, wtPath, u); err != nil {
+			return err
+		}
+	}
+	done()
+
+	tr.Total()
+
+	if cdOnly {
+		fmt.Println(wtPath)
+		return nil
+	}
+
+	u.Success(fmt.Sprintf("Created worktree %s", u.Bold(branch)))
+	u.Info(fmt.Sprintf("  path:   %s", u.Dim(wtPath)))
+	if baseBranch != "" {
+		u.Info(fmt.Sprintf("  base:   %s", u.Dim("origin/"+baseBranch)))
+	}
+	return nil
+}
+
+var prURLPattern = regexp.MustCompile(`github\.com/.+/pull/\d+`)
+
+func isPRURL(s string) bool {
+	return prURLPattern.MatchString(s)
+}
+
+func resolvePRBranch(input, bareDir string) (string, bool) {
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return "", false
+	}
+
+	cmd := exec.Command(ghPath, "pr", "view", input, "--json", "headRefName", "-q", ".headRefName")
+	cmd.Dir = bareDir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+
+	branch := strings.TrimSpace(string(out))
+	if branch == "" {
+		return "", false
+	}
+	return branch, true
+}
+
+func pickExistingBranch(repoGit *git.Git) (string, error) {
+	remoteBranches, err := repoGit.RemoteBranches()
+	if err != nil {
+		return "", fmt.Errorf("failed to list remote branches: %w", err)
+	}
+	if len(remoteBranches) == 0 {
+		return "", fmt.Errorf("no remote branches found")
+	}
+
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return "", fmt.Errorf("failed to list worktrees: %w", err)
+	}
+	wtBranches := make(map[string]bool)
+	for _, wt := range wts {
+		if !wt.IsBare {
+			wtBranches[wt.Branch] = true
+		}
+	}
+
+	var available []string
+	for _, b := range remoteBranches {
+		if !wtBranches[b] {
+			available = append(available, b)
+		}
+	}
+	if len(available) == 0 {
+		return "", fmt.Errorf("all remote branches already have worktrees")
+	}
+
+	selected, err := fzf.Run(available,
+		fzf.WithReverse(),
+		fzf.WithHeader("Select a branch to check out"),
+	)
+	if err != nil {
+		return "", err
+	}
+	return selected, nil
 }

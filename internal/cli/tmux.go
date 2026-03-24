@@ -86,8 +86,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
-					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-D: Delete"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-d"),
+					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-D: Delete"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(fmt.Sprintf("start:reload-sync(%s)", reloadCmd)),
 				}
@@ -111,6 +111,13 @@ func tmuxPickCmd() *cli.Command {
 				switch result.Key {
 				case "ctrl-n":
 					if err := tmuxPickNew(self, result.Query, repoFilter, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-e":
+					if err := tmuxPickExisting(self, repoFilter, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -214,6 +221,42 @@ func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error 
 	}
 
 	// Path format: ~/.willow/worktrees/<repo>/<dir>
+	wtDir := filepath.Base(wtPath)
+	repoName := filepath.Base(filepath.Dir(wtPath))
+
+	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+	if !tmux.SessionExists(sessName) {
+		cfg := loadRepoConfig(repoName)
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.PostWorktreeCreate); err != nil {
+			return fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+
+	return tmux.SwitchClient(sessName)
+}
+
+func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
+	repo, err := resolveRepo(repoFilter, items)
+	if err != nil {
+		return err
+	}
+
+	// Calls `ww new -e --cd --repo <repo>` with no branch arg to trigger the picker
+	args := []string{"new", "-e", "--cd", "--repo", repo}
+
+	cmd := exec.Command(self, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to create worktree: %w", err)
+	}
+
+	wtPath := strings.TrimSpace(string(out))
+	if wtPath == "" {
+		return nil // user cancelled the picker
+	}
+
 	wtDir := filepath.Base(wtPath)
 	repoName := filepath.Base(filepath.Dir(wtPath))
 
