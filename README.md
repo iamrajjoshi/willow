@@ -96,7 +96,21 @@ This gives you:
 eval "$(willow shell-init --tab-title)"
 ```
 
-### 2. Claude Code status tracking (optional)
+### 2. Claude Code skill (optional)
+
+Teach Claude Code how to use willow automatically:
+
+```bash
+# Option 1: npx
+npx skills add https://github.com/iamrajjoshi/willow --skill willow
+
+# Option 2: git clone
+git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
+```
+
+Once installed, Claude Code will use `ww checkout`, `ww sync`, and other willow commands automatically when you ask it to work on branches, PRs, or parallel tasks.
+
+### 3. Claude Code status tracking (optional)
 
 ```bash
 ww cc-setup
