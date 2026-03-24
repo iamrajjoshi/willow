@@ -87,6 +87,7 @@ This gives you:
 | `ww <cmd>` | Alias for `willow` |
 | `ww sw` | fzf worktree switcher (cd's into selection) |
 | `wwn <branch>` | Create worktree + cd into it |
+| `wwc <branch>` | Smart checkout + cd (switch or create) |
 | `www` | cd to `~/.willow/worktrees/` |
 
 **Optional:** Set terminal tab title to the current worktree name:
@@ -160,6 +161,25 @@ wwn feature/auth                       # create + cd (shell integration)
 | `-b, --base` | Base branch to fork from |
 | `-r, --repo` | Target repo by name |
 | `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) |
+| `--no-fetch` | Skip fetching from remote |
+| `--cd` | Print only the path (for scripting) |
+
+### `ww checkout <branch-or-pr-url>` (alias: `co`)
+
+Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree.
+
+```bash
+ww checkout auth-refactor                # switch if exists, create if not
+ww checkout https://github.com/org/repo/pull/123  # checkout a PR
+ww checkout brand-new-feature            # creates new branch + worktree
+ww checkout brand-new -b develop         # new branch from develop
+wwc auth-refactor                        # checkout + cd (shell integration)
+```
+
+| Flag | Description |
+|------|-------------|
+| `-r, --repo` | Target repo by name |
+| `-b, --base` | Base branch (only when creating a new branch) |
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
 

@@ -43,6 +43,16 @@ ww() {
     cd "$dir" || return
     return
   fi
+  if [ "$1" = "checkout" ] || [ "$1" = "co" ]; then
+    local dir
+    dir="$(command willow checkout "${@:2}" --cd)" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
+    cd "$dir" || return
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -58,6 +68,12 @@ ww() {
 wwn() {
   local dir
   dir="$(willow new "$@" --cd)" || return
+  cd "$dir" || return
+}
+
+wwc() {
+  local dir
+  dir="$(willow checkout "$@" --cd)" || return
   cd "$dir" || return
 }
 
@@ -130,6 +146,16 @@ ww() {
     cd "$dir" || return
     return
   fi
+  if [ "$1" = "checkout" ] || [ "$1" = "co" ]; then
+    local dir
+    dir="$(command willow checkout "${@:2}" --cd)" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
+    cd "$dir" || return
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -145,6 +171,12 @@ ww() {
 wwn() {
   local dir
   dir="$(willow new "$@" --cd)" || return
+  cd "$dir" || return
+}
+
+wwc() {
+  local dir
+  dir="$(willow checkout "$@" --cd)" || return
   cd "$dir" || return
 }
 
@@ -206,6 +238,16 @@ function ww
     cd $dir
     return
   end
+  if test (count $argv) -gt 0; and test "$argv[1]" = "checkout" -o "$argv[1]" = "co"
+    set -l dir (command willow checkout $argv[2..] --cd)
+    or return
+    if test -n "$TMUX"; and test -n "$dir"
+      command willow tmux sw "$dir"
+      return
+    end
+    cd $dir
+    return
+  end
   if test (count $argv) -gt 0; and test "$argv[1]" = "rm"
     set -l cwd $PWD
     command willow $argv
@@ -222,6 +264,12 @@ end
 
 function wwn
   set -l dir (willow new $argv --cd)
+  or return
+  cd $dir
+end
+
+function wwc
+  set -l dir (willow checkout $argv --cd)
   or return
   cd $dir
 end
