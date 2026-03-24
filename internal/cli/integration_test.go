@@ -674,6 +674,118 @@ func TestIsPRURL(t *testing.T) {
 	}
 }
 
+func TestCheckout_SwitchesToExistingWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "branch-a", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	// checkout should switch to the existing worktree (print its path)
+	if err := runApp("checkout", "branch-a", "--cd"); err != nil {
+		t.Fatalf("checkout failed: %v", err)
+	}
+}
+
+func TestCheckout_CreatesWorktreeForExistingBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+
+	// Create and push a branch to origin
+	wg := &git.Git{Dir: mainDir}
+	if _, err := wg.Run("config", "user.email", "test@test.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := wg.Run("config", "user.name", "Test"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+	if _, err := wg.Run("checkout", "-b", "remote-only"); err != nil {
+		t.Fatalf("create branch: %v", err)
+	}
+	os.WriteFile(filepath.Join(mainDir, "remote.txt"), []byte("remote\n"), 0o644)
+	if _, err := wg.Run("add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := wg.Run("commit", "-m", "remote commit"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := wg.Run("push", "origin", "remote-only"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+	if _, err := wg.Run("checkout", "-"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+
+	os.Chdir(mainDir)
+
+	// checkout should detect the remote branch and create a worktree
+	if err := runApp("checkout", "remote-only", "--no-fetch"); err != nil {
+		t.Fatalf("checkout failed: %v", err)
+	}
+
+	newWtDir := filepath.Join(worktreeDir, "remote-only")
+	if _, err := os.Stat(newWtDir); os.IsNotExist(err) {
+		t.Errorf("worktree not created at %s", newWtDir)
+	}
+
+	// Verify content
+	if _, err := os.Stat(filepath.Join(newWtDir, "remote.txt")); os.IsNotExist(err) {
+		t.Error("remote.txt not found — existing branch content not checked out")
+	}
+}
+
+func TestCheckout_CreatesNewBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("checkout", "brand-new", "--no-fetch"); err != nil {
+		t.Fatalf("checkout failed: %v", err)
+	}
+
+	newWtDir := filepath.Join(worktreeDir, "brand-new")
+	if _, err := os.Stat(newWtDir); os.IsNotExist(err) {
+		t.Errorf("worktree not created at %s", newWtDir)
+	}
+
+	// Verify the branch was created
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	repoGit := &git.Git{Dir: bareDir}
+	out, err := repoGit.Run("branch", "--list", "brand-new")
+	if err != nil {
+		t.Fatalf("git branch --list: %v", err)
+	}
+	if out == "" {
+		t.Error("branch 'brand-new' not found")
+	}
+}
+
 func TestGc_EmptyTrash(t *testing.T) {
 	setupTestEnv(t)
 

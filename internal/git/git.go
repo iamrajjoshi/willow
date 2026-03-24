@@ -139,6 +139,12 @@ func (g *Git) RemoteBranches() ([]string, error) {
 	return branches, nil
 }
 
+// RemoteBranchExists checks if a branch exists on origin.
+func (g *Git) RemoteBranchExists(branch string) bool {
+	out, _ := g.Run("branch", "-r", "--list", "origin/"+branch)
+	return strings.TrimSpace(out) != ""
+}
+
 func (g *Git) HasUnpushedCommits() (bool, error) {
 	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
 	if err != nil {
