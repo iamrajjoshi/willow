@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --vp-font-family-mono: 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
+  --vp-font-family-heading: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* Force dark appearance */
@@ -10,37 +11,40 @@ html {
   color-scheme: dark;
 }
 
+/* Teal text selection */
+::selection {
+  background: rgba(94, 234, 212, 0.25);
+}
+
 /* Hero section */
 .VPHero .name {
-  font-family: var(--vp-font-family-mono) !important;
+  font-family: var(--vp-font-family-heading) !important;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .VPHero .text {
-  font-family: var(--vp-font-family-mono) !important;
-  color: var(--willow-steel-blue) !important;
+  font-family: var(--vp-font-family-heading) !important;
+  color: var(--willow-text-2) !important;
 }
 
 .VPHero .tagline {
-  color: var(--willow-pale-bone) !important;
-  opacity: 0.8;
+  color: var(--willow-text-3) !important;
 }
 
 /* Feature cards */
 .VPFeature {
   background: var(--vp-c-bg-soft) !important;
   border: 1px solid var(--vp-c-divider) !important;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  transition: border-color 0.2s ease-in-out;
 }
 
 .VPFeature:hover {
-  border-color: var(--willow-neon-cyan) !important;
-  box-shadow: 0 0 20px rgba(139, 233, 253, 0.1);
+  border-color: var(--willow-border-hover) !important;
 }
 
 .VPFeature .title {
-  color: var(--willow-neon-cyan) !important;
+  color: var(--willow-text-1) !important;
 }
 
 /* Feature grid — 5 columns so all cards fit on one row */
@@ -67,16 +71,17 @@ html {
 }
 
 .section-title {
-  font-family: var(--vp-font-family-mono);
+  font-family: var(--vp-font-family-heading);
   font-size: 1.75rem;
   font-weight: 700;
-  color: var(--willow-neon-cyan);
+  color: var(--willow-text-1);
   margin-bottom: 1rem;
   text-align: center;
+  letter-spacing: -0.03em;
 }
 
 .section-subtitle {
-  color: var(--willow-steel-blue);
+  color: var(--willow-text-3);
   text-align: center;
   max-width: 800px;
   margin: 0 auto 2.5rem !important;
@@ -86,38 +91,34 @@ html {
 
 /* Terminal chrome */
 .terminal-window {
-  background: #0d0d12;
+  background: var(--willow-bg-code);
   border-radius: 12px;
-  border: 1px solid rgba(129, 174, 198, 0.15);
+  border: 1px solid var(--willow-border);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .terminal-titlebar {
-  background: #1a1a22;
+  background: var(--willow-bg-mute);
   padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid rgba(129, 174, 198, 0.1);
+  border-bottom: 1px solid var(--willow-border);
 }
 
 .terminal-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
+  background: var(--willow-text-dim);
 }
-
-.terminal-dot.red { background: #fc4346; }
-.terminal-dot.yellow { background: #f0fb8c; }
-.terminal-dot.green { background: #50fb7b; }
 
 .terminal-title {
   flex: 1;
   text-align: center;
   font-family: var(--vp-font-family-mono);
   font-size: 0.8rem;
-  color: var(--willow-ash-gray);
+  color: var(--willow-text-3);
   margin-right: 52px;
 }
 
@@ -145,27 +146,27 @@ html {
 }
 
 .status-badge.busy {
-  background: rgba(252, 67, 70, 0.15);
-  color: #fc4346;
-  border: 1px solid rgba(252, 67, 70, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+  color: var(--willow-status-busy);
+  border: 1px solid rgba(248, 113, 113, 0.12);
 }
 
 .status-badge.done {
-  background: rgba(80, 251, 123, 0.15);
-  color: #50fb7b;
-  border: 1px solid rgba(80, 251, 123, 0.3);
+  background: rgba(94, 234, 212, 0.06);
+  color: var(--willow-status-done);
+  border: 1px solid rgba(94, 234, 212, 0.12);
 }
 
 .status-badge.wait {
-  background: rgba(240, 251, 140, 0.15);
-  color: #f0fb8c;
-  border: 1px solid rgba(240, 251, 140, 0.3);
+  background: rgba(251, 191, 36, 0.06);
+  color: var(--willow-status-wait);
+  border: 1px solid rgba(251, 191, 36, 0.12);
 }
 
 .status-badge.idle {
-  background: rgba(73, 186, 255, 0.15);
-  color: #49baff;
-  border: 1px solid rgba(73, 186, 255, 0.3);
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--willow-status-idle);
+  border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 /* Code group styling */
@@ -184,17 +185,69 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--willow-ash-gray);
+  background: var(--willow-text-dim);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--willow-steel-blue);
+  background: var(--willow-text-3);
+}
+
+/* Sliding underline — shared pattern */
+/* Target inline/text-width elements so underline matches text, not container */
+.vp-doc a,
+a.VPNavBarMenuLink > span,
+.VPFooter a,
+.VPSidebarItem a.link .text {
+  position: relative;
+  text-decoration: none;
+}
+
+.vp-doc a::after,
+a.VPNavBarMenuLink > span::after,
+.VPFooter a::after,
+.VPSidebarItem a.link .text::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--willow-accent);
+  transition: width 0.25s ease;
+}
+
+.vp-doc a:hover::after,
+a.VPNavBarMenuLink:hover > span::after,
+.VPFooter a:hover::after,
+.VPSidebarItem a.link:hover .text::after {
+  width: 100%;
+}
+
+/* Nav links — suppress VitePress active indicator on the <a>, show it on <span> */
+a.VPNavBarMenuLink {
+  transition: color 0.2s ease-in-out;
+}
+
+a.VPNavBarMenuLink:hover {
+  color: var(--willow-text-1) !important;
+}
+
+a.VPNavBarMenuLink.active::after {
+  display: none !important;
+}
+
+a.VPNavBarMenuLink.active > span::after {
+  width: 100%;
 }
 
 /* Footer */
 .VPFooter {
   border-top-color: var(--vp-c-divider) !important;
+}
+
+.VPFooter a {
+  text-decoration: none !important;
 }
 
 /* Responsive */

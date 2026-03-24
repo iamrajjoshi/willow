@@ -3,7 +3,7 @@ layout: home
 hero:
   name: willow
   text: Git worktree manager
-  tagline: Spin up isolated worktrees for Claude Code sessions. Switch between them instantly with fzf. See which agents are busy, waiting, or idle.
+  tagline: Spin up isolated worktrees for agent sessions.<br>Switch between them instantly with fzf.<br>See which agents are busy, waiting, or idle.
   actions:
     - theme: brand
       text: Get Started

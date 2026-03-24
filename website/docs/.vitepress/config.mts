@@ -12,7 +12,7 @@ export default defineConfig({
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
-    ['meta', { name: 'theme-color', content: '#131318' }],
+    ['meta', { name: 'theme-color', content: '#0a0a0f' }],
     ['meta', { property: 'og:title', content: 'willow — Git worktree manager for AI agents' }],
     ['meta', { property: 'og:description', content: 'Spin up isolated worktrees for Claude Code sessions. Switch between them instantly with fzf. See which agents are busy, waiting, or idle.' }],
     ['meta', { property: 'og:type', content: 'website' }],
@@ -57,8 +57,7 @@ export default defineConfig({
     },
 
     footer: {
-      message: `MIT | Built by <a href="https://github.com/iamrajjoshi" target="_blank">@iamrajjoshi</a>`,
-      copyright: `<a href="https://github.com/iamrajjoshi/willow/commit/${commitHash}" target="_blank">${commitHash}</a>`,
+      message: `<a href="https://github.com/iamrajjoshi/willow/blob/main/LICENSE" target="_blank">MIT</a> · <a href="https://github.com/iamrajjoshi" target="_blank">@iamrajjoshi</a> · <a href="https://github.com/iamrajjoshi/willow/commit/${commitHash}" target="_blank">${commitHash}</a>`,
     },
   },
 })
