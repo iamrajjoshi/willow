@@ -263,13 +263,21 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		if ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir) {
 			statusLabel += "\u25CF" // ●
 		}
-		branchDisplay := row.prefix + row.branch
+		branchPlain := row.prefix + row.branch
+		branchDisplay := branchPlain
 		if row.merged {
+			branchPlain += " [merged]"
 			branchDisplay += " " + u.Dim("[merged]")
 		}
+		// Pad based on plain text width to avoid ANSI code miscount
+		padding := branchW - len(branchPlain)
+		if padding < 0 {
+			padding = 0
+		}
+		branchCol := branchDisplay + strings.Repeat(" ", padding)
 		pathPadded := fmt.Sprintf("%-*s", pathW, row.wt.Path)
 		agePadded := fmt.Sprintf("%*s", ageW, age)
-		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, branchDisplay, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
+		line := fmt.Sprintf("  %s  %-*s  %s  %s", branchCol, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
 	}
 }

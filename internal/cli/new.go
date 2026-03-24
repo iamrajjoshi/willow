@@ -299,7 +299,9 @@ func newCmd() *cli.Command {
 			done = tr.Start("record stack parent")
 			st := stack.Load(bareDir)
 			st.SetParent(branch, baseBranch)
-			st.Save(bareDir)
+			if err := st.Save(bareDir); err != nil {
+				u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
+			}
 			done()
 
 			return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, baseBranch, cdOnly)

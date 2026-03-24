@@ -225,7 +225,9 @@ func checkoutCmd() *cli.Command {
 			done = tr.Start("record stack parent")
 			st := stack.Load(repo.BareDir)
 			st.SetParent(branch, baseBranch)
-			st.Save(repo.BareDir)
+			if err := st.Save(repo.BareDir); err != nil {
+				u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
+			}
 			done()
 
 			return finishWorktree(tr, cfg, g, u, wtPath, repo.Name, branch, baseBranch, cdOnly)
