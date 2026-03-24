@@ -48,6 +48,16 @@ CI runs this on both ubuntu and macos via `.github/workflows/test.yml`.
 
 - Use pull requests for code review and merging changes into the main branch.
 
+## Documentation
+
+Every feature, new command, or user-facing change **must** update:
+
+1. **`README.md`** — command examples, flags table, shell integration table
+2. **`website/docs/commands/index.md`** — detailed command docs, aliases table
+3. **`website/docs/tmux/index.md`** — if the tmux picker keybindings or behavior changed
+
+Do this in the same PR as the feature, not as a follow-up.
+
 ## Releases
 
 Releases are automated via GoReleaser + GitHub Actions:
