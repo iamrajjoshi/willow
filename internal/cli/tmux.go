@@ -14,6 +14,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/dashboard"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -86,8 +87,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
-					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-D: Delete"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-p", "ctrl-d"),
+					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(fmt.Sprintf("start:reload-sync(%s)", reloadCmd)),
 				}
@@ -129,6 +130,23 @@ func tmuxPickCmd() *cli.Command {
 						continue
 					}
 					return nil
+
+				case "ctrl-s":
+					// Sync selected branch's subtree, or all stacks if no selection
+					branch := ""
+					if result.Selection != "" {
+						wtPath := tmux.ExtractPathFromLine(result.Selection)
+						if item := findItemByPath(items, wtPath); item != nil {
+							branch = item.Branch
+						}
+					}
+					if err := tmuxPickSync(self, repoFilter, items, branch); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					}
+					// Re-enter picker loop to show refreshed state
+					fmt.Fprintf(os.Stderr, "\nPress Enter to return to picker...\n")
+					fmt.Fscanln(os.Stdin)
+					continue
 
 				case "ctrl-d":
 					if result.Selection == "" {
@@ -406,6 +424,23 @@ func extractBranchFromPRLine(line string) string {
 	return line[start+1 : end]
 }
 
+func tmuxPickSync(self, repoFilter string, items []tmux.PickerItem, branch string) error {
+	repo, err := resolveRepo(repoFilter, items)
+	if err != nil {
+		return err
+	}
+
+	args := []string{"sync", "--repo", repo}
+	if branch != "" {
+		args = append(args, branch)
+	}
+
+	cmd := exec.Command(self, args...)
+	cmd.Stdout = os.Stderr // Show output in the popup
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
 	if repoFilter != "" {
 		return repoFilter, nil
@@ -536,8 +571,20 @@ func printPreviewMetadata(wtPath, repoName string) {
 		baseBranch = "main"
 	}
 
-	if branch, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+	branch := ""
+	if b, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+		branch = b
 		fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
+	}
+
+	// Show stack chain if branch is stacked
+	bareDir, _ := config.ResolveRepo(repoName)
+	if bareDir != "" {
+		st := stack.Load(bareDir)
+		if st.IsTracked(branch) {
+			chain := buildStackChain(st, branch)
+			fmt.Printf("  \033[1mStack:\033[0m   %s\n", chain)
+		}
 	}
 
 	if diffOut, err := g.Run("diff", "--shortstat", fmt.Sprintf("origin/%s...HEAD", baseBranch)); err == nil {
@@ -560,6 +607,45 @@ func printPreviewMetadata(wtPath, repoName string) {
 		}
 	}
 	fmt.Println()
+}
+
+// buildStackChain returns a display string like "main → feature-a → [feature-b] → feature-c"
+func buildStackChain(st *stack.Stack, current string) string {
+	// Walk up to find the root
+	var ancestors []string
+	b := current
+	for {
+		parent := st.Parent(b)
+		if parent == "" {
+			break
+		}
+		ancestors = append([]string{parent}, ancestors...)
+		if !st.IsTracked(parent) {
+			break
+		}
+		b = parent
+	}
+
+	// Walk down to find descendants
+	var descendants []string
+	queue := st.Children(current)
+	for len(queue) > 0 {
+		child := queue[0]
+		queue = queue[1:]
+		descendants = append(descendants, child)
+		queue = append(queue, st.Children(child)...)
+	}
+
+	var parts []string
+	for _, a := range ancestors {
+		parts = append(parts, a)
+	}
+	parts = append(parts, fmt.Sprintf("\033[1m[%s]\033[0m", current))
+	for _, d := range descendants {
+		parts = append(parts, d)
+	}
+
+	return strings.Join(parts, " → ")
 }
 
 func tmuxListCmd() *cli.Command {

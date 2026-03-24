@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -196,6 +198,14 @@ func rmCmd() *cli.Command {
 func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.Worktree, bareDir string, cfg *config.Config, force, keepBranch, verbose bool) error {
 	wtGit := &git.Git{Dir: wt.Path, Verbose: verbose}
 
+	// Warn if branch has stacked children
+	st := stack.Load(bareDir)
+	if children := st.Children(wt.Branch); len(children) > 0 && !force {
+		u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
+		u.Warn("Children will be re-parented. Use --force to proceed.")
+		return fmt.Errorf("branch has stacked children (use --force)")
+	}
+
 	if !force {
 		done := tr.Start("check dirty " + wt.Branch)
 		dirty, err := wtGit.IsDirty()
@@ -263,6 +273,12 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	wtDir := filepath.Base(wt.Path)
 	claude.RemoveStatusDir(repoName, wtDir)
 	done()
+
+	// Remove from stack (re-parents children to this branch's parent)
+	if st.IsTracked(wt.Branch) {
+		st.Remove(wt.Branch)
+		st.Save(bareDir)
+	}
 
 	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
 	return nil

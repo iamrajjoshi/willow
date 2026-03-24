@@ -81,6 +81,7 @@ func NewApp() *cli.Command {
 			cloneCmd(),
 			newCmd(),
 			checkoutCmd(),
+			syncCmd(),
 			swCmd(),
 			rmCmd(),
 			lsCmd(),
