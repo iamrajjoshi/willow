@@ -2,9 +2,9 @@
   <div class="directory-tree">
     <div class="terminal-window">
       <div class="terminal-titlebar">
-        <span class="terminal-dot red"></span>
-        <span class="terminal-dot yellow"></span>
-        <span class="terminal-dot green"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
         <span class="terminal-title">~/.willow/</span>
       </div>
       <div class="tree-content">
@@ -44,20 +44,20 @@
 }
 
 .tree-structure {
-  color: var(--willow-ash-gray);
+  color: var(--willow-text-dim);
 }
 
 .tree-dir {
-  color: var(--willow-electric-blue);
+  color: var(--willow-accent);
   font-weight: 600;
 }
 
 .tree-file {
-  color: var(--willow-pale-bone);
+  color: var(--willow-text-2);
 }
 
 .tree-annotation {
-  color: var(--willow-ash-gray);
+  color: var(--willow-text-3);
   font-style: italic;
   margin-left: 16px;
   font-size: 0.8rem;
@@ -73,15 +73,15 @@
 }
 
 .tree-badge.busy {
-  background: rgba(252, 67, 70, 0.15);
-  color: #fc4346;
-  border: 1px solid rgba(252, 67, 70, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+  color: var(--willow-status-busy);
+  border: 1px solid rgba(248, 113, 113, 0.12);
 }
 
 .tree-badge.wait {
-  background: rgba(240, 251, 140, 0.15);
-  color: #f0fb8c;
-  border: 1px solid rgba(240, 251, 140, 0.3);
+  background: rgba(251, 191, 36, 0.06);
+  color: var(--willow-status-wait);
+  border: 1px solid rgba(251, 191, 36, 0.12);
 }
 
 @media (max-width: 640px) {

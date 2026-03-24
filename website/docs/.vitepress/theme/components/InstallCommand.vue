@@ -27,30 +27,29 @@ function copyCommand() {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  background: #0d0d12;
-  border: 1px solid rgba(129, 174, 198, 0.2);
+  background: var(--willow-bg-code);
+  border: 1px solid var(--willow-border);
   border-radius: 8px;
   padding: 12px 20px;
   cursor: pointer;
   font-family: var(--vp-font-family-mono);
   font-size: 0.95rem;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  transition: border-color 0.2s ease-in-out;
   max-width: 100%;
 }
 
 .install-command:hover {
-  border-color: var(--willow-neon-cyan);
-  box-shadow: 0 0 16px rgba(139, 233, 253, 0.1);
+  border-color: var(--willow-border-hover);
 }
 
 .install-prompt {
-  color: var(--willow-phantom-green);
+  color: var(--willow-accent);
   font-weight: 600;
   user-select: none;
 }
 
 .install-text {
-  color: var(--willow-pale-bone);
+  color: var(--willow-text-1);
 }
 
 .install-copy {
@@ -63,16 +62,16 @@ function copyCommand() {
 }
 
 .install-icon {
-  color: var(--willow-ash-gray);
-  transition: color 0.2s;
+  color: var(--willow-text-dim);
+  transition: color 0.2s ease-in-out;
 }
 
 .install-command:hover .install-icon {
-  color: var(--willow-steel-blue);
+  color: var(--willow-text-2);
 }
 
 .install-copied {
-  color: var(--willow-phantom-green);
+  color: var(--willow-accent);
 }
 
 @media (max-width: 480px) {

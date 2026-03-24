@@ -47,9 +47,9 @@ const commands = [
     <div class="showcase-chrome">
       <div class="chrome-bar">
         <div class="chrome-dots">
-          <span class="chrome-dot red"></span>
-          <span class="chrome-dot yellow"></span>
-          <span class="chrome-dot green"></span>
+          <span class="chrome-dot"></span>
+          <span class="chrome-dot"></span>
+          <span class="chrome-dot"></span>
         </div>
         <div class="chrome-tabs">
           <button
@@ -76,19 +76,18 @@ const commands = [
 }
 
 .showcase-chrome {
-  background: #0d0d12;
+  background: var(--willow-bg-code);
   border-radius: 12px;
-  border: 1px solid rgba(129, 174, 198, 0.15);
+  border: 1px solid var(--willow-border);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .chrome-bar {
-  background: #1a1a22;
+  background: var(--willow-bg-mute);
   padding: 0 16px;
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid rgba(129, 174, 198, 0.1);
+  border-bottom: 1px solid var(--willow-border);
 }
 
 .chrome-dots {
@@ -102,11 +101,8 @@ const commands = [
   width: 12px;
   height: 12px;
   border-radius: 50%;
+  background: var(--willow-text-dim);
 }
-
-.chrome-dot.red { background: #fc4346; }
-.chrome-dot.yellow { background: #f0fb8c; }
-.chrome-dot.green { background: #50fb7b; }
 
 .chrome-tabs {
   display: flex;
@@ -122,19 +118,19 @@ const commands = [
   font-family: var(--vp-font-family-mono);
   font-size: 0.82rem;
   font-weight: 500;
-  color: var(--willow-ash-gray);
+  color: var(--willow-text-3);
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out;
   position: relative;
 }
 
 .chrome-tab:hover {
-  color: var(--willow-steel-blue);
+  color: var(--willow-text-1);
 }
 
 .chrome-tab.active {
-  color: var(--willow-neon-cyan);
-  border-bottom-color: var(--willow-neon-cyan);
+  color: var(--willow-text-1);
+  border-bottom-color: var(--willow-accent);
 }
 
 .showcase-body {
@@ -145,12 +141,12 @@ const commands = [
 }
 
 .command-line {
-  color: var(--willow-phantom-green);
+  color: var(--willow-accent);
   margin-bottom: 8px;
 }
 
 .showcase-output {
-  color: var(--willow-pale-bone);
+  color: var(--willow-text-2);
   margin: 0;
   white-space: pre;
   overflow-x: auto;

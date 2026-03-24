@@ -1,102 +1,105 @@
 :root {
-  /* Neon Phantom palette */
-  --willow-void-black: #131318;
-  --willow-pale-bone: #ebece6;
-  --willow-neon-cyan: #8be9fd;
-  --willow-electric-blue: #49baff;
-  --willow-phantom-green: #50fb7b;
-  --willow-hot-magenta: #fc4cb4;
-  --willow-signal-red: #fc4346;
-  --willow-soft-yellow: #f0fb8c;
-  --willow-steel-blue: #81aec6;
-  --willow-ash-gray: #555555;
+  /* Zinc + Teal palette */
+  --willow-bg: #0a0a0f;
+  --willow-bg-soft: #111116;
+  --willow-bg-mute: #1a1a1f;
+  --willow-bg-code: #08080c;
+  --willow-text-1: #fafafa;
+  --willow-text-2: #a1a1aa;
+  --willow-text-3: #71717a;
+  --willow-text-dim: #3f3f46;
+  --willow-border: rgba(255, 255, 255, 0.08);
+  --willow-border-hover: rgba(255, 255, 255, 0.15);
+  --willow-accent: #5eead4;
+  --willow-accent-dim: rgba(94, 234, 212, 0.08);
+  --willow-accent-bg: rgba(94, 234, 212, 0.04);
 
-  /* Status badge colors */
-  --willow-status-busy: #fc4346;
-  --willow-status-done: #50fb7b;
-  --willow-status-wait: #f0fb8c;
-  --willow-status-idle: #49baff;
+  /* Status badge colors — semantic but muted */
+  --willow-status-busy: #f87171;
+  --willow-status-done: #5eead4;
+  --willow-status-wait: #fbbf24;
+  --willow-status-idle: #94a3b8;
 }
 
 .dark {
-  --vp-c-bg: #131318;
-  --vp-c-bg-alt: #131318;
-  --vp-c-bg-soft: #1a1a22;
-  --vp-c-bg-mute: #2a2a35;
-  --vp-c-bg-elv: #1a1a22;
+  --vp-c-bg: #0a0a0f;
+  --vp-c-bg-alt: #0a0a0f;
+  --vp-c-bg-soft: #111116;
+  --vp-c-bg-mute: #1a1a1f;
+  --vp-c-bg-elv: #111116;
 
-  --vp-c-text-1: #ebece6;
-  --vp-c-text-2: #81aec6;
-  --vp-c-text-3: #555555;
+  --vp-c-text-1: #fafafa;
+  --vp-c-text-2: #a1a1aa;
+  --vp-c-text-3: #71717a;
 
-  --vp-c-brand-1: #8be9fd;
-  --vp-c-brand-2: #49baff;
-  --vp-c-brand-3: #3a9fe6;
-  --vp-c-brand-soft: rgba(139, 233, 253, 0.14);
+  --vp-c-brand-1: #5eead4;
+  --vp-c-brand-2: #2dd4bf;
+  --vp-c-brand-3: #14b8a6;
+  --vp-c-brand-soft: rgba(94, 234, 212, 0.08);
 
-  --vp-c-tip-1: #50fb7b;
-  --vp-c-tip-2: rgba(80, 251, 123, 0.14);
-  --vp-c-tip-soft: rgba(80, 251, 123, 0.14);
+  --vp-c-tip-1: #5eead4;
+  --vp-c-tip-2: rgba(94, 234, 212, 0.08);
+  --vp-c-tip-soft: rgba(94, 234, 212, 0.08);
 
-  --vp-c-warning-1: #f0fb8c;
-  --vp-c-warning-2: rgba(240, 251, 140, 0.14);
-  --vp-c-warning-soft: rgba(240, 251, 140, 0.14);
+  --vp-c-warning-1: #fbbf24;
+  --vp-c-warning-2: rgba(251, 191, 36, 0.08);
+  --vp-c-warning-soft: rgba(251, 191, 36, 0.08);
 
-  --vp-c-danger-1: #fc4346;
-  --vp-c-danger-2: rgba(252, 67, 70, 0.14);
-  --vp-c-danger-soft: rgba(252, 67, 70, 0.14);
+  --vp-c-danger-1: #f87171;
+  --vp-c-danger-2: rgba(248, 113, 113, 0.08);
+  --vp-c-danger-soft: rgba(248, 113, 113, 0.08);
 
-  --vp-c-divider: rgba(129, 174, 198, 0.2);
-  --vp-c-gutter: rgba(129, 174, 198, 0.2);
+  --vp-c-divider: rgba(255, 255, 255, 0.08);
+  --vp-c-gutter: rgba(255, 255, 255, 0.08);
 
-  --vp-c-default-1: #81aec6;
-  --vp-c-default-2: rgba(129, 174, 198, 0.2);
-  --vp-c-default-3: rgba(129, 174, 198, 0.1);
-  --vp-c-default-soft: rgba(129, 174, 198, 0.1);
+  --vp-c-default-1: #a1a1aa;
+  --vp-c-default-2: rgba(255, 255, 255, 0.08);
+  --vp-c-default-3: rgba(255, 255, 255, 0.05);
+  --vp-c-default-soft: rgba(255, 255, 255, 0.05);
 
   --vp-button-brand-border: transparent;
-  --vp-button-brand-text: #131318;
-  --vp-button-brand-bg: #8be9fd;
+  --vp-button-brand-text: #0a0a0f;
+  --vp-button-brand-bg: #5eead4;
   --vp-button-brand-hover-border: transparent;
-  --vp-button-brand-hover-text: #131318;
-  --vp-button-brand-hover-bg: #49baff;
+  --vp-button-brand-hover-text: #0a0a0f;
+  --vp-button-brand-hover-bg: #2dd4bf;
   --vp-button-brand-active-border: transparent;
-  --vp-button-brand-active-text: #131318;
-  --vp-button-brand-active-bg: #3a9fe6;
+  --vp-button-brand-active-text: #0a0a0f;
+  --vp-button-brand-active-bg: #14b8a6;
 
-  --vp-button-alt-border: rgba(129, 174, 198, 0.3);
-  --vp-button-alt-text: #ebece6;
-  --vp-button-alt-bg: rgba(129, 174, 198, 0.1);
-  --vp-button-alt-hover-border: rgba(129, 174, 198, 0.5);
-  --vp-button-alt-hover-text: #ebece6;
-  --vp-button-alt-hover-bg: rgba(129, 174, 198, 0.15);
+  --vp-button-alt-border: rgba(255, 255, 255, 0.1);
+  --vp-button-alt-text: #fafafa;
+  --vp-button-alt-bg: rgba(255, 255, 255, 0.05);
+  --vp-button-alt-hover-border: rgba(255, 255, 255, 0.18);
+  --vp-button-alt-hover-text: #fafafa;
+  --vp-button-alt-hover-bg: rgba(255, 255, 255, 0.08);
 
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(135deg, #8be9fd 0%, #49baff 50%, #fc4cb4 100%);
-  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(139, 233, 253, 0.15) 0%, transparent 70%);
+  --vp-home-hero-name-background: linear-gradient(135deg, #5eead4 0%, #2dd4bf 100%);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(94, 234, 212, 0.08) 0%, transparent 70%);
   --vp-home-hero-image-filter: blur(40px);
 
-  --vp-code-block-bg: #0d0d12;
-  --vp-code-line-highlight-color: rgba(139, 233, 253, 0.08);
-  --vp-code-tab-text-color: #81aec6;
-  --vp-code-tab-active-text-color: #8be9fd;
-  --vp-code-tab-hover-text-color: #ebece6;
-  --vp-code-tab-active-bar-color: #8be9fd;
-  --vp-code-copy-code-border-color: rgba(129, 174, 198, 0.2);
-  --vp-code-copy-code-bg: #1a1a22;
-  --vp-code-copy-code-hover-bg: #2a2a35;
-  --vp-code-copy-code-hover-border-color: rgba(129, 174, 198, 0.4);
-  --vp-code-copy-code-active-text: #50fb7b;
+  --vp-code-block-bg: #08080c;
+  --vp-code-line-highlight-color: rgba(94, 234, 212, 0.06);
+  --vp-code-tab-text-color: #a1a1aa;
+  --vp-code-tab-active-text-color: #5eead4;
+  --vp-code-tab-hover-text-color: #fafafa;
+  --vp-code-tab-active-bar-color: #5eead4;
+  --vp-code-copy-code-border-color: rgba(255, 255, 255, 0.08);
+  --vp-code-copy-code-bg: #111116;
+  --vp-code-copy-code-hover-bg: #1a1a1f;
+  --vp-code-copy-code-hover-border-color: rgba(255, 255, 255, 0.15);
+  --vp-code-copy-code-active-text: #5eead4;
 
-  --vp-carbon-ads-text-color: #81aec6;
-  --vp-carbon-ads-poweredby-color: #555555;
-  --vp-carbon-ads-bg-color: #1a1a22;
-  --vp-carbon-ads-hover-text-color: #ebece6;
+  --vp-carbon-ads-text-color: #a1a1aa;
+  --vp-carbon-ads-poweredby-color: #71717a;
+  --vp-carbon-ads-bg-color: #111116;
+  --vp-carbon-ads-hover-text-color: #fafafa;
 
-  --vp-sidebar-bg-color: #131318;
+  --vp-sidebar-bg-color: #0a0a0f;
 
-  --vp-nav-bg-color: rgba(19, 19, 24, 0.85);
+  --vp-nav-bg-color: rgba(10, 10, 15, 0.85);
 
-  --vp-input-border-color: rgba(129, 174, 198, 0.3);
-  --vp-input-hover-border-color: #8be9fd;
+  --vp-input-border-color: rgba(255, 255, 255, 0.1);
+  --vp-input-hover-border-color: #5eead4;
 }
