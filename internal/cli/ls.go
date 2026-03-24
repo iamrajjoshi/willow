@@ -88,7 +88,7 @@ func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
 	}
 
 	repoName := repoNameFromDir(repoGit.Dir)
-	printTable(flags, filtered, repoName)
+	printTable(flags, filtered, repoName, repoGit)
 	return nil
 }
 
@@ -163,7 +163,7 @@ func completeRepos(ctx context.Context, cmd *cli.Command) {
 	}
 }
 
-func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
+func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, repoGit *git.Git) {
 	u := flags.NewUI()
 
 	if len(worktrees) == 0 {
@@ -171,13 +171,29 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 		return
 	}
 
+	// Detect merged branches
+	cfg := config.Load(repoGit.Dir)
+	baseBranch := cfg.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	mergedBranches, _ := repoGit.MergedBranches(baseBranch)
+	mergedSet := make(map[string]bool)
+	for _, b := range mergedBranches {
+		mergedSet[b] = true
+	}
+
 	branchW := len("BRANCH")
 	statusW := len("STATUS")
 	pathW := len("PATH")
 	ageW := len("AGE")
 	for _, wt := range worktrees {
-		if len(wt.Branch) > branchW {
-			branchW = len(wt.Branch)
+		display := wt.Branch
+		if mergedSet[wt.Branch] {
+			display += " [merged]"
+		}
+		if len(display) > branchW {
+			branchW = len(display)
 		}
 		if len(wt.Path) > pathW {
 			pathW = len(wt.Path)
@@ -199,9 +215,13 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string) {
 		if ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir) {
 			statusLabel += "\u25CF" // ●
 		}
+		branchDisplay := wt.Branch
+		if mergedSet[wt.Branch] {
+			branchDisplay += " " + u.Dim("[merged]")
+		}
 		pathPadded := fmt.Sprintf("%-*s", pathW, wt.Path)
 		agePadded := fmt.Sprintf("%*s", ageW, age)
-		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, wt.Branch, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
+		line := fmt.Sprintf("  %-*s  %-*s  %s  %s", branchW, branchDisplay, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
 	}
 }

@@ -33,16 +33,23 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 | `Enter` | Switch to worktree (creates tmux session if needed) |
 | `Ctrl-N` | Create new worktree from typed query (also accepts PR URLs) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
+| `Ctrl-P` | Browse open PRs and create a worktree for the selected one |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
 | `Esc` | Close picker |
 
-### GitHub PR support
+### PR picker
 
-Paste a GitHub PR URL into the picker's query field and press `Ctrl-N`. Willow resolves the branch via `gh` and creates a worktree for it — no need to look up the branch name manually. Requires the [GitHub CLI](https://cli.github.com/).
+Press `Ctrl-P` to list open PRs via `gh pr list`. Each line shows the PR number, title, author, and branch. Select one to create a worktree (or switch to it if one already exists). Requires the [GitHub CLI](https://cli.github.com/).
+
+You can also paste a PR URL into the query field and press `Ctrl-N` for quick one-off access.
 
 ### Existing branch picker
 
 Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Select one to create a worktree and switch to it immediately.
+
+### Merged worktree indicator
+
+Worktrees whose branches have been merged into the base branch show a dim `[merged]` tag. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up with `Ctrl-D` or `ww gc --prune`.
 
 ### Features
 
@@ -50,6 +57,7 @@ Press `Ctrl-E` to open a secondary picker showing all remote branches that don't
 - **Auto-navigate** — opens with the cursor on your current session
 - **Status colors** — BUSY (green), WAIT (red), DONE (blue), IDLE (yellow)
 - **Unread indicator** — `●` marks completed sessions you haven't viewed
+- **Merged indicator** — `[merged]` marks worktrees whose branches are merged
 - **Multi-Claude sub-rows** — when a worktree has multiple active Claude sessions, each is shown as an indented sub-row with its own status and tool info
 - **Embedded fzf** — fzf is compiled into the willow binary, no external `fzf` dependency needed
 
