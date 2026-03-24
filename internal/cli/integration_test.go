@@ -552,6 +552,128 @@ func TestRm_ScopedToCurrentRepo(t *testing.T) {
 	}
 }
 
+func TestNew_ExistingBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	// Create a branch in the origin (push from the initial worktree)
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+
+	wg := &git.Git{Dir: mainDir}
+	if _, err := wg.Run("config", "user.email", "test@test.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := wg.Run("config", "user.name", "Test"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+	if _, err := wg.Run("checkout", "-b", "existing-feature"); err != nil {
+		t.Fatalf("create branch: %v", err)
+	}
+	os.WriteFile(filepath.Join(mainDir, "feature.txt"), []byte("feature\n"), 0o644)
+	if _, err := wg.Run("add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := wg.Run("commit", "-m", "add feature"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := wg.Run("push", "origin", "existing-feature"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+	// Switch back so the branch isn't checked out in this worktree
+	if _, err := wg.Run("checkout", "-"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "-e", "existing-feature", "--no-fetch"); err != nil {
+		t.Fatalf("new -e failed: %v", err)
+	}
+
+	newWtDir := filepath.Join(worktreeDir, "existing-feature")
+	if _, err := os.Stat(newWtDir); os.IsNotExist(err) {
+		t.Errorf("worktree not created at %s", newWtDir)
+	}
+
+	// Verify the feature file exists (branch content was checked out)
+	if _, err := os.Stat(filepath.Join(newWtDir, "feature.txt")); os.IsNotExist(err) {
+		t.Error("feature.txt not found — existing branch content not checked out")
+	}
+}
+
+func TestNew_ExistingBranchSkipsPrefix(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+
+	// Create and push a branch
+	wg := &git.Git{Dir: mainDir}
+	if _, err := wg.Run("checkout", "-b", "prefixed-branch"); err != nil {
+		t.Fatalf("create branch: %v", err)
+	}
+	if _, err := wg.Run("push", "origin", "prefixed-branch"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+	if _, err := wg.Run("checkout", "-"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+
+	os.Chdir(mainDir)
+
+	// Set branchPrefix in local config
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	configPath := filepath.Join(bareDir, "willow.json")
+	os.WriteFile(configPath, []byte(`{"branchPrefix": "alice"}`), 0o644)
+
+	if err := runApp("new", "-e", "prefixed-branch", "--no-fetch"); err != nil {
+		t.Fatalf("new -e failed: %v", err)
+	}
+
+	// Directory should be "prefixed-branch", NOT "alice-prefixed-branch"
+	expectedDir := filepath.Join(worktreeDir, "prefixed-branch")
+	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
+		t.Errorf("worktree not at %s — branch prefix was wrongly applied", expectedDir)
+	}
+
+	wrongDir := filepath.Join(worktreeDir, "alice-prefixed-branch")
+	if _, err := os.Stat(wrongDir); !os.IsNotExist(err) {
+		t.Error("branch prefix was applied to existing branch (should be skipped)")
+	}
+}
+
+func TestIsPRURL(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"https://github.com/org/repo/pull/123", true},
+		{"github.com/org/repo/pull/456", true},
+		{"https://github.com/org/repo/pull/123#issuecomment-1", true},
+		{"feat-my-branch", false},
+		{"https://github.com/org/repo/issues/123", false},
+		{"", false},
+		{"123", false},
+	}
+	for _, tt := range tests {
+		if got := isPRURL(tt.input); got != tt.want {
+			t.Errorf("isPRURL(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestGc_EmptyTrash(t *testing.T) {
 	setupTestEnv(t)
 

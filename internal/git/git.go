@@ -118,6 +118,27 @@ func (g *Git) MergedBranches(base string) ([]string, error) {
 	return branches, nil
 }
 
+// RemoteBranches returns remote branch names from origin, stripping the
+// "origin/" prefix. The HEAD pointer is excluded.
+func (g *Git) RemoteBranches() ([]string, error) {
+	out, err := g.Run("branch", "-r", "--format=%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	var branches []string
+	for _, b := range strings.Split(out, "\n") {
+		b = strings.TrimSpace(b)
+		if b == "" || b == "origin/HEAD" || strings.HasSuffix(b, "/HEAD") {
+			continue
+		}
+		branches = append(branches, strings.TrimPrefix(b, "origin/"))
+	}
+	return branches, nil
+}
+
 func (g *Git) HasUnpushedCommits() (bool, error) {
 	out, err := g.Run("rev-list", "--count", "@{upstream}..HEAD")
 	if err != nil {
