@@ -241,11 +241,56 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 		return err
 	}
 
-	// Calls `ww new -e --cd --repo <repo>` with no branch arg to trigger the picker
-	args := []string{"new", "-e", "--cd", "--repo", repo}
+	bareDir, err := config.ResolveRepo(repo)
+	if err != nil {
+		return err
+	}
 
+	repoGit := &git.Git{Dir: bareDir}
+	remoteBranches, err := repoGit.RemoteBranches()
+	if err != nil {
+		return fmt.Errorf("failed to list remote branches: %w", err)
+	}
+	if len(remoteBranches) == 0 {
+		return fmt.Errorf("no remote branches found")
+	}
+
+	// Filter out branches that already have worktrees
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return fmt.Errorf("failed to list worktrees: %w", err)
+	}
+	wtBranches := make(map[string]bool)
+	for _, wt := range wts {
+		if !wt.IsBare {
+			wtBranches[wt.Branch] = true
+		}
+	}
+	var available []string
+	for _, b := range remoteBranches {
+		if !wtBranches[b] {
+			available = append(available, b)
+		}
+	}
+	if len(available) == 0 {
+		return fmt.Errorf("all remote branches already have worktrees")
+	}
+
+	// Pick branch in-process (no nested shell-out)
+	branch, err := fzf.Run(available,
+		fzf.WithReverse(),
+		fzf.WithHeader("Select a branch to check out"),
+	)
+	if err != nil {
+		return err
+	}
+	if branch == "" {
+		return nil // user cancelled
+	}
+
+	// Create worktree via `ww new -e --cd`
+	args := []string{"new", "-e", "--cd", "--repo", repo, "--", branch}
 	cmd := exec.Command(self, args...)
-	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
@@ -254,7 +299,7 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 
 	wtPath := strings.TrimSpace(string(out))
 	if wtPath == "" {
-		return nil // user cancelled the picker
+		return fmt.Errorf("no path returned from willow new")
 	}
 
 	wtDir := filepath.Base(wtPath)
