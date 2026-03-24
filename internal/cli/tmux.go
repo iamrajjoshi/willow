@@ -86,8 +86,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
-					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-D: Delete"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-d"),
+					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-D: Delete"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-p", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(fmt.Sprintf("start:reload-sync(%s)", reloadCmd)),
 				}
@@ -118,6 +118,13 @@ func tmuxPickCmd() *cli.Command {
 
 				case "ctrl-e":
 					if err := tmuxPickExisting(self, repoFilter, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-p":
+					if err := tmuxPickPR(self, repoFilter, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -314,6 +321,89 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 	}
 
 	return tmux.SwitchClient(sessName)
+}
+
+func tmuxPickPR(self, repoFilter string, items []tmux.PickerItem) error {
+	repo, err := resolveRepo(repoFilter, items)
+	if err != nil {
+		return err
+	}
+
+	bareDir, err := config.ResolveRepo(repo)
+	if err != nil {
+		return err
+	}
+
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return fmt.Errorf("gh CLI is required for PR picker")
+	}
+
+	cmd := exec.Command(ghPath, "pr", "list", "--json", "number,title,author,headRefName",
+		"-q", `.[] | "#\(.number)  \(.title)  (\(.author.login))  [\(.headRefName)]"`)
+	cmd.Dir = bareDir
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to list PRs: %w", err)
+	}
+
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return fmt.Errorf("no open PRs found")
+	}
+	lines := strings.Split(raw, "\n")
+
+	selected, err := fzf.Run(lines,
+		fzf.WithReverse(),
+		fzf.WithHeader("Select a PR to check out"),
+	)
+	if err != nil {
+		return err
+	}
+	if selected == "" {
+		return nil
+	}
+
+	branch := extractBranchFromPRLine(selected)
+	if branch == "" {
+		return fmt.Errorf("could not extract branch from selection")
+	}
+
+	args := []string{"checkout", "--cd", "--repo", repo, "--", branch}
+	coCmd := exec.Command(self, args...)
+	coCmd.Stderr = os.Stderr
+	coOut, err := coCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to checkout PR branch: %w", err)
+	}
+
+	wtPath := strings.TrimSpace(string(coOut))
+	if wtPath == "" {
+		return fmt.Errorf("no path returned from checkout")
+	}
+
+	wtDir := filepath.Base(wtPath)
+	repoName := filepath.Base(filepath.Dir(wtPath))
+
+	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+	if !tmux.SessionExists(sessName) {
+		cfg := loadRepoConfig(repoName)
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.PostWorktreeCreate); err != nil {
+			return fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+
+	return tmux.SwitchClient(sessName)
+}
+
+// extractBranchFromPRLine parses "[branch-name]" from the end of a PR picker line.
+func extractBranchFromPRLine(line string) string {
+	start := strings.LastIndex(line, "[")
+	end := strings.LastIndex(line, "]")
+	if start == -1 || end == -1 || end <= start {
+		return ""
+	}
+	return line[start+1 : end]
 }
 
 func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {

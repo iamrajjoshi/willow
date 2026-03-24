@@ -32,7 +32,8 @@ ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
 ww new -e                              # pick from remote branches (fzf)
-ww new https://github.com/org/repo/pull/123  # checkout a PR
+ww new --pr 123                        # checkout PR #123
+ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
 wwn feature/auth                       # create + cd (shell integration)
 ```
@@ -42,6 +43,7 @@ wwn feature/auth                       # create + cd (shell integration)
 | `-b, --base` | Base branch to fork from | Config default / auto-detected |
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) | `false` |
+| `--pr` | GitHub PR number or URL | |
 | `--no-fetch` | Skip fetching from remote | `false` |
 | `--cd` | Print only the path (for scripting) | `false` |
 
@@ -51,13 +53,14 @@ Running `ww new -e` without a branch name opens an fzf picker showing all remote
 
 ### GitHub PR support
 
-Pass a GitHub PR URL as the branch argument and willow will resolve the branch name via `gh`, fetch it, and create the worktree. Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+Use `--pr` with a PR number or pass a full PR URL as the branch argument. Willow resolves the branch name via `gh`, fetches it, and creates the worktree. Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
 
 ```bash
-ww new https://github.com/org/repo/pull/123
+ww new --pr 123                              # by number
+ww new https://github.com/org/repo/pull/123  # by URL
 ```
 
-This also works from the tmux picker — paste a PR URL and press `Ctrl-N`.
+This also works from the tmux picker — press `Ctrl-P` for a dedicated PR picker, or paste a PR URL and press `Ctrl-N`.
 
 ## `ww checkout <branch-or-pr-url>` (alias: `co`)
 
@@ -70,7 +73,8 @@ Smart switch-or-create. Figures out the right action based on what exists:
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
-ww checkout https://github.com/org/repo/pull/123  # checkout a PR
+ww checkout --pr 123                     # checkout PR #123
+ww checkout https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww checkout brand-new-feature            # creates new branch + worktree
 ww checkout brand-new -b develop         # new branch forked from develop
 wwc auth-refactor                        # checkout + cd (shell integration)
@@ -80,6 +84,7 @@ wwc auth-refactor                        # checkout + cd (shell integration)
 |------|-------------|---------|
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `-b, --base` | Base branch (only when creating a new branch) | Config default / auto-detected |
+| `--pr` | GitHub PR number or URL | |
 | `--no-fetch` | Skip fetching from remote | `false` |
 | `--cd` | Print only the path (for scripting) | `false` |
 

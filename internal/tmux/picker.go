@@ -31,6 +31,7 @@ type PickerItem struct {
 	Unread     bool
 	HasSession bool
 	Sessions   []*claude.SessionStatus
+	Merged     bool
 }
 
 func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
@@ -56,6 +57,19 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 		if err != nil {
 			continue
 		}
+
+		// Detect merged branches for this repo
+		cfg := config.Load(bareDir)
+		baseBranch := cfg.BaseBranch
+		if baseBranch == "" {
+			baseBranch = "main"
+		}
+		mergedBranches, _ := repoGit.MergedBranches(baseBranch)
+		mergedSet := make(map[string]bool)
+		for _, b := range mergedBranches {
+			mergedSet[b] = true
+		}
+
 		for _, wt := range wts {
 			if wt.IsBare {
 				continue
@@ -73,12 +87,18 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				Unread:     ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
 				HasSession: SessionExists(sessName),
 				Sessions:   sessions,
+				Merged:     mergedSet[wt.Branch],
 			})
 		}
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
-		return statusOrder(items[i].Status) < statusOrder(items[j].Status)
+		oi, oj := statusOrder(items[i].Status), statusOrder(items[j].Status)
+		// Merged items sort last
+		if items[i].Merged != items[j].Merged {
+			return !items[i].Merged
+		}
+		return oi < oj
 	})
 
 	return items, nil
@@ -110,6 +130,9 @@ func FormatPickerLines(items []PickerItem) []string {
 		}
 
 		name := displayName(item, multiRepo)
+		if item.Merged {
+			name += fmt.Sprintf(" %s[merged]%s", colorDim, colorReset)
+		}
 
 		line := fmt.Sprintf("%s%s %s%s%s | %-*s | %s%s%s",
 			color, icon, label, dot, colorReset,
