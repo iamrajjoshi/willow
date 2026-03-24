@@ -102,6 +102,10 @@ func newCmd() *cli.Command {
 				Name:  "cd",
 				Usage: "Print only the worktree path to stdout",
 			},
+			&cli.StringFlag{
+				Name:  "pr",
+				Usage: "GitHub PR number or URL",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
@@ -137,10 +141,27 @@ func newCmd() *cli.Command {
 
 			branch := cmd.StringArg("branch")
 
-			// PR URL auto-detection: resolve to branch name and force existing mode
+			// --pr flag: resolve PR number or URL to branch name
+			if prRef := cmd.String("pr"); prRef != "" {
+				done = tr.Start("resolve PR")
+				prBranch, ok := resolvePRRef(prRef, bareDir)
+				if !ok {
+					return fmt.Errorf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+				}
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
+				} else {
+					u.Info(fmt.Sprintf("Resolved PR to branch %s", u.Bold(prBranch)))
+				}
+				branch = prBranch
+				existing = true
+				done()
+			}
+
+			// PR URL auto-detection in branch arg
 			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
-				prBranch, ok := resolvePRBranch(branch, bareDir)
+				prBranch, ok := resolvePRRef(branch, bareDir)
 				if !ok {
 					return fmt.Errorf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
 				}
@@ -315,7 +336,9 @@ func isPRURL(s string) bool {
 	return prURLPattern.MatchString(s)
 }
 
-func resolvePRBranch(input, bareDir string) (string, bool) {
+// resolvePRRef resolves a PR reference (number like "123" or full URL) to a branch name.
+// Uses `gh pr view` which handles both forms natively.
+func resolvePRRef(input, bareDir string) (string, bool) {
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
 		return "", false

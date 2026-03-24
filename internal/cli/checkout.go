@@ -45,6 +45,10 @@ func checkoutCmd() *cli.Command {
 				Name:  "cd",
 				Usage: "Print only the worktree path to stdout",
 			},
+			&cli.StringFlag{
+				Name:  "pr",
+				Usage: "GitHub PR number or URL",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
@@ -54,9 +58,6 @@ func checkoutCmd() *cli.Command {
 			cdOnly := cmd.Bool("cd")
 
 			branch := cmd.StringArg("branch")
-			if branch == "" {
-				return fmt.Errorf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
-			}
 
 			// Resolve repos
 			done := tr.Start("resolve repos")
@@ -66,11 +67,26 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			// PR URL auto-detection
-			if isPRURL(branch) {
+			// --pr flag: resolve PR number or URL to branch name
+			if prRef := cmd.String("pr"); prRef != "" {
+				done = tr.Start("resolve PR")
+				prBranch, ok := resolvePRRef(prRef, repos[0].BareDir)
+				if !ok {
+					return fmt.Errorf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+				}
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
+				} else {
+					u.Info(fmt.Sprintf("Resolved PR to branch %s", u.Bold(prBranch)))
+				}
+				branch = prBranch
+				done()
+			}
+
+			// PR URL auto-detection in branch arg
+			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
-				// Use first repo's bare dir for gh context
-				prBranch, ok := resolvePRBranch(branch, repos[0].BareDir)
+				prBranch, ok := resolvePRRef(branch, repos[0].BareDir)
 				if !ok {
 					return fmt.Errorf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
 				}
@@ -81,6 +97,10 @@ func checkoutCmd() *cli.Command {
 				}
 				branch = prBranch
 				done()
+			}
+
+			if branch == "" {
+				return fmt.Errorf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
 			}
 
 			// Step 1: Check if a worktree already exists for this branch

@@ -151,7 +151,8 @@ ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
 ww new -e                              # pick from remote branches (fzf)
-ww new https://github.com/org/repo/pull/123  # checkout a PR
+ww new --pr 123                        # checkout PR #123
+ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
 wwn feature/auth                       # create + cd (shell integration)
 ```
@@ -161,16 +162,18 @@ wwn feature/auth                       # create + cd (shell integration)
 | `-b, --base` | Base branch to fork from |
 | `-r, --repo` | Target repo by name |
 | `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) |
+| `--pr` | GitHub PR number or URL |
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree.
+Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker.
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
-ww checkout https://github.com/org/repo/pull/123  # checkout a PR
+ww checkout --pr 123                     # checkout PR #123
+ww checkout https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww checkout brand-new-feature            # creates new branch + worktree
 ww checkout brand-new -b develop         # new branch from develop
 wwc auth-refactor                        # checkout + cd (shell integration)
@@ -180,6 +183,7 @@ wwc auth-refactor                        # checkout + cd (shell integration)
 |------|-------------|
 | `-r, --repo` | Target repo by name |
 | `-b, --base` | Base branch (only when creating a new branch) |
+| `--pr` | GitHub PR number or URL |
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
 
