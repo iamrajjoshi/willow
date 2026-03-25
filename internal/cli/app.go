@@ -35,6 +35,8 @@ func resolveRepoFromCwd() (string, bool) {
 
 var version = "dev"
 
+func Version() string { return version }
+
 type Flags struct {
 	Verbose bool
 	Trace   bool
