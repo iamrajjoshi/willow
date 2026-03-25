@@ -17,6 +17,7 @@ type Config struct {
 	Teardown         []string   `json:"teardown,omitempty"`
 	Defaults         Defaults   `json:"defaults"`
 	Tmux             TmuxConfig `json:"tmux,omitempty"`
+	Telemetry        *bool      `json:"telemetry,omitempty"`
 }
 
 type TmuxConfig struct {
@@ -220,6 +221,9 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Tmux.PostWorktreeCreate != nil {
 		base.Tmux.PostWorktreeCreate = overlay.Tmux.PostWorktreeCreate
+	}
+	if overlay.Telemetry != nil {
+		base.Telemetry = overlay.Telemetry
 	}
 }
 
