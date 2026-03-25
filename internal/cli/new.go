@@ -242,6 +242,7 @@ func newCmd() *cli.Command {
 			// Resolve base branch: flag → config → auto-detect
 			done = tr.Start("resolve base branch")
 			baseBranch := cmd.String("base")
+			explicitBase := baseBranch != ""
 			if baseBranch == "" {
 				baseBranch = cfg.BaseBranch
 			}
@@ -253,8 +254,11 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			// Determine if base is a local branch (for stacked PRs) or remote
-			localBase := repoGit.LocalBranchExists(baseBranch)
+			// Only treat as local base when --base was explicitly provided and the
+			// branch exists locally (stacked PRs). Auto-detected defaults always
+			// use origin/ so they stay current — in bare repos every branch appears
+			// local, which previously caused the fetch to be skipped.
+			localBase := explicitBase && repoGit.LocalBranchExists(baseBranch)
 			gitRef := "origin/" + baseBranch
 			if localBase {
 				gitRef = baseBranch
