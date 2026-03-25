@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -44,6 +46,7 @@ func Init(version string) func() {
 	sentry.ConfigureScope(func(scope *sentry.Scope) {
 		scope.SetTag("os", runtime.GOOS)
 		scope.SetTag("arch", runtime.GOARCH)
+		scope.SetUser(sentry.User{ID: machineID()})
 	})
 
 	enabled = true
@@ -115,6 +118,15 @@ func ResolveCommandName(args []string) string {
 		return arg
 	}
 	return "root"
+}
+
+func machineID() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+	hash := sha256.Sum256([]byte(hostname))
+	return fmt.Sprintf("%x", hash[:8])
 }
 
 func isOptedOut() bool {
