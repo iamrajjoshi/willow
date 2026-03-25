@@ -84,18 +84,22 @@ func StartCommand(ctx context.Context, command string) (context.Context, func(er
 			tx.Status = sentry.SpanStatusOK
 		}
 
+		elapsed := float64(time.Since(start).Milliseconds())
+
 		logger := sentry.NewLogger(tx.Context())
 		if err != nil {
 			logger.Warn().
 				String("command", command).
+				Float64("duration_ms", elapsed).
+				String("status", "error").
 				Emitf("command failed: %s", err)
 		} else {
 			logger.Info().
 				String("command", command).
+				Float64("duration_ms", elapsed).
+				String("status", "ok").
 				Emit("command completed")
 		}
-
-		elapsed := float64(time.Since(start).Milliseconds())
 		meter := sentry.NewMeter(tx.Context())
 		meter.Count("cli.command.count", 1,
 			sentry.WithAttributes(attribute.String("command", command)),

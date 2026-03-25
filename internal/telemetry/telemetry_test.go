@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/getsentry/sentry-go"
 )
 
 func TestIsOptedOut_EnvVar(t *testing.T) {
@@ -78,11 +80,9 @@ func TestStartCommand_NoopWhenDisabled(t *testing.T) {
 }
 
 func TestStartCommand_WithTransaction(t *testing.T) {
-	enabled = false
-	os.Unsetenv("WILLOW_TELEMETRY")
-
-	cleanup := Init("dev")
-	defer cleanup()
+	// Use empty DSN so events are silently discarded, not sent to real Sentry
+	sentry.Init(sentry.ClientOptions{EnableTracing: true, EnableLogs: true})
+	enabled = true
 	defer func() { enabled = false }()
 
 	ctx, finish := StartCommand(context.Background(), "new")
@@ -95,11 +95,9 @@ func TestStartCommand_WithTransaction(t *testing.T) {
 }
 
 func TestStartCommand_WithError(t *testing.T) {
-	enabled = false
-	os.Unsetenv("WILLOW_TELEMETRY")
-
-	cleanup := Init("dev")
-	defer cleanup()
+	// Use empty DSN so events are silently discarded, not sent to real Sentry
+	sentry.Init(sentry.ClientOptions{EnableTracing: true, EnableLogs: true})
+	enabled = true
 	defer func() { enabled = false }()
 
 	_, finish := StartCommand(context.Background(), "clone")
