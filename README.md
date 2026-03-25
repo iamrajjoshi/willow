@@ -343,6 +343,20 @@ Config merges two tiers (local wins):
 }
 ```
 
+## Telemetry
+
+Willow collects anonymous usage data (command names, execution times, errors) to help improve the tool. No repo contents, branch names, or file paths are sent.
+
+**Opt out:**
+
+```bash
+# Environment variable (immediate)
+export WILLOW_TELEMETRY=off
+
+# Or in ~/.config/willow/config.json (persistent)
+{ "telemetry": false }
+```
+
 ## Terminal setup (Ghostty / iTerm / etc.)
 
 Use `--tab-title` to automatically set your terminal tab to the worktree name:
