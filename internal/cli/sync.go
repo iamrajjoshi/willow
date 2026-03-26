@@ -145,7 +145,13 @@ func syncCmd() *cli.Command {
 				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
 
 				// Check for dirty worktree
-				dirty, _ := wtGit.IsDirty()
+				dirty, err := wtGit.IsDirty()
+				if err != nil {
+					u.Info(fmt.Sprintf("  %s → %s", parent, branch))
+					u.Warn(fmt.Sprintf("    ⚠ Skipped (failed to check status: %v)", err))
+					skipped++
+					continue
+				}
 				if dirty {
 					u.Info(fmt.Sprintf("  %s → %s", parent, branch))
 					u.Warn(fmt.Sprintf("    ⚠ Skipped (uncommitted changes)"))

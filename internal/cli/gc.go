@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -47,7 +48,7 @@ func gcCmd() *cli.Command {
 				u.Info(fmt.Sprintf("Would clean up %d trash entries", len(entries)))
 			} else {
 				for _, e := range entries {
-					path := trashDir + "/" + e.Name()
+					path := filepath.Join(trashDir, e.Name())
 					if err := os.RemoveAll(path); err != nil {
 						u.Warn(fmt.Sprintf("Failed to remove %s: %v", e.Name(), err))
 					}

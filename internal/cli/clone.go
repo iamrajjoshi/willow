@@ -92,11 +92,17 @@ func cloneCmd() *cli.Command {
 
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt)
+			cleanupDone := make(chan struct{})
 			go func() {
-				<-sigCh
-				cleanup()
-				os.Exit(1)
+				select {
+				case <-sigCh:
+					cleanup()
+					os.Exit(1)
+				case <-cleanupDone:
+					return
+				}
 			}()
+			defer close(cleanupDone)
 			defer signal.Stop(sigCh)
 
 			// Bare clones don't set up remote tracking by default.
