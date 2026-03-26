@@ -331,7 +331,7 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	done = tr.Start("auto setup remote")
 	if *cfg.Defaults.AutoSetupRemote {
 		wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
-		if _, err := wtGit.Run("config", "--lock-timeout", "500", "--local", "push.autoSetupRemote", "true"); err != nil {
+		if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
 			u.Warn("Failed to set push.autoSetupRemote: " + err.Error())
 		}
 	}

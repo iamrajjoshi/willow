@@ -50,8 +50,9 @@ func Load(bareDir string) *Stack {
 
 // Save writes the stack to branches.json. Removes the file if the stack is empty.
 func (s *Stack) Save(bareDir string) error {
+	fp := filePath(bareDir)
 	if len(s.Parents) == 0 {
-		err := os.Remove(filePath(bareDir))
+		err := os.Remove(fp)
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
@@ -61,7 +62,17 @@ func (s *Stack) Save(bareDir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath(bareDir), append(data, '\n'), 0o644)
+	return atomicWrite(fp, append(data, '\n'))
+}
+
+// atomicWrite writes data to a temp file then renames it to path,
+// preventing corruption from interrupted writes.
+func atomicWrite(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func (s *Stack) SetParent(branch, parent string) {

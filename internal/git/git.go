@@ -184,7 +184,9 @@ func (g *Git) CommitsAhead(base string) (int, error) {
 		return 0, err
 	}
 	var count int
-	fmt.Sscanf(strings.TrimSpace(out), "%d", &count)
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d", &count); err != nil {
+		return 0, fmt.Errorf("failed to parse commit count %q: %w", out, err)
+	}
 	return count, nil
 }
 
