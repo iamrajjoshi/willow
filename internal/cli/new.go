@@ -337,6 +337,18 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	}
 	done()
 
+	done = tr.Start("pane commands")
+	if len(cfg.Tmux.Panes) > 0 && !cdOnly {
+		for _, p := range cfg.Tmux.Panes {
+			if p.Command != "" {
+				if err := runHooks([]string{p.Command}, wtPath, u); err != nil {
+					return errs.User(err)
+				}
+			}
+		}
+	}
+	done()
+
 	tr.Total()
 
 	if cdOnly {

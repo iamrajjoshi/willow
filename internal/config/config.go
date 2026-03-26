@@ -26,8 +26,12 @@ type TmuxConfig struct {
 	NotifyCommand     string       `json:"notifyCommand,omitempty"`
 	NotifyWaitCommand string       `json:"notifyWaitCommand,omitempty"`
 	SwitcherPreview   *bool        `json:"switcherPreview,omitempty"`
-	Layout             []string `json:"layout,omitempty"`
-	PostWorktreeCreate []string `json:"postWorktreeCreate,omitempty"`
+	Layout            []string     `json:"layout,omitempty"`
+	Panes             []PaneConfig `json:"panes,omitempty"`
+}
+
+type PaneConfig struct {
+	Command string `json:"command,omitempty"`
 }
 
 type Defaults struct {
@@ -219,8 +223,8 @@ func merge(base, overlay *Config) {
 	if overlay.Tmux.Layout != nil {
 		base.Tmux.Layout = overlay.Tmux.Layout
 	}
-	if overlay.Tmux.PostWorktreeCreate != nil {
-		base.Tmux.PostWorktreeCreate = overlay.Tmux.PostWorktreeCreate
+	if overlay.Tmux.Panes != nil {
+		base.Tmux.Panes = overlay.Tmux.Panes
 	}
 	if overlay.Telemetry != nil {
 		base.Telemetry = overlay.Telemetry

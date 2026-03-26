@@ -526,25 +526,56 @@ func TestMerge_NotifyWaitCommand(t *testing.T) {
 	}
 }
 
-func TestMerge_PostWorktreeCreate(t *testing.T) {
-	base := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd old"}}}
-	overlay := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd website", "nvm use"}}}
+func TestMerge_Panes(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{Panes: []PaneConfig{{Command: "old"}}}}
+	overlay := &Config{Tmux: TmuxConfig{Panes: []PaneConfig{{}, {Command: "dev sync --only install"}}}}
 
 	merge(base, overlay)
 
-	if len(base.Tmux.PostWorktreeCreate) != 2 || base.Tmux.PostWorktreeCreate[0] != "cd website" {
-		t.Errorf("PostWorktreeCreate = %v, want [cd website, nvm use]", base.Tmux.PostWorktreeCreate)
+	if len(base.Tmux.Panes) != 2 || base.Tmux.Panes[1].Command != "dev sync --only install" {
+		t.Errorf("Panes = %v, want [{} {dev sync --only install}]", base.Tmux.Panes)
 	}
 }
 
-func TestMerge_PostWorktreeCreate_NilDoesNotOverride(t *testing.T) {
-	base := &Config{Tmux: TmuxConfig{PostWorktreeCreate: []string{"cd website"}}}
+func TestMerge_Panes_NilDoesNotOverride(t *testing.T) {
+	base := &Config{Tmux: TmuxConfig{Panes: []PaneConfig{{Command: "cd website"}}}}
 	overlay := &Config{}
 
 	merge(base, overlay)
 
-	if len(base.Tmux.PostWorktreeCreate) != 1 || base.Tmux.PostWorktreeCreate[0] != "cd website" {
-		t.Errorf("PostWorktreeCreate = %v, want [cd website]", base.Tmux.PostWorktreeCreate)
+	if len(base.Tmux.Panes) != 1 || base.Tmux.Panes[0].Command != "cd website" {
+		t.Errorf("Panes = %v, want [{cd website}]", base.Tmux.Panes)
+	}
+}
+
+func TestPanes_JSONRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			Layout: []string{"split-window -h"},
+			Panes:  []PaneConfig{{}, {Command: "dev sync"}},
+		},
+	}
+
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile() error: %v", err)
+	}
+
+	if len(loaded.Tmux.Panes) != 2 {
+		t.Fatalf("Panes length = %d, want 2", len(loaded.Tmux.Panes))
+	}
+	if loaded.Tmux.Panes[0].Command != "" {
+		t.Errorf("Panes[0].Command = %q, want empty", loaded.Tmux.Panes[0].Command)
+	}
+	if loaded.Tmux.Panes[1].Command != "dev sync" {
+		t.Errorf("Panes[1].Command = %q, want %q", loaded.Tmux.Panes[1].Command, "dev sync")
 	}
 }
 

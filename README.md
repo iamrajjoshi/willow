@@ -338,7 +338,10 @@ Config merges two tiers (local wins):
   },
   "tmux": {
     "layout": ["split-window -h", "select-layout even-horizontal"],
-    "postWorktreeCreate": ["cd website"]
+    "panes": [
+      { "command": "cd website" },
+      { "command": "cd website" }
+    ]
   }
 }
 ```
