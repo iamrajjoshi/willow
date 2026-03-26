@@ -66,14 +66,23 @@ func tmuxPickCmd() *cli.Command {
 
 				lines := tmux.FormatPickerLines(items)
 
-				// Find current session index for auto-navigate
+				// Find current session's line position for auto-navigate
 				startPos := 0
 				if curSess, err := tmux.CurrentSession(); err == nil {
-					for i, item := range items {
+					var curWtPath string
+					for _, item := range items {
 						sessName := tmux.SessionNameForWorktree(item.RepoName, item.WtDirName)
 						if sessName == curSess {
-							startPos = i + 1 // fzf pos is 1-indexed
+							curWtPath = item.WtPath
 							break
+						}
+					}
+					if curWtPath != "" {
+						for i, line := range lines {
+							if tmux.ExtractPathFromLine(line) == curWtPath {
+								startPos = i + 1 // fzf pos is 1-indexed
+								break
+							}
 						}
 					}
 				}
@@ -84,6 +93,12 @@ func tmuxPickCmd() *cli.Command {
 					reloadCmd += fmt.Sprintf(" --repo %s", repoFilter)
 				}
 
+				// Chain reload-sync and pos() in a single bind so both execute
+				startBind := fmt.Sprintf("start:reload-sync(%s)", reloadCmd)
+				if startPos > 0 {
+					startBind += fmt.Sprintf("+pos(%d)", startPos)
+				}
+
 				opts := []fzf.Option{
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
@@ -91,15 +106,12 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
 					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
 					fzf.WithPrintQuery(),
-					fzf.WithBind(fmt.Sprintf("start:reload-sync(%s)", reloadCmd)),
+					fzf.WithBind(startBind),
 				}
 
 				cfg := config.Load("")
 				if cfg.Tmux.SwitcherPreview == nil || *cfg.Tmux.SwitcherPreview {
 					opts = append(opts, fzf.WithPreview(previewCmd, "right:50%:wrap:follow"))
-				}
-				if startPos > 0 {
-					opts = append(opts, fzf.WithBind(fmt.Sprintf("start:pos(%d)", startPos)))
 				}
 
 				result, err := fzf.RunExpect(lines, opts...)
