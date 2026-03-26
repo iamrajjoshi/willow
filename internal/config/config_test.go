@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -576,6 +577,75 @@ func TestPanes_JSONRoundTrip(t *testing.T) {
 	}
 	if loaded.Tmux.Panes[1].Command != "dev sync" {
 		t.Errorf("Panes[1].Command = %q, want %q", loaded.Tmux.Panes[1].Command, "dev sync")
+	}
+}
+
+func TestValidate_PanesWithoutLayout(t *testing.T) {
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			Panes: []PaneConfig{{Command: "echo hi"}},
+		},
+	}
+
+	warnings := cfg.Validate()
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "layout is empty") {
+		t.Errorf("expected layout warning, got %q", warnings[0])
+	}
+}
+
+func TestValidate_MorePanesThanLayout(t *testing.T) {
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			Layout: []string{"split-window -h"},
+			Panes:  []PaneConfig{{}, {}, {Command: "echo extra"}},
+		},
+	}
+
+	warnings := cfg.Validate()
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "extra entries") {
+		t.Errorf("expected pane count warning, got %q", warnings[0])
+	}
+}
+
+func TestValidate_ValidConfig(t *testing.T) {
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			Layout: []string{"split-window -h"},
+			Panes:  []PaneConfig{{}, {Command: "echo ok"}},
+		},
+	}
+
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+}
+
+func TestValidate_NoPanes(t *testing.T) {
+	cfg := &Config{}
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings for empty config, got %v", warnings)
+	}
+}
+
+func TestValidate_SelectLayoutNotCounted(t *testing.T) {
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			Layout: []string{"split-window -h", "select-layout even-horizontal"},
+			Panes:  []PaneConfig{{}, {Command: "echo ok"}},
+		},
+	}
+
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Errorf("select-layout should not count as a pane, got warnings: %v", warnings)
 	}
 }
 
