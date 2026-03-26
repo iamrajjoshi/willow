@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -15,18 +16,27 @@ const (
 	cyan   = "\033[36m"
 )
 
-type UI struct{}
+type UI struct {
+	Out io.Writer // defaults to os.Stdout
+}
+
+func (u *UI) out() io.Writer {
+	if u.Out != nil {
+		return u.Out
+	}
+	return os.Stdout
+}
 
 func (u *UI) Success(msg string) {
-	fmt.Printf("%s %s\n", u.Green("✔"), msg)
+	fmt.Fprintf(u.out(), "%s %s\n", u.Green("✔"), msg)
 }
 
 func (u *UI) Info(msg string) {
-	fmt.Println(msg)
+	fmt.Fprintln(u.out(), msg)
 }
 
 func (u *UI) Warn(msg string) {
-	fmt.Printf("%s %s\n", u.Yellow("⚠"), msg)
+	fmt.Fprintf(u.out(), "%s %s\n", u.Yellow("⚠"), msg)
 }
 
 func (u *UI) Errorf(format string, args ...any) {

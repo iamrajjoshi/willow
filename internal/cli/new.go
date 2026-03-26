@@ -121,6 +121,9 @@ func newCmd() *cli.Command {
 			g := flags.NewGit()
 			u := flags.NewUI()
 			cdOnly := cmd.Bool("cd")
+			if cdOnly {
+				u.Out = os.Stderr
+			}
 			existing := cmd.Bool("existing")
 
 			// Resolve repo

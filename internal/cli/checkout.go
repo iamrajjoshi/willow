@@ -58,6 +58,9 @@ func checkoutCmd() *cli.Command {
 			g := flags.NewGit()
 			u := flags.NewUI()
 			cdOnly := cmd.Bool("cd")
+			if cdOnly {
+				u.Out = os.Stderr
+			}
 
 			branch := cmd.StringArg("branch")
 
