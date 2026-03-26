@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
@@ -83,11 +84,20 @@ func cloneCmd() *cli.Command {
 			}
 			done()
 
-			// If anything below fails, clean up the partial clone
+			// If anything below fails (or Ctrl-C), clean up the partial clone
 			cleanup := func() {
 				os.RemoveAll(bareDir)
 				os.RemoveAll(worktreesDir)
 			}
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt)
+			go func() {
+				<-sigCh
+				cleanup()
+				os.Exit(1)
+			}()
+			defer signal.Stop(sigCh)
 
 			// Bare clones don't set up remote tracking by default.
 			// Configure the fetch refspec so `git fetch` populates refs/remotes/origin/*.
