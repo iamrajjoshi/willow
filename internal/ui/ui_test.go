@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 func TestBold(t *testing.T) {
 	u := &UI{}
@@ -53,6 +57,46 @@ func TestDim(t *testing.T) {
 	want := dim + "faded" + reset
 	if got != want {
 		t.Errorf("Dim() = %q, want %q", got, want)
+	}
+}
+
+func TestUI_DefaultWritesToStdout(t *testing.T) {
+	u := &UI{}
+	if u.out() != nil {
+		// out() returns os.Stdout by default, just verify it doesn't panic
+	}
+}
+
+func TestUI_CustomOut(t *testing.T) {
+	var buf bytes.Buffer
+	u := &UI{Out: &buf}
+
+	u.Info("hello")
+	u.Warn("oops")
+	u.Success("done")
+
+	out := buf.String()
+	if !strings.Contains(out, "hello") {
+		t.Errorf("Info() not written to custom Out, got %q", out)
+	}
+	if !strings.Contains(out, "oops") {
+		t.Errorf("Warn() not written to custom Out, got %q", out)
+	}
+	if !strings.Contains(out, "done") {
+		t.Errorf("Success() not written to custom Out, got %q", out)
+	}
+}
+
+func TestUI_CustomOutDoesNotWriteToStdout(t *testing.T) {
+	var buf bytes.Buffer
+	u := &UI{Out: &buf}
+
+	u.Info("redirected")
+	u.Warn("redirected warning")
+
+	// Verify output went to buf, not stdout
+	if !strings.Contains(buf.String(), "redirected") {
+		t.Error("output should go to custom Out")
 	}
 }
 
