@@ -102,9 +102,9 @@ By default, `willow tmux` creates a single window with one pane for each worktre
 
 Any tmux subcommand works: `split-window`, `new-window`, `select-layout`, `resize-pane`, etc.
 
-### Pane init commands
+### Per-pane commands
 
-Use `tmux.postWorktreeCreate` to send shell commands to every pane after the layout is set up. These run once when a session is first created.
+Use `tmux.panes` to send different commands to specific panes after the layout is set up. The array index maps to the pane index — pane 0 is the initial pane created by `new-session`, pane 1 is created by the first `split-window`, and so on. Panes without a config entry (or with an empty `command`) receive no command.
 
 ```jsonc
 {
@@ -113,12 +113,33 @@ Use `tmux.postWorktreeCreate` to send shell commands to every pane after the lay
       "split-window -h",
       "select-layout even-horizontal"
     ],
-    "postWorktreeCreate": ["cd website"]
+    "panes": [
+      { "command": "cd website" },
+      { "command": "cd website" }
+    ]
   }
 }
 ```
 
 This creates two side-by-side panes, each starting in the `website/` subdirectory.
+
+To run a command in only one pane, leave the others empty:
+
+```jsonc
+{
+  "tmux": {
+    "layout": ["split-window -h"],
+    "panes": [
+      {},
+      { "command": "dev sync --only install_system_deps,install_python_deps" }
+    ]
+  }
+}
+```
+
+The left pane (index 0) gets no startup command. The right pane (index 1) runs `dev sync`.
+
+Outside tmux (during `willow new`), pane commands run sequentially in the foreground after setup hooks.
 
 ## Shell integration
 

@@ -27,9 +27,10 @@ The local config lives inside the bare repo directory, so it's private to your m
   "tmux": {
     "notification": true,
     "notifyCommand": "afplay /System/Library/Sounds/Glass.aiff",
-    "layout": [
-      { "name": "claude", "panes": 1 },
-      { "name": "dev", "panes": 4, "layout": "tiled" }
+    "layout": ["split-window -h"],
+    "panes": [
+      {},
+      { "command": "dev sync --only install_system_deps" }
     ]
   },
   "telemetry": true
@@ -50,7 +51,7 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
 | `tmux.layout` | `string[]` | Raw tmux subcommands to run after session creation (e.g. `["split-window -h", "select-layout even-horizontal"]`) |
-| `tmux.postWorktreeCreate` | `string[]` | Commands sent to every pane after session setup (e.g. `["cd website"]`) |
+| `tmux.panes` | `PaneConfig[]` | Per-pane commands, indexed by pane order. Pane 0 is the initial pane, pane 1 is the first split, etc. Each entry: `{ "command": "..." }` |
 | `telemetry` | `boolean` | Enable/disable anonymous usage telemetry (default: `true`). Also controllable via `WILLOW_TELEMETRY=off` env var |
 
 ## Directory structure
