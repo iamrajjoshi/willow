@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -59,7 +60,7 @@ func swCmd() *cli.Command {
 			if multiRepo {
 				allWts := collectAllWorktrees(repos, g.Verbose)
 				if len(allWts) == 0 {
-					return fmt.Errorf("no worktrees found")
+					return errs.Userf("no worktrees found")
 				}
 
 				lines := buildCrossRepoWorktreeLines(allWts)
@@ -93,7 +94,7 @@ func swCmd() *cli.Command {
 
 			filtered := filterBareWorktrees(worktrees)
 			if len(filtered) == 0 {
-				return fmt.Errorf("no worktrees found")
+				return errs.Userf("no worktrees found")
 			}
 
 			repoName := repos[0].Name
