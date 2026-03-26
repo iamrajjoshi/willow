@@ -231,6 +231,32 @@ func merge(base, overlay *Config) {
 	}
 }
 
+// Validate checks for common config issues and returns warnings.
+// Returns nil if config is valid.
+func (cfg *Config) Validate() []string {
+	var warnings []string
+
+	if len(cfg.Tmux.Panes) > 0 && len(cfg.Tmux.Layout) == 0 {
+		warnings = append(warnings, "tmux.panes configured but tmux.layout is empty — only pane 0 will receive commands")
+	}
+
+	if len(cfg.Tmux.Panes) > 0 && len(cfg.Tmux.Layout) > 0 {
+		// Estimate pane count: 1 (initial) + number of split-window/new-window commands
+		estimated := 1
+		for _, cmd := range cfg.Tmux.Layout {
+			parts := strings.Fields(cmd)
+			if len(parts) > 0 && (parts[0] == "split-window" || parts[0] == "new-window") {
+				estimated++
+			}
+		}
+		if len(cfg.Tmux.Panes) > estimated {
+			warnings = append(warnings, fmt.Sprintf("tmux.panes has %d entries but layout creates ~%d panes — extra entries will be ignored", len(cfg.Tmux.Panes), estimated))
+		}
+	}
+
+	return warnings
+}
+
 // Save writes a config to the given path, creating directories as needed.
 func Save(cfg *Config, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
