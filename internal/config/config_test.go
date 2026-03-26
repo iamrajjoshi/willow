@@ -580,6 +580,49 @@ func TestPanes_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidate_DeprecatedPostWorktreeCreate(t *testing.T) {
+	cfg := &Config{
+		Tmux: TmuxConfig{
+			DeprecatedPostWorktreeCreate: []string{"cd website"},
+		},
+	}
+
+	warnings := cfg.Validate()
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "postWorktreeCreate is deprecated") {
+		t.Errorf("expected deprecation warning, got %q", warnings[0])
+	}
+}
+
+func TestValidate_DeprecatedFieldFromJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	os.WriteFile(path, []byte(`{
+		"tmux": {
+			"postWorktreeCreate": ["cd website"],
+			"layout": ["split-window -h"]
+		}
+	}`), 0o644)
+
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile() error: %v", err)
+	}
+
+	warnings := cfg.Validate()
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "postWorktreeCreate is deprecated") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected deprecation warning from old config, got: %v", warnings)
+	}
+}
+
 func TestValidate_PanesWithoutLayout(t *testing.T) {
 	cfg := &Config{
 		Tmux: TmuxConfig{

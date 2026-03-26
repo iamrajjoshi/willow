@@ -28,6 +28,9 @@ type TmuxConfig struct {
 	SwitcherPreview   *bool        `json:"switcherPreview,omitempty"`
 	Layout            []string     `json:"layout,omitempty"`
 	Panes             []PaneConfig `json:"panes,omitempty"`
+
+	// Deprecated: captured for migration warnings only.
+	DeprecatedPostWorktreeCreate []string `json:"postWorktreeCreate,omitempty"`
 }
 
 type PaneConfig struct {
@@ -235,6 +238,10 @@ func merge(base, overlay *Config) {
 // Returns nil if config is valid.
 func (cfg *Config) Validate() []string {
 	var warnings []string
+
+	if len(cfg.Tmux.DeprecatedPostWorktreeCreate) > 0 {
+		warnings = append(warnings, "tmux.postWorktreeCreate is deprecated — migrate to tmux.panes (see https://getwillow.dev/configuration/)")
+	}
 
 	if len(cfg.Tmux.Panes) > 0 && len(cfg.Tmux.Layout) == 0 {
 		warnings = append(warnings, "tmux.panes configured but tmux.layout is empty — only pane 0 will receive commands")
