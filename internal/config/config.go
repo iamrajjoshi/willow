@@ -258,6 +258,7 @@ func (cfg *Config) Validate() []string {
 }
 
 // Save writes a config to the given path, creating directories as needed.
+// Uses atomic write (temp file + rename) to prevent corruption from interrupted writes.
 func Save(cfg *Config, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -266,5 +267,9 @@ func Save(cfg *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
