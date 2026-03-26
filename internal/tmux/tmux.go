@@ -43,13 +43,17 @@ func NewSession(name, dir string, layout []string, panes []config.PaneConfig) er
 
 	for _, cmd := range layout {
 		args := prepareLayoutCmd(strings.Fields(cmd), name, dir)
-		run(args...)
+		if _, err := run(args...); err != nil {
+			return fmt.Errorf("layout command %q: %w", cmd, err)
+		}
 	}
 
 	paneIDs := listSessionPanes(name)
 	for i, paneID := range paneIDs {
 		if i < len(panes) && panes[i].Command != "" {
-			SendKeys(paneID, panes[i].Command, "Enter")
+			if err := SendKeys(paneID, panes[i].Command, "Enter"); err != nil {
+				return fmt.Errorf("pane %d command: %w", i, err)
+			}
 		}
 	}
 
