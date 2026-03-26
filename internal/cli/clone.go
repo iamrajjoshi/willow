@@ -123,7 +123,7 @@ func cloneCmd() *cli.Command {
 
 			done = tr.Start("post-checkout hook")
 			cfg := config.Load(bareDir)
-			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
+			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u, false)
 			done()
 
 			tr.Total()

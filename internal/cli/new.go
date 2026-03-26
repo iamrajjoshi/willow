@@ -42,7 +42,7 @@ func runHooks(commands []string, dir string, u *ui.UI) error {
 // the new worktree. This is needed for bare repos because git resolves relative
 // core.hooksPath against the bare repo dir (where hook files don't exist),
 // so the hook never fires automatically.
-func runPostCheckoutHook(hookPath, wtPath string, u *ui.UI) {
+func runPostCheckoutHook(hookPath, wtPath string, u *ui.UI, cdOnly bool) {
 	if hookPath == "" {
 		return
 	}
@@ -62,7 +62,13 @@ func runPostCheckoutHook(hookPath, wtPath string, u *ui.UI) {
 	nullRef := "0000000000000000000000000000000000000000"
 	cmd := exec.Command(hookFile, nullRef, head, "1")
 	cmd.Dir = wtPath
-	cmd.Stdout = os.Stdout
+	// In --cd mode stdout is captured for the worktree path, so redirect
+	// hook output to stderr to avoid contaminating it.
+	if cdOnly {
+		cmd.Stdout = os.Stderr
+	} else {
+		cmd.Stdout = os.Stdout
+	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		u.Warn(fmt.Sprintf("post-checkout hook failed: %v", err))
@@ -316,7 +322,7 @@ func newCmd() *cli.Command {
 
 func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, branch, baseBranch string, cdOnly bool) error {
 	done := tr.Start("post-checkout hook")
-	runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u)
+	runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u, cdOnly)
 	done()
 
 	done = tr.Start("auto setup remote")
