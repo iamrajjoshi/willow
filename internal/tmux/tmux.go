@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/iamrajjoshi/willow/internal/config"
 )
 
 func InTmux() bool {
@@ -33,8 +35,8 @@ func SendKeys(target string, keys ...string) error {
 // NewSession creates a tmux session and applies layout commands.
 // Layout entries are raw tmux subcommands (e.g. "split-window -h").
 // The session target (-t) and working directory (-c) are auto-injected.
-// After layout setup, postWorktreeCreate commands are sent to every pane.
-func NewSession(name, dir string, layout []string, postWorktreeCreate []string) error {
+// After layout setup, each pane receives its configured command (by index).
+func NewSession(name, dir string, layout []string, panes []config.PaneConfig) error {
 	if _, err := run("new-session", "-d", "-s", name, "-c", dir); err != nil {
 		return err
 	}
@@ -44,9 +46,10 @@ func NewSession(name, dir string, layout []string, postWorktreeCreate []string) 
 		run(args...)
 	}
 
-	for _, paneID := range listSessionPanes(name) {
-		for _, cmd := range postWorktreeCreate {
-			SendKeys(paneID, cmd, "Enter")
+	paneIDs := listSessionPanes(name)
+	for i, paneID := range paneIDs {
+		if i < len(panes) && panes[i].Command != "" {
+			SendKeys(paneID, panes[i].Command, "Enter")
 		}
 	}
 
