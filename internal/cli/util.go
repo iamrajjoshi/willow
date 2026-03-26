@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -58,7 +59,7 @@ func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Workt
 
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("no worktree found matching %q", target)
+		return nil, errs.Userf("no worktree found matching %q", target)
 	case 1:
 		return &matches[0], nil
 	default:
@@ -66,7 +67,7 @@ func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Workt
 		for _, wt := range matches {
 			lines += fmt.Sprintf("  %s  %s\n", wt.Branch, wt.Path)
 		}
-		return nil, fmt.Errorf("%s", strings.TrimRight(lines, "\n"))
+		return nil, errs.User(fmt.Errorf("%s", strings.TrimRight(lines, "\n")))
 	}
 }
 
@@ -112,7 +113,7 @@ func resolveRepos(g *git.Git, repoFlag string) ([]repoInfo, error) {
 		return nil, fmt.Errorf("failed to list repos: %w", err)
 	}
 	if len(repos) == 0 {
-		return nil, fmt.Errorf("no willow-managed repos found\n\nUse 'ww clone <url>' to get started.")
+		return nil, errs.Userf("no willow-managed repos found\n\nUse 'ww clone <url>' to get started.")
 	}
 
 	var result []repoInfo
@@ -157,7 +158,7 @@ func findCrossRepoWorktree(rwts []repoWorktree, target string) (*repoWorktree, e
 
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("no worktree found matching %q", target)
+		return nil, errs.Userf("no worktree found matching %q", target)
 	case 1:
 		return &matches[0], nil
 	default:
@@ -165,7 +166,7 @@ func findCrossRepoWorktree(rwts []repoWorktree, target string) (*repoWorktree, e
 		for _, rwt := range matches {
 			lines += fmt.Sprintf("  %s/%s  %s\n", rwt.Repo.Name, rwt.Worktree.Branch, rwt.Worktree.Path)
 		}
-		return nil, fmt.Errorf("%s", strings.TrimRight(lines, "\n"))
+		return nil, errs.User(fmt.Errorf("%s", strings.TrimRight(lines, "\n")))
 	}
 }
 
@@ -268,4 +269,3 @@ func completeWorktreesWithFlag(ctx context.Context, cmd *cli.Command) {
 
 	completeWorktreesCrossRepo(ctx, cmd)
 }
-

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
@@ -147,7 +148,7 @@ func newCmd() *cli.Command {
 				done = tr.Start("resolve PR")
 				prBranch, ok := resolvePRRef(prRef, bareDir)
 				if !ok {
-					return fmt.Errorf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+					return errs.Userf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -164,7 +165,7 @@ func newCmd() *cli.Command {
 				done = tr.Start("resolve PR branch")
 				prBranch, ok := resolvePRRef(branch, bareDir)
 				if !ok {
-					return fmt.Errorf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
+					return errs.Userf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -190,7 +191,7 @@ func newCmd() *cli.Command {
 			}
 
 			if branch == "" {
-				return fmt.Errorf("branch name is required\n\nUsage: ww new <branch> [flags]")
+				return errs.Userf("branch name is required\n\nUsage: ww new <branch> [flags]")
 			}
 
 			if existing {
@@ -321,8 +322,8 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	done = tr.Start("auto setup remote")
 	if *cfg.Defaults.AutoSetupRemote {
 		wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
-		if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
-			return fmt.Errorf("failed to configure push.autoSetupRemote: %w", err)
+		if _, err := wtGit.Run("config", "--lock-timeout", "500", "--local", "push.autoSetupRemote", "true"); err != nil {
+			u.Warn("Failed to set push.autoSetupRemote: " + err.Error())
 		}
 	}
 	done()
@@ -385,7 +386,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		return "", fmt.Errorf("failed to list remote branches: %w", err)
 	}
 	if len(remoteBranches) == 0 {
-		return "", fmt.Errorf("no remote branches found")
+		return "", errs.Userf("no remote branches found")
 	}
 
 	wts, err := worktree.List(repoGit)
@@ -406,7 +407,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		}
 	}
 	if len(available) == 0 {
-		return "", fmt.Errorf("all remote branches already have worktrees")
+		return "", errs.Userf("all remote branches already have worktrees")
 	}
 
 	selected, err := fzf.Run(available,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -73,7 +74,7 @@ func checkoutCmd() *cli.Command {
 				done = tr.Start("resolve PR")
 				prBranch, ok := resolvePRRef(prRef, repos[0].BareDir)
 				if !ok {
-					return fmt.Errorf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+					return errs.Userf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -89,7 +90,7 @@ func checkoutCmd() *cli.Command {
 				done = tr.Start("resolve PR branch")
 				prBranch, ok := resolvePRRef(branch, repos[0].BareDir)
 				if !ok {
-					return fmt.Errorf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
+					return errs.Userf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -101,7 +102,7 @@ func checkoutCmd() *cli.Command {
 			}
 
 			if branch == "" {
-				return fmt.Errorf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
+				return errs.Userf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
 			}
 
 			// Step 1: Check if a worktree already exists for this branch
@@ -130,7 +131,7 @@ func checkoutCmd() *cli.Command {
 			// Resolve to a single repo.
 			done = tr.Start("resolve single repo")
 			if len(repos) > 1 {
-				return fmt.Errorf("multiple repos found — use --repo to specify which one")
+				return errs.Userf("multiple repos found — use --repo to specify which one")
 			}
 			repo := repos[0]
 			done()

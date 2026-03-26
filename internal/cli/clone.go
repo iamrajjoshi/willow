@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
@@ -42,7 +43,7 @@ func cloneCmd() *cli.Command {
 
 			url := cmd.StringArg("url")
 			if url == "" {
-				return fmt.Errorf("repository URL is required\n\nUsage: ww clone <repo-url> [name]")
+				return errs.Userf("repository URL is required\n\nUsage: ww clone <repo-url> [name]")
 			}
 
 			name := cmd.StringArg("name")
@@ -56,7 +57,7 @@ func cloneCmd() *cli.Command {
 
 			if _, err := os.Stat(bareDir); err == nil {
 				if !force {
-					return fmt.Errorf("repository %q already exists at %s\n\nRun with --force to remove it and re-clone", name, bareDir)
+					return errs.Userf("repository %q already exists at %s\n\nRun with --force to remove it and re-clone", name, bareDir)
 				}
 				u.Info(fmt.Sprintf("Removing existing repo %s...", u.Bold(name)))
 				if err := os.RemoveAll(bareDir); err != nil {

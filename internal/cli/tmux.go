@@ -12,6 +12,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/dashboard"
+	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
@@ -182,7 +183,7 @@ func tmuxSwCmd() *cli.Command {
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			wtPath := cmd.StringArg("path")
 			if wtPath == "" {
-				return fmt.Errorf("worktree path is required")
+				return errs.Userf("worktree path is required")
 			}
 
 			wtDir := filepath.Base(wtPath)
@@ -223,7 +224,7 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 
 func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error {
 	if query == "" {
-		return fmt.Errorf("enter a branch name first")
+		return errs.Userf("enter a branch name first")
 	}
 
 	repo, err := resolveRepo(repoFilter, items)
@@ -277,7 +278,7 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 		return fmt.Errorf("failed to list remote branches: %w", err)
 	}
 	if len(remoteBranches) == 0 {
-		return fmt.Errorf("no remote branches found")
+		return errs.Userf("no remote branches found")
 	}
 
 	// Filter out branches that already have worktrees
@@ -298,7 +299,7 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 		}
 	}
 	if len(available) == 0 {
-		return fmt.Errorf("all remote branches already have worktrees")
+		return errs.Userf("all remote branches already have worktrees")
 	}
 
 	// Pick branch in-process (no nested shell-out)
@@ -354,7 +355,7 @@ func tmuxPickPR(self, repoFilter string, items []tmux.PickerItem) error {
 
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
-		return fmt.Errorf("gh CLI is required for PR picker")
+		return errs.Userf("gh CLI is required for PR picker")
 	}
 
 	cmd := exec.Command(ghPath, "pr", "list", "--json", "number,title,author,headRefName",
@@ -367,7 +368,7 @@ func tmuxPickPR(self, repoFilter string, items []tmux.PickerItem) error {
 
 	raw := strings.TrimSpace(string(out))
 	if raw == "" {
-		return fmt.Errorf("no open PRs found")
+		return errs.Userf("no open PRs found")
 	}
 	lines := strings.Split(raw, "\n")
 
@@ -448,7 +449,7 @@ func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
 
 	repos, err := config.ListRepos()
 	if err != nil || len(repos) == 0 {
-		return "", fmt.Errorf("no repos found — run 'ww clone' first")
+		return "", errs.Userf("no repos found — run 'ww clone' first")
 	}
 
 	if len(repos) == 1 {
@@ -483,7 +484,7 @@ func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
 
 	selected, err := fzf.Run(repos, fzf.WithHeader("Pick a repo"), fzf.WithReverse())
 	if err != nil || selected == "" {
-		return "", fmt.Errorf("no repo selected")
+		return "", errs.Userf("no repo selected")
 	}
 	return selected, nil
 }
