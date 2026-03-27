@@ -103,8 +103,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
-					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
+					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-B: New (stacked) | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(startBind),
 				}
@@ -125,6 +125,13 @@ func tmuxPickCmd() *cli.Command {
 				switch result.Key {
 				case "ctrl-n":
 					if err := tmuxPickNew(self, result.Query, repoFilter, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-b":
+					if err := tmuxPickNewWithBase(self, result.Query, repoFilter, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -259,6 +266,76 @@ func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error 
 	}
 
 	// Path format: ~/.willow/worktrees/<repo>/<dir>
+	wtDir := filepath.Base(wtPath)
+	repoName := filepath.Base(filepath.Dir(wtPath))
+
+	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+	if !tmux.SessionExists(sessName) {
+		cfg := loadRepoConfig(repoName)
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
+			return fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+
+	return tmux.SwitchClient(sessName)
+}
+
+func tmuxPickNewWithBase(self, query, repoFilter string, items []tmux.PickerItem) error {
+	if query == "" {
+		return errs.Userf("enter a branch name first")
+	}
+
+	repo, err := resolveRepo(repoFilter, items)
+	if err != nil {
+		return err
+	}
+
+	bareDir, err := config.ResolveRepo(repo)
+	if err != nil {
+		return err
+	}
+
+	repoGit := &git.Git{Dir: bareDir}
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	var branches []string
+	for _, wt := range wts {
+		if !wt.IsBare {
+			branches = append(branches, wt.Branch)
+		}
+	}
+	if len(branches) == 0 {
+		return errs.Userf("no worktrees to use as base")
+	}
+
+	base, err := fzf.Run(branches,
+		fzf.WithReverse(),
+		fzf.WithHeader("Select base branch"),
+	)
+	if err != nil {
+		return err
+	}
+	if base == "" {
+		return nil
+	}
+
+	args := []string{"new", "--base", base, "--cd", "--repo", repo, "--", query}
+
+	cmd := exec.Command(self, args...)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to create worktree: %w", err)
+	}
+
+	wtPath := strings.TrimSpace(string(out))
+	if wtPath == "" {
+		return fmt.Errorf("no path returned from willow new")
+	}
+
 	wtDir := filepath.Base(wtPath)
 	repoName := filepath.Base(filepath.Dir(wtPath))
 
