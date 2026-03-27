@@ -21,7 +21,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 - [git](https://git-scm.com/)
 - [tmux](https://github.com/tmux/tmux) — optional, for `ww tmux` integration
 
-## Shell integration
+## Shell integration (recommended)
 
 Add to your `.bashrc` / `.zshrc`:
 
@@ -35,7 +35,7 @@ For fish:
 willow shell-init | source
 ```
 
-This gives you:
+This gives you the `ww` alias and helper commands:
 
 | Command | Description |
 |---------|-------------|
@@ -53,6 +53,10 @@ eval "$(willow shell-init --tab-title)"
 ```
 
 Each tab shows `repo/branch` (e.g. `myrepo/auth-refactor`) when inside a willow worktree.
+
+::: tip
+All examples below use `ww`, which is the shell alias for `willow`. If you skipped shell integration, replace `ww` with `willow` in all commands.
+:::
 
 ## Claude Code status tracking
 
