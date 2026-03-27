@@ -12,11 +12,16 @@ type config struct {
 	ansi       bool
 	reverse    bool
 	noSort     bool
+	cycle      bool
 	preview    string
 	previewWin string
 	expectKeys string
 	printQuery bool
 	bindings   []string
+}
+
+func defaults() *config {
+	return &config{cycle: true}
 }
 
 type Option func(*config)
@@ -52,6 +57,10 @@ func WithPrintQuery() Option {
 	return func(c *config) { c.printQuery = true }
 }
 
+func WithCycle() Option {
+	return func(c *config) { c.cycle = true }
+}
+
 func WithBind(bindings ...string) Option {
 	return func(c *config) { c.bindings = append(c.bindings, bindings...) }
 }
@@ -66,6 +75,9 @@ func buildArgs(cfg *config) []string {
 	}
 	if cfg.noSort {
 		args = append(args, "--no-sort")
+	}
+	if cfg.cycle {
+		args = append(args, "--cycle")
 	}
 	if cfg.header != "" {
 		args = append(args, "--header", cfg.header)
@@ -126,7 +138,7 @@ func runFzf(lines []string, extraArgs []string, cfg *config) ([]string, int, err
 // Run launches fzf with the given lines and returns the selected line.
 // Returns empty string and nil error if user cancelled (Esc/Ctrl-C).
 func Run(lines []string, opts ...Option) (string, error) {
-	cfg := &config{}
+	cfg := defaults()
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -153,7 +165,7 @@ type ExpectResult struct {
 // RunExpect launches fzf with --print-query and --expect, returning structured output.
 // Returns nil, nil on cancel (Esc/Ctrl-C).
 func RunExpect(lines []string, opts ...Option) (*ExpectResult, error) {
-	cfg := &config{}
+	cfg := defaults()
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -186,7 +198,7 @@ func RunExpect(lines []string, opts ...Option) (*ExpectResult, error) {
 // RunMulti launches fzf with multi-select enabled (TAB to toggle, Ctrl-A to select all).
 // Returns nil, nil on cancel (Esc/Ctrl-C).
 func RunMulti(lines []string, opts ...Option) ([]string, error) {
-	cfg := &config{}
+	cfg := defaults()
 	for _, o := range opts {
 		o(cfg)
 	}
