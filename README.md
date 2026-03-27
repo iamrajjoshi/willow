@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://getwillow.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-getwillow.dev-teal?style=flat-square"></a>
   <a href="https://github.com/iamrajjoshi/willow/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/iamrajjoshi/willow?style=flat-square&color=blue"></a>
   <a href="https://github.com/iamrajjoshi/willow/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/iamrajjoshi/willow/release.yml?style=flat-square"></a>
   <a href="https://github.com/iamrajjoshi/willow/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/iamrajjoshi/willow?style=flat-square"></a>
@@ -21,7 +22,8 @@
 <p align="center">
   Spin up isolated worktrees for Claude Code sessions.<br>
   Switch between them instantly with fzf.<br>
-  See which agents are busy, waiting, or idle.
+  See which agents are busy, waiting, or idle.<br><br>
+  <a href="https://getwillow.dev">Documentation</a>
 </p>
 
 ---
@@ -348,17 +350,20 @@ Config merges two tiers (local wins):
 
 ## Telemetry
 
-Willow collects anonymous usage data (command names, execution times, errors) to help improve the tool. No repo contents, branch names, or file paths are sent.
+Willow collects anonymous usage telemetry via [Sentry](https://sentry.io) to help improve the tool. This includes command names, execution times, and error reports. **No repo contents, branch names, file paths, or personally identifiable information is sent.** Each machine is identified by a hashed hostname only.
 
 **Opt out:**
 
 ```bash
-# Environment variable (immediate)
+# Environment variable
 export WILLOW_TELEMETRY=off
 
-# Or in ~/.config/willow/config.json (persistent)
+# Or in config (persistent)
+# ~/.config/willow/config.json
 { "telemetry": false }
 ```
+
+See the [configuration docs](https://getwillow.dev/configuration/) for all options.
 
 ## Terminal setup (Ghostty / iTerm / etc.)
 
