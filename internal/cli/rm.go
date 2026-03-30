@@ -238,12 +238,19 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 		done()
 	}
 
+	// Read the actual admin dir from the worktree's .git file before moving
+	// anything. The computed path (bareDir/worktrees/<basename>) can be wrong
+	// when git appended a numeric suffix to avoid collisions.
 	done := tr.Start("remove worktree " + wt.Branch)
-	adminDir := filepath.Join(bareDir, "worktrees", filepath.Base(wt.Path))
-	if err := os.RemoveAll(adminDir); err != nil {
-		return fmt.Errorf("failed to remove worktree admin dir: %w", err)
+	adminDir, err := readGitAdminDir(wt.Path)
+	if err != nil {
+		adminDir = filepath.Join(bareDir, "worktrees", filepath.Base(wt.Path))
 	}
 
+	// Move worktree to trash first (reversible — admin dir still intact).
+	// Then remove the admin dir. This order ensures consistent state on
+	// partial failure: if the move fails, git still tracks the worktree and
+	// the user can retry.
 	trashDir := config.TrashDir()
 	if err := os.MkdirAll(trashDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create trash dir: %w", err)
@@ -258,6 +265,10 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 		bgRm := exec.Command("rm", "-rf", trashDest)
 		bgRm.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		_ = bgRm.Start()
+	}
+
+	if err := os.RemoveAll(adminDir); err != nil {
+		return fmt.Errorf("failed to remove worktree admin dir: %w", err)
 	}
 	done()
 
@@ -285,4 +296,23 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 
 	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
 	return nil
+}
+
+// readGitAdminDir reads the worktree's .git file to find the actual admin
+// directory path. Git worktrees have a .git *file* (not directory) containing
+// a gitdir pointer like "gitdir: /path/to/bare/worktrees/<name>".
+func readGitAdminDir(wtPath string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(wtPath, ".git"))
+	if err != nil {
+		return "", err
+	}
+	content := strings.TrimSpace(string(data))
+	if !strings.HasPrefix(content, "gitdir: ") {
+		return "", fmt.Errorf("unexpected .git file format")
+	}
+	gitdir := strings.TrimPrefix(content, "gitdir: ")
+	if !filepath.IsAbs(gitdir) {
+		gitdir = filepath.Join(wtPath, gitdir)
+	}
+	return filepath.Clean(gitdir), nil
 }
