@@ -46,9 +46,15 @@ func tmuxPickCmd() *cli.Command {
 				Aliases: []string{"r"},
 				Usage:   "Filter to a specific repo",
 			},
+			&cli.StringFlag{
+				Name:    "session",
+				Aliases: []string{"s"},
+				Usage:   "Current tmux session name (passed by run-shell)",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			repoFilter := cmd.String("repo")
+			sessionName := cmd.String("session")
 			self, err := os.Executable()
 			if err != nil {
 				self = "willow"
@@ -66,25 +72,14 @@ func tmuxPickCmd() *cli.Command {
 
 				lines := tmux.FormatPickerLines(items)
 
-				// Find current session's line position for auto-navigate
-				startPos := 0
-				if curSess, err := tmux.CurrentSession(); err == nil {
-					var curWtPath string
-					for _, item := range items {
-						sessName := tmux.SessionNameForWorktree(item.RepoName, item.WtDirName)
-						if sessName == curSess {
-							curWtPath = item.WtPath
-							break
-						}
-					}
-					if curWtPath != "" {
-						for i, line := range lines {
-							if tmux.ExtractPathFromLine(line) == curWtPath {
-								startPos = i + 1 // fzf pos is 1-indexed
-								break
-							}
-						}
-					}
+				// Move current worktree to the top so it's selected by default
+				curSess := sessionName
+				if curSess == "" {
+					curSess, _ = tmux.CurrentSession()
+				}
+				if curSess != "" {
+					items = moveToFront(items, curSess)
+					lines = tmux.FormatPickerLines(items)
 				}
 
 				previewCmd := fmt.Sprintf("%s tmux preview -- {}", self)
@@ -92,12 +87,11 @@ func tmuxPickCmd() *cli.Command {
 				if repoFilter != "" {
 					reloadCmd += fmt.Sprintf(" --repo %s", repoFilter)
 				}
-
-				// Chain reload-sync and pos() in a single bind so both execute
-				startBind := fmt.Sprintf("start:reload-sync(%s)", reloadCmd)
-				if startPos > 0 {
-					startBind += fmt.Sprintf("+pos(%d)", startPos)
+				if curSess != "" {
+					reloadCmd += fmt.Sprintf(" --session %s", curSess)
 				}
+
+				startBind := fmt.Sprintf("start:reload-sync(%s)", reloadCmd)
 
 				opts := []fzf.Option{
 					fzf.WithAnsi(),
@@ -124,28 +118,28 @@ func tmuxPickCmd() *cli.Command {
 
 				switch result.Key {
 				case "ctrl-n":
-					if err := tmuxPickNew(self, result.Query, repoFilter, items); err != nil {
+					if err := tmuxPickNew(self, result.Query, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
 					return nil
 
 				case "ctrl-b":
-					if err := tmuxPickNewWithBase(self, result.Query, repoFilter, items); err != nil {
+					if err := tmuxPickNewWithBase(self, result.Query, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
 					return nil
 
 				case "ctrl-e":
-					if err := tmuxPickExisting(self, repoFilter, items); err != nil {
+					if err := tmuxPickExisting(self, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
 					return nil
 
 				case "ctrl-p":
-					if err := tmuxPickPR(self, repoFilter, items); err != nil {
+					if err := tmuxPickPR(self, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -160,7 +154,7 @@ func tmuxPickCmd() *cli.Command {
 							branch = item.Branch
 						}
 					}
-					if err := tmuxPickSync(self, repoFilter, items, branch); err != nil {
+					if err := tmuxPickSync(self, repoFilter, sessionName, items, branch); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					}
 					// Re-enter picker loop to show refreshed state
@@ -241,12 +235,12 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 	return tmux.SwitchClient(sessName)
 }
 
-func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error {
+func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
 		return errs.Userf("enter a branch name first")
 	}
 
-	repo, err := resolveRepo(repoFilter, items)
+	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
 	}
@@ -280,12 +274,12 @@ func tmuxPickNew(self, query, repoFilter string, items []tmux.PickerItem) error 
 	return tmux.SwitchClient(sessName)
 }
 
-func tmuxPickNewWithBase(self, query, repoFilter string, items []tmux.PickerItem) error {
+func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
 		return errs.Userf("enter a branch name first")
 	}
 
-	repo, err := resolveRepo(repoFilter, items)
+	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
 	}
@@ -350,8 +344,8 @@ func tmuxPickNewWithBase(self, query, repoFilter string, items []tmux.PickerItem
 	return tmux.SwitchClient(sessName)
 }
 
-func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
-	repo, err := resolveRepo(repoFilter, items)
+func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
+	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
 	}
@@ -431,8 +425,8 @@ func tmuxPickExisting(self, repoFilter string, items []tmux.PickerItem) error {
 	return tmux.SwitchClient(sessName)
 }
 
-func tmuxPickPR(self, repoFilter string, items []tmux.PickerItem) error {
-	repo, err := resolveRepo(repoFilter, items)
+func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
+	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
 	}
@@ -514,8 +508,8 @@ func extractBranchFromPRLine(line string) string {
 	return line[start+1 : end]
 }
 
-func tmuxPickSync(self, repoFilter string, items []tmux.PickerItem, branch string) error {
-	repo, err := resolveRepo(repoFilter, items)
+func tmuxPickSync(self, repoFilter, sessionName string, items []tmux.PickerItem, branch string) error {
+	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
 	}
@@ -531,7 +525,7 @@ func tmuxPickSync(self, repoFilter string, items []tmux.PickerItem, branch strin
 	return cmd.Run()
 }
 
-func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
+func resolveRepo(repoFilter, sessionName string, items []tmux.PickerItem) (string, error) {
 	if repoFilter != "" {
 		return repoFilter, nil
 	}
@@ -545,11 +539,13 @@ func resolveRepo(repoFilter string, items []tmux.PickerItem) (string, error) {
 		return repos[0], nil
 	}
 
+	curSess := sessionName
+	if curSess == "" {
+		curSess, _ = tmux.CurrentSession()
+	}
 	currentRepo := ""
-	if sess, err := tmux.CurrentSession(); err == nil {
-		if parts := strings.SplitN(sess, "/", 2); len(parts) == 2 {
-			currentRepo = parts[0]
-		}
+	if parts := strings.SplitN(curSess, "/", 2); len(parts) == 2 {
+		currentRepo = parts[0]
 	}
 	activeRepos := make(map[string]bool)
 	for _, item := range items {
@@ -602,6 +598,19 @@ func loadRepoConfig(repoName string) *config.Config {
 		return config.DefaultConfig()
 	}
 	return config.Load(bareDir)
+}
+
+func moveToFront(items []tmux.PickerItem, sessName string) []tmux.PickerItem {
+	for i, item := range items {
+		if tmux.SessionNameForWorktree(item.RepoName, item.WtDirName) == sessName {
+			reordered := make([]tmux.PickerItem, 0, len(items))
+			reordered = append(reordered, items[i])
+			reordered = append(reordered, items[:i]...)
+			reordered = append(reordered, items[i+1:]...)
+			return reordered
+		}
+	}
+	return items
 }
 
 func findItemByPath(items []tmux.PickerItem, path string) *tmux.PickerItem {
@@ -748,11 +757,19 @@ func tmuxListCmd() *cli.Command {
 				Aliases: []string{"r"},
 				Usage:   "Filter to a specific repo",
 			},
+			&cli.StringFlag{
+				Name:    "session",
+				Aliases: []string{"s"},
+				Usage:   "Current tmux session (moves matching worktree to top)",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			items, err := tmux.BuildPickerItems(cmd.String("repo"))
 			if err != nil {
 				return err
+			}
+			if sess := cmd.String("session"); sess != "" {
+				items = moveToFront(items, sess)
 			}
 			for _, line := range tmux.FormatPickerLines(items) {
 				fmt.Println(line)
@@ -840,7 +857,7 @@ func tmuxInstallCmd() *cli.Command {
 			fmt.Println("# Willow tmux integration")
 			fmt.Println("# Add these lines to your tmux.conf:")
 			fmt.Println()
-			fmt.Printf("bind w display-popup -E -w 90%% -h 80%% \"%s tmux pick\"\n", self)
+			fmt.Printf("bind w run-shell -b 'tmux display-popup -E -w 90%% -h 80%% \"%s tmux pick --session #S\"'\n", self)
 			fmt.Printf("set -g status-right '#(%s tmux status-bar) %%l:%%M %%a'\n", self)
 			fmt.Println("set -g status-interval 3")
 			return nil
