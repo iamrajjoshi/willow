@@ -88,8 +88,10 @@ This gives you:
 |---------|-------------|
 | `ww <cmd>` | Alias for `willow` |
 | `ww sw` | fzf worktree switcher (cd's into selection) |
-| `wwn <branch>` | Create worktree + cd into it |
-| `wwc <branch>` | Smart checkout + cd (switch or create) |
+| `ww new <branch>` | Create worktree + cd into it (tmux-aware) |
+| `ww checkout <branch>` | Smart checkout + cd (switch or create, tmux-aware) |
+| `wwn <branch>` | Shorthand for `ww new` |
+| `wwc <branch>` | Shorthand for `ww checkout` |
 | `www` | cd to `~/.willow/worktrees/` |
 
 **Optional:** Set terminal tab title to the current worktree name:
@@ -127,13 +129,13 @@ Installs hooks into `~/.claude/settings.json` that write per-session agent statu
 ww clone git@github.com:org/myrepo.git
 
 # Create a worktree and cd into it
-wwn auth-refactor
+ww new auth-refactor
 
 # Start Claude Code
 claude
 
 # In another terminal — create a second worktree
-wwn payments-fix
+ww new payments-fix
 claude
 
 # Switch between worktrees (fzf picker with agent status)
@@ -170,7 +172,7 @@ ww new -e                              # pick from remote branches (fzf)
 ww new --pr 123                        # checkout PR #123
 ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
-wwn feature/auth                       # create + cd (shell integration)
+ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
 | Flag | Description |
@@ -192,7 +194,7 @@ ww checkout --pr 123                     # checkout PR #123
 ww checkout https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww checkout brand-new-feature            # creates new branch + worktree
 ww checkout brand-new -b develop         # new branch from develop
-wwc auth-refactor                        # checkout + cd (shell integration)
+ww checkout auth-refactor                # auto-cd via shell integration (tmux-aware)
 ```
 
 | Flag | Description |
