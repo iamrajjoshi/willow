@@ -35,7 +35,7 @@ ww new -e                              # pick from remote branches (fzf)
 ww new --pr 123                        # checkout PR #123
 ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
-wwn feature/auth                       # create + cd (shell integration)
+ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
 | Flag | Description | Default |
@@ -77,7 +77,7 @@ ww checkout --pr 123                     # checkout PR #123
 ww checkout https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww checkout brand-new-feature            # creates new branch + worktree
 ww checkout brand-new -b develop         # new branch forked from develop
-wwc auth-refactor                        # checkout + cd (shell integration)
+ww checkout auth-refactor                # auto-cd via shell integration (tmux-aware)
 ```
 
 | Flag | Description | Default |
