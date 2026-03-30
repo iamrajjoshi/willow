@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -173,8 +174,8 @@ func FormatPickerLines(items []PickerItem) []string {
 		if item.Merged {
 			plain += " [merged]"
 		}
-		if len(plain) > nameW {
-			nameW = len(plain)
+		if utf8.RuneCountInString(plain) > nameW {
+			nameW = utf8.RuneCountInString(plain)
 		}
 	}
 
@@ -196,7 +197,7 @@ func FormatPickerLines(items []PickerItem) []string {
 			name += fmt.Sprintf(" %s[merged]%s", colorDim, colorReset)
 		}
 		// Pad based on plain text width to avoid ANSI miscount
-		padding := nameW - len(namePlain)
+		padding := nameW - utf8.RuneCountInString(namePlain)
 		if padding < 0 {
 			padding = 0
 		}
