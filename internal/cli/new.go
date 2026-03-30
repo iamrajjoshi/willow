@@ -155,9 +155,9 @@ func newCmd() *cli.Command {
 			// --pr flag: resolve PR number or URL to branch name
 			if prRef := cmd.String("pr"); prRef != "" {
 				done = tr.Start("resolve PR")
-				prBranch, ok := resolvePRRef(prRef, bareDir)
-				if !ok {
-					return errs.Userf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+				prBranch, err := resolvePRRef(prRef, bareDir)
+				if err != nil {
+					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -172,9 +172,9 @@ func newCmd() *cli.Command {
 			// PR URL auto-detection in branch arg
 			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
-				prBranch, ok := resolvePRRef(branch, bareDir)
-				if !ok {
-					return errs.Userf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
+				prBranch, err := resolvePRRef(branch, bareDir)
+				if err != nil {
+					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -188,6 +188,13 @@ func newCmd() *cli.Command {
 
 			// Existing-branch picker: -e with no branch arg
 			if existing && branch == "" {
+				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
+				if shouldFetch {
+					u.Info("Fetching latest branches from origin...")
+					if _, err := repoGit.Run("fetch", "origin"); err != nil {
+						u.Warn(fmt.Sprintf("Failed to fetch: %v", err))
+					}
+				}
 				done = tr.Start("pick existing branch")
 				branch, err = pickExistingBranch(repoGit)
 				if err != nil {
@@ -386,24 +393,28 @@ func isPRURL(s string) bool {
 
 // resolvePRRef resolves a PR reference (number like "123" or full URL) to a branch name.
 // Uses `gh pr view` which handles both forms natively.
-func resolvePRRef(input, bareDir string) (string, bool) {
+func resolvePRRef(input, bareDir string) (string, error) {
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("'gh' CLI not found — install it from https://cli.github.com")
 	}
 
 	cmd := exec.Command(ghPath, "pr", "view", input, "--json", "headRefName", "-q", ".headRefName")
 	cmd.Dir = bareDir
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", false
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return "", fmt.Errorf("gh pr view failed: %s", msg)
+		}
+		return "", fmt.Errorf("gh pr view failed: %w", err)
 	}
 
 	branch := strings.TrimSpace(string(out))
 	if branch == "" {
-		return "", false
+		return "", fmt.Errorf("gh returned empty branch name for PR %s", input)
 	}
-	return branch, true
+	return branch, nil
 }
 
 func pickExistingBranch(repoGit *git.Git) (string, error) {

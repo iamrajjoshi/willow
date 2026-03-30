@@ -75,9 +75,9 @@ func checkoutCmd() *cli.Command {
 			// --pr flag: resolve PR number or URL to branch name
 			if prRef := cmd.String("pr"); prRef != "" {
 				done = tr.Start("resolve PR")
-				prBranch, ok := resolvePRRef(prRef, repos[0].BareDir)
-				if !ok {
-					return errs.Userf("failed to resolve PR: %s\n\nEnsure 'gh' is installed and you're authenticated", prRef)
+				prBranch, err := resolvePRRef(prRef, repos[0].BareDir)
+				if err != nil {
+					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -91,9 +91,9 @@ func checkoutCmd() *cli.Command {
 			// PR URL auto-detection in branch arg
 			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
-				prBranch, ok := resolvePRRef(branch, repos[0].BareDir)
-				if !ok {
-					return errs.Userf("failed to resolve branch from PR URL: %s\n\nEnsure 'gh' is installed and you're authenticated", branch)
+				prBranch, err := resolvePRRef(branch, repos[0].BareDir)
+				if err != nil {
+					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
