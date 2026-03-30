@@ -32,6 +32,8 @@ const bashInitScript = `# Willow shell integration
 # Add to your .bashrc:
 #   eval "$(willow shell-init)"
 
+export WILLOW=1
+
 ww() {
   if [ "$1" = "sw" ]; then
     local dir
@@ -135,6 +137,8 @@ const zshInitScript = `# Willow shell integration
 # Add to your .zshrc:
 #   eval "$(willow shell-init)"
 
+export WILLOW=1
+
 ww() {
   if [ "$1" = "sw" ]; then
     local dir
@@ -226,6 +230,8 @@ end
 const fishInitScript = `# Willow shell integration
 # Add to your config.fish:
 #   willow shell-init | source
+
+set -gx WILLOW 1
 
 function ww
   if test (count $argv) -gt 0; and test "$argv[1]" = "sw"
