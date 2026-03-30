@@ -11,7 +11,7 @@ ww tmux install
 This prints the tmux.conf lines to add. Copy them into your `~/.tmux.conf`:
 
 ```bash
-bind w display-popup -E -w 90% -h 80% "/path/to/willow tmux pick"
+bind w run-shell -b 'tmux display-popup -E -w 90% -h 80% "/path/to/willow tmux pick --session #S"'
 set -g status-right '#(/path/to/willow tmux status-bar) %l:%M %a'
 set -g status-interval 3
 ```

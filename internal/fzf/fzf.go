@@ -17,6 +17,7 @@ type config struct {
 	previewWin string
 	expectKeys string
 	printQuery bool
+	query      string
 	bindings   []string
 }
 
@@ -61,6 +62,10 @@ func WithCycle() Option {
 	return func(c *config) { c.cycle = true }
 }
 
+func WithQuery(q string) Option {
+	return func(c *config) { c.query = q }
+}
+
 func WithBind(bindings ...string) Option {
 	return func(c *config) { c.bindings = append(c.bindings, bindings...) }
 }
@@ -93,6 +98,9 @@ func buildArgs(cfg *config) []string {
 	}
 	if cfg.printQuery {
 		args = append(args, "--print-query")
+	}
+	if cfg.query != "" {
+		args = append(args, "--query", cfg.query)
 	}
 	for _, b := range cfg.bindings {
 		args = append(args, "--bind", b)
