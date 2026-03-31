@@ -24,12 +24,12 @@ func repoNameFromDir(bareDir string) string {
 	return strings.TrimSuffix(filepath.Base(bareDir), ".git")
 }
 
-func runHooks(commands []string, dir string, u *ui.UI) error {
+func runHooks(commands []string, dir string, u *ui.UI, stdout *os.File) error {
 	for _, c := range commands {
 		u.Info(fmt.Sprintf("  → %s", c))
 		sh := exec.Command("sh", "-c", c)
 		sh.Dir = dir
-		sh.Stdout = os.Stdout
+		sh.Stdout = stdout
 		sh.Stderr = os.Stderr
 		if err := sh.Run(); err != nil {
 			return fmt.Errorf("hook failed: %s: %w", c, err)
@@ -344,10 +344,15 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	}
 	done()
 
+	hookOut := os.Stdout
+	if cdOnly {
+		hookOut = os.Stderr
+	}
+
 	done = tr.Start("setup hooks")
-	if len(cfg.Setup) > 0 && !cdOnly {
+	if len(cfg.Setup) > 0 {
 		u.Info("Running setup hooks...")
-		if err := runHooks(cfg.Setup, wtPath, u); err != nil {
+		if err := runHooks(cfg.Setup, wtPath, u, hookOut); err != nil {
 			return err
 		}
 	}
@@ -362,7 +367,7 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	if len(cfg.Tmux.Panes) > 0 && !cdOnly {
 		for i, p := range cfg.Tmux.Panes {
 			if p.Command != "" {
-				if err := runHooks([]string{p.Command}, wtPath, u); err != nil {
+				if err := runHooks([]string{p.Command}, wtPath, u, hookOut); err != nil {
 					return errs.User(fmt.Errorf("pane %d command failed: %w", i, err))
 				}
 			}

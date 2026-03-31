@@ -232,7 +232,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	if len(cfg.Teardown) > 0 {
 		done := tr.Start("teardown hooks " + wt.Branch)
 		u.Info(fmt.Sprintf("Running teardown hooks for %s...", u.Bold(wt.Branch)))
-		if err := runHooks(cfg.Teardown, wt.Path, u); err != nil {
+		if err := runHooks(cfg.Teardown, wt.Path, u, os.Stdout); err != nil {
 			return err
 		}
 		done()
