@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -240,8 +241,8 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		if row.merged {
 			display += " [merged]"
 		}
-		if len(display) > branchW {
-			branchW = len(display)
+		if utf8.RuneCountInString(display) > branchW {
+			branchW = utf8.RuneCountInString(display)
 		}
 		if len(row.wt.Path) > pathW {
 			pathW = len(row.wt.Path)
@@ -270,7 +271,7 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 			branchDisplay += " " + u.Dim("[merged]")
 		}
 		// Pad based on plain text width to avoid ANSI code miscount
-		padding := branchW - len(branchPlain)
+		padding := branchW - utf8.RuneCountInString(branchPlain)
 		if padding < 0 {
 			padding = 0
 		}
