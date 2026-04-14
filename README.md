@@ -327,6 +327,19 @@ Check your willow setup for common issues. Verifies git version, optional tools 
 ww doctor
 ```
 
+### `ww config`
+
+View, edit, and initialize willow configuration.
+
+```bash
+ww config show               # show merged config with sources
+ww config show --json        # raw JSON output
+ww config edit               # open global config in $EDITOR
+ww config edit --local       # open local (per-repo) config
+ww config init               # create default global config
+ww config init --local       # create default local config
+```
+
 ### `ww shell-init [flags]`
 
 Print shell integration script.
