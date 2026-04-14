@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -345,5 +346,74 @@ func TestHookScript_NotEmpty(t *testing.T) {
 	script := HookScript()
 	if len(script) == 0 {
 		t.Error("HookScript() returned empty string")
+	}
+}
+
+func TestHookScript_ContainsEnrichmentFields(t *testing.T) {
+	script := HookScript()
+	for _, field := range []string{"tool_count", "start_time", ".files"} {
+		if !strings.Contains(script, field) {
+			t.Errorf("HookScript() missing enrichment field %q", field)
+		}
+	}
+}
+
+func TestSessionStatus_EnrichedFields(t *testing.T) {
+	now := time.Now().UTC()
+	ss := SessionStatus{
+		Status:    StatusBusy,
+		SessionID: "s1",
+		Timestamp: now,
+		Worktree:  "wt",
+		ToolCount: 42,
+		StartTime: now.Add(-10 * time.Minute),
+	}
+	data, err := json.Marshal(ss)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var got SessionStatus
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.ToolCount != 42 {
+		t.Errorf("ToolCount = %d, want 42", got.ToolCount)
+	}
+	if got.StartTime.IsZero() {
+		t.Error("StartTime should not be zero")
+	}
+}
+
+func TestReadFilesTouched(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "wt1"
+	sessionID := "sess-1"
+	dir := filepath.Join(StatusDir(), repoName, wtName)
+	os.MkdirAll(dir, 0o755)
+
+	// Write a .files sidecar
+	content := "/path/to/file1.go\n/path/to/file2.go\n/path/to/file1.go\n"
+	os.WriteFile(filepath.Join(dir, sessionID+".files"), []byte(content), 0o644)
+
+	got := ReadFilesTouched(repoName, wtName, sessionID)
+	if len(got) != 2 {
+		t.Fatalf("ReadFilesTouched returned %d files, want 2 (deduplicated)", len(got))
+	}
+	if got[0] != "/path/to/file1.go" || got[1] != "/path/to/file2.go" {
+		t.Errorf("unexpected files: %v", got)
+	}
+}
+
+func TestReadFilesTouched_Missing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := ReadFilesTouched("nope", "nope", "nope")
+	if got != nil {
+		t.Errorf("expected nil for missing file, got %v", got)
 	}
 }

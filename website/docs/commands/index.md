@@ -227,6 +227,35 @@ ww dash -i 5          # 5s refresh interval
 
 Press `Ctrl-C` to exit.
 
+## `ww log`
+
+Show activity log of worktree events. Events are recorded automatically when you create, remove, or sync worktrees. Stored as monthly JSONL files under `~/.willow/log/`.
+
+```bash
+ww log                          # last 20 events
+ww log --branch auth-refactor   # filter by branch
+ww log --repo myrepo            # filter by repo
+ww log --since 7d               # events from last 7 days
+ww log -n 50                    # last 50 events
+ww log --json                   # raw JSON output
+```
+
+| Flag | Description |
+|------|-------------|
+| `--branch` | Filter by branch name |
+| `-r, --repo` | Filter by repo name |
+| `--since` | Show events after duration (e.g. `7d`, `24h`, `30m`) |
+| `-n, --limit` | Max events to show (default 20) |
+| `--json` | JSON output |
+
+**Event types:**
+
+| Action | Trigger |
+|--------|---------|
+| `create` | Worktree created via `ww new` or `ww checkout` |
+| `remove` | Worktree removed via `ww rm` |
+| `sync` | Branch rebased via `ww sync` |
+
 ## `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.
@@ -236,6 +265,11 @@ One-time hook installation for Claude Code status tracking.
 3. Adds hook configuration to `~/.claude/settings.json`
 
 The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
+
+The hook also tracks enriched session data:
+- **`tool_count`** — number of tool invocations in the session
+- **`start_time`** — when the session first became active
+- **`files_touched`** — files written/edited by the agent (stored in a `.files` sidecar)
 
 ## `ww shell-init [flags]`
 
