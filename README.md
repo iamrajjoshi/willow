@@ -315,6 +315,19 @@ ww log --json                   # raw JSON output
 | `-n, --limit` | Max events to show (default 20) |
 | `--json` | JSON output |
 
+### `ww notify`
+
+Desktop notifications for agent status changes. Runs a background daemon that polls agent statuses and fires macOS Notification Center alerts when agents finish or need input.
+
+```bash
+ww notify on                   # start background daemon
+ww notify on --interval 5      # custom poll interval
+ww notify off                  # stop daemon
+ww notify status               # check if running
+```
+
+Desktop notifications are off by default. Enable with `"notify": {"desktop": true}` in config. This applies to both `ww notify` and the tmux status bar widget.
+
 ### `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.

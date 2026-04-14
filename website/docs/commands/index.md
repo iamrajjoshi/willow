@@ -256,6 +256,28 @@ ww log --json                   # raw JSON output
 | `remove` | Worktree removed via `ww rm` |
 | `sync` | Branch rebased via `ww sync` |
 
+## `ww notify`
+
+Desktop notifications for agent status changes. Runs a background daemon that polls agent statuses and fires macOS Notification Center alerts.
+
+```bash
+ww notify on                   # start background daemon
+ww notify on --interval 5      # custom poll interval (seconds)
+ww notify off                  # stop daemon
+ww notify status               # check if running
+```
+
+**How it works:**
+
+1. `ww notify on` spawns a background daemon (PID written to `~/.willow/notify.pid`)
+2. The daemon polls all repos and worktrees at the configured interval
+3. Detects transitions from `BUSY` to `DONE` or `WAIT`
+4. Fires a macOS Notification Center alert for each transition
+
+**Enable desktop notifications:** Desktop notifications are off by default. Set `"notify": {"desktop": true}` in config to enable them for both `ww notify` and the tmux status bar.
+
+**Custom notification command:** Set `notify.command` in config to run your own script instead of `osascript`. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
+
 ## `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.
