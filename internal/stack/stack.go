@@ -3,9 +3,11 @@ package stack
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 )
 
 // Stack tracks parent-child relationships between branches for stacked PRs.
@@ -73,6 +75,26 @@ func atomicWrite(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// Update performs a locked read-modify-write cycle on branches.json.
+// The lock prevents concurrent willow commands from corrupting the file.
+func Update(bareDir string, fn func(*Stack)) error {
+	lockPath := filePath(bareDir) + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return fmt.Errorf("open lock file: %w", err)
+	}
+	defer f.Close()
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock branches.json: %w", err)
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+
+	s := Load(bareDir)
+	fn(s)
+	return s.Save(bareDir)
 }
 
 func (s *Stack) SetParent(branch, parent string) {

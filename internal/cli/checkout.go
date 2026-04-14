@@ -227,9 +227,9 @@ func checkoutCmd() *cli.Command {
 
 			// Record parent in stack
 			done = tr.Start("record stack parent")
-			st := stack.Load(repo.BareDir)
-			st.SetParent(branch, baseBranch)
-			if err := st.Save(repo.BareDir); err != nil {
+			if err := stack.Update(repo.BareDir, func(s *stack.Stack) {
+				s.SetParent(branch, baseBranch)
+			}); err != nil {
 				u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
 			}
 			done()

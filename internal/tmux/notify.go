@@ -43,7 +43,12 @@ func loadState() StatusBarState {
 
 func saveState(state StatusBarState) {
 	data, _ := json.Marshal(state)
-	os.WriteFile(stateFilePath(), data, 0o644)
+	path := stateFilePath()
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return
+	}
+	os.Rename(tmp, path)
 }
 
 // CheckTransitions compares current statuses against saved state and returns

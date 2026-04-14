@@ -172,6 +172,31 @@ func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
 	}
 }
 
+func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "old-sessions"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	// Write a session file with a timestamp older than 30 minutes
+	old := SessionStatus{Status: StatusDone, SessionID: "old-sess", Timestamp: time.Now().UTC().Add(-2 * time.Hour)}
+	data, _ := json.Marshal(old)
+	os.WriteFile(filepath.Join(sessDir, old.SessionID+".json"), data, 0o644)
+
+	got := ReadAllSessions(repoName, wtName)
+	if len(got) != 1 {
+		t.Fatalf("ReadAllSessions returned %d sessions, want 1 (should preserve old files)", len(got))
+	}
+
+	// Verify file still exists on disk
+	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.json")); os.IsNotExist(err) {
+		t.Error("ReadAllSessions deleted old session file, but should only read")
+	}
+}
+
 func TestCleanStaleSessions(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
