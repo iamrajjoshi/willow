@@ -212,11 +212,12 @@ The `●` indicator marks completed sessions you haven't reviewed yet. Switching
 
 ## `ww dashboard` (alias: `dash`, `d`)
 
-Live-refreshing TUI showing all Claude Code sessions across all repos. Renders in an alternate screen buffer with no flicker.
+Live-refreshing TUI showing all Claude Code sessions across all repos. Renders in an alternate screen buffer with no flicker. Includes a timeline sparkline showing BUSY/WAIT/DONE transitions over the last 60 minutes.
 
 ```bash
-ww dashboard          # default 2s refresh
-ww dash -i 5          # 5s refresh interval
+ww dashboard              # default 2s refresh
+ww dash -i 5              # 5s refresh interval
+ww dash --no-timeline     # hide the timeline column
 ```
 
 ![ww dashboard](/demo-dashboard.gif)
@@ -224,8 +225,17 @@ ww dash -i 5          # 5s refresh interval
 | Flag | Description |
 |------|-------------|
 | `-i, --interval` | Refresh interval in seconds (default: 2) |
+| `--no-timeline` | Hide the timeline sparkline column |
 
-Press `Ctrl-C` to exit.
+| Key | Action |
+|-----|--------|
+| `j/k` | Navigate rows |
+| `Enter` | Switch to tmux session |
+| `t` | Toggle timeline column |
+| `r` | Refresh |
+| `q` / `Ctrl-C` | Quit |
+
+The timeline requires `ww cc-setup` to be re-run to install the updated hook that records status transitions.
 
 ## `ww log`
 

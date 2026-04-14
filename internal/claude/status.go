@@ -162,6 +162,9 @@ func CleanStaleSessions(repoName, worktreeDir string) {
 		}
 		if time.Since(ss.Timestamp) > cleanupTimeout {
 			os.Remove(filepath.Join(dir, e.Name()))
+			// Also remove the companion timeline file
+			sessionID := strings.TrimSuffix(e.Name(), ".json")
+			os.Remove(filepath.Join(dir, sessionID+".timeline"))
 		}
 	}
 }
@@ -212,9 +215,10 @@ type SessionFileInfo struct {
 	Session     SessionStatus
 }
 
-// RemoveSessionFile removes a single session file.
+// RemoveSessionFile removes a single session file and its companion timeline.
 func RemoveSessionFile(repoName, worktreeDir, sessionID string) error {
 	path := filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".json")
+	os.Remove(TimelinePath(repoName, worktreeDir, sessionID))
 	return os.Remove(path)
 }
 
