@@ -271,6 +271,36 @@ The hook also tracks enriched session data:
 - **`start_time`** — when the session first became active
 - **`files_touched`** — files written/edited by the agent (stored in a `.files` sidecar)
 
+## `ww doctor`
+
+Check your willow setup for common issues. Runs a series of checks and prints a checklist:
+
+```bash
+ww doctor
+```
+
+```
+✔ git 2.45.0
+✔ gh CLI installed
+✔ tmux installed
+✔ Claude Code hooks installed
+✔ ~/.willow exists
+✔ ~/.willow/repos exists
+✔ ~/.willow/worktrees exists
+✔ no stale session files
+✔ config valid
+```
+
+| Check | Details |
+|-------|---------|
+| git version | Warns if < 2.30 |
+| gh CLI | Optional — warns if missing |
+| tmux | Optional — warns if missing |
+| Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks |
+| Willow directories | `~/.willow`, `repos/`, `worktrees/` |
+| Stale sessions | Session files older than 30 minutes |
+| Config validity | Validates merged config for common issues |
+
 ## `ww shell-init [flags]`
 
 Print shell integration script.

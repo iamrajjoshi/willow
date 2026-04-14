@@ -319,6 +319,14 @@ ww log --json                   # raw JSON output
 
 One-time hook installation for Claude Code status tracking.
 
+### `ww doctor`
+
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity.
+
+```bash
+ww doctor
+```
+
 ### `ww shell-init [flags]`
 
 Print shell integration script.
