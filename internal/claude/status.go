@@ -43,7 +43,8 @@ func StatusDir() string {
 
 // ReadAllSessions reads all session status files from the directory-based layout:
 // ~/.willow/status/<repo>/<worktree>/*.json
-// Stale sessions (>30 min) and corrupt files are cleaned up in the same pass.
+// This is a read-only operation — it never deletes files. Use CleanStaleSessions
+// for explicit cleanup.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -63,11 +64,6 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 		}
 		var ss SessionStatus
 		if err := json.Unmarshal(data, &ss); err != nil {
-			os.Remove(path)
-			continue
-		}
-		if time.Since(ss.Timestamp) > cleanupTimeout {
-			os.Remove(path)
 			continue
 		}
 		sessions = append(sessions, &ss)

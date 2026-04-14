@@ -318,9 +318,9 @@ func newCmd() *cli.Command {
 
 			// Record parent in stack for stacked PRs
 			done = tr.Start("record stack parent")
-			st := stack.Load(bareDir)
-			st.SetParent(branch, baseBranch)
-			if err := st.Save(bareDir); err != nil {
+			if err := stack.Update(bareDir, func(s *stack.Stack) {
+				s.SetParent(branch, baseBranch)
+			}); err != nil {
 				u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
 			}
 			done()

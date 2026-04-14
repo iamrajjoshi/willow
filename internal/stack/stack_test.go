@@ -124,6 +124,31 @@ func TestSubtreeSort(t *testing.T) {
 	}
 }
 
+func TestUpdate(t *testing.T) {
+	dir := t.TempDir()
+
+	// Seed initial state
+	s := &Stack{Parents: map[string]string{"a": "main"}}
+	if err := s.Save(dir); err != nil {
+		t.Fatalf("seed save: %v", err)
+	}
+
+	// Use Update to add a new branch under the lock
+	if err := Update(dir, func(s *Stack) {
+		s.SetParent("b", "a")
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	loaded := Load(dir)
+	if loaded.Parent("b") != "a" {
+		t.Errorf("expected b parent=a, got %q", loaded.Parent("b"))
+	}
+	if loaded.Parent("a") != "main" {
+		t.Errorf("expected a parent=main, got %q", loaded.Parent("a"))
+	}
+}
+
 func TestRemoveReparentsChildren(t *testing.T) {
 	s := &Stack{Parents: map[string]string{
 		"a": "main",

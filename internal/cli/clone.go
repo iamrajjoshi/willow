@@ -76,15 +76,7 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to create worktrees directory: %w", err)
 			}
 
-			// Bare clone
-			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
-			done := tr.Start("git clone --bare")
-			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
-				return fmt.Errorf("failed to clone repository: %w", err)
-			}
-			done()
-
-			// If anything below fails (or Ctrl-C), clean up the partial clone
+			// Clean up partial state on failure or Ctrl-C
 			cleanup := func() {
 				os.RemoveAll(bareDir)
 				os.RemoveAll(worktreesDir)
@@ -104,6 +96,15 @@ func cloneCmd() *cli.Command {
 			}()
 			defer close(cleanupDone)
 			defer signal.Stop(sigCh)
+
+			// Bare clone
+			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
+			done := tr.Start("git clone --bare")
+			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
+				cleanup()
+				return fmt.Errorf("failed to clone repository: %w", err)
+			}
+			done()
 
 			// Bare clones don't set up remote tracking by default.
 			// Configure the fetch refspec so `git fetch` populates refs/remotes/origin/*.
