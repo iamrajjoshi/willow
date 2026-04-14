@@ -19,6 +19,7 @@ type Config struct {
 	Tmux             TmuxConfig   `json:"tmux,omitempty"`
 	Notify           NotifyConfig `json:"notify,omitempty"`
 	Telemetry        *bool        `json:"telemetry,omitempty"`
+	Cost             CostConfig   `json:"cost,omitempty"`
 }
 
 type NotifyConfig struct {
@@ -44,6 +45,11 @@ type PaneConfig struct {
 type Defaults struct {
 	Fetch           *bool `json:"fetch,omitempty"`
 	AutoSetupRemote *bool `json:"autoSetupRemote,omitempty"`
+}
+
+type CostConfig struct {
+	InputRate  float64 `json:"inputRate,omitempty"`  // $/M tokens, default 3.0 (Sonnet 4)
+	OutputRate float64 `json:"outputRate,omitempty"` // $/M tokens, default 15.0 (Sonnet 4)
 }
 
 func BoolPtr(v bool) *bool { return &v }
@@ -244,6 +250,12 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Notify.Command != "" {
 		base.Notify.Command = overlay.Notify.Command
+	}
+	if overlay.Cost.InputRate != 0 {
+		base.Cost.InputRate = overlay.Cost.InputRate
+	}
+	if overlay.Cost.OutputRate != 0 {
+		base.Cost.OutputRate = overlay.Cost.OutputRate
 	}
 }
 

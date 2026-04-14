@@ -32,10 +32,10 @@ type SessionStatus struct {
 	Status    Status    `json:"status"`
 	SessionID string    `json:"session_id"`
 	Tool      string    `json:"tool,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
-	Worktree  string    `json:"worktree,omitempty"`
 	ToolCount int       `json:"tool_count,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 	StartTime time.Time `json:"start_time,omitempty"`
+	Worktree  string    `json:"worktree,omitempty"`
 }
 
 func StatusDir() string {

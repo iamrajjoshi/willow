@@ -8,19 +8,21 @@ import (
 	"path/filepath"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
 
 type sessionEntry struct {
-	Repo      string `json:"repo,omitempty"`
-	Branch    string `json:"branch"`
-	SessionID string `json:"session_id,omitempty"`
-	Status    string `json:"status"`
-	Timestamp string `json:"timestamp,omitempty"`
-	Unread    bool   `json:"unread,omitempty"`
-	Path      string `json:"path"`
+	Repo      string              `json:"repo,omitempty"`
+	Branch    string              `json:"branch"`
+	SessionID string              `json:"session_id,omitempty"`
+	Status    string              `json:"status"`
+	Timestamp string              `json:"timestamp,omitempty"`
+	Unread    bool                `json:"unread,omitempty"`
+	Path      string              `json:"path"`
+	Cost      *claude.CostEstimate `json:"cost,omitempty"`
 }
 
 type repoStatus struct {
@@ -31,7 +33,7 @@ type repoStatus struct {
 	UnreadCount   int
 }
 
-func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatus {
+func collectRepoStatus(repoName string, worktrees []worktree.Worktree, costCfg *config.CostConfig) repoStatus {
 	rs := repoStatus{Name: repoName, WorktreeCount: len(worktrees)}
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
@@ -56,6 +58,9 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 				}
 				if effective == claude.StatusDone && unread {
 					entry.Unread = true
+				}
+				if costCfg != nil {
+					entry.Cost = claude.EstimateFromSession(ss, costCfg.InputRate, costCfg.OutputRate)
 				}
 				rs.Entries = append(rs.Entries, entry)
 
@@ -99,15 +104,26 @@ func statusCmd() *cli.Command {
 				Aliases: []string{"r"},
 				Usage:   "Target a willow-managed repo by name",
 			},
+			&cli.BoolFlag{
+				Name:  "cost",
+				Usage: "Show estimated token cost per session",
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 			u := flags.NewUI()
+			showCost := cmd.Bool("cost")
 
 			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
 				return err
+			}
+
+			var costCfg *config.CostConfig
+			if showCost {
+				cfg := config.Load("")
+				costCfg = &cfg.Cost
 			}
 
 			var allStatuses []repoStatus
@@ -118,7 +134,7 @@ func statusCmd() *cli.Command {
 					continue
 				}
 				filtered := filterBareWorktrees(wts)
-				allStatuses = append(allStatuses, collectRepoStatus(r.Name, filtered))
+				allStatuses = append(allStatuses, collectRepoStatus(r.Name, filtered, costCfg))
 			}
 
 			if cmd.Bool("json") {
@@ -150,6 +166,8 @@ func statusCmd() *cli.Command {
 					}
 				}
 
+				// Compute total cost across entries if showing cost
+				var totalCost float64
 				for _, e := range rs.Entries {
 					icon := claude.StatusIcon(claude.Status(e.Status))
 					label := e.Status
@@ -164,7 +182,16 @@ func statusCmd() *cli.Command {
 						line = fmt.Sprintf("  %s %-*s  %s",
 							icon, branchW, e.Branch, label)
 					}
+					if showCost && e.Cost != nil {
+						line += "  " + u.Dim(claude.FormatCost(e.Cost))
+						totalCost += e.Cost.TotalUSD
+					}
 					u.Info(line)
+				}
+
+				if showCost {
+					u.Info("")
+					u.Info(fmt.Sprintf("  Total: ~$%.2f", totalCost))
 				}
 			}
 

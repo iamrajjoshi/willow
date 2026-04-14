@@ -209,6 +209,7 @@ The `●` indicator marks completed sessions you haven't reviewed yet. Switching
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output |
+| `--cost` | Show estimated token cost per session |
 
 ## `ww dashboard` (alias: `dash`, `d`)
 
@@ -218,6 +219,7 @@ Live-refreshing TUI showing all Claude Code sessions across all repos. Renders i
 ww dashboard              # default 2s refresh
 ww dash -i 5              # 5s refresh interval
 ww dash --no-timeline     # hide the timeline column
+ww dash --no-cost         # hide cost column
 ```
 
 ![ww dashboard](/demo-dashboard.gif)
@@ -226,12 +228,14 @@ ww dash --no-timeline     # hide the timeline column
 |------|-------------|
 | `-i, --interval` | Refresh interval in seconds (default: 2) |
 | `--no-timeline` | Hide the timeline sparkline column |
+| `--no-cost` | Hide the cost column |
 
 | Key | Action |
 |-----|--------|
 | `j/k` | Navigate rows |
 | `Enter` | Switch to tmux session |
 | `t` | Toggle timeline column |
+| `c` | Toggle cost column |
 | `r` | Refresh |
 | `q` / `Ctrl-C` | Quit |
 
