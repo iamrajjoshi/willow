@@ -600,17 +600,82 @@ func loadRepoConfig(repoName string) *config.Config {
 	return config.Load(bareDir)
 }
 
+// stackLoaderFunc loads a stack for a given repo name. Injected for testing.
+type stackLoaderFunc func(repoName string) *stack.Stack
+
+func defaultStackLoader(repoName string) *stack.Stack {
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return nil
+	}
+	return stack.Load(bareDir)
+}
+
 func moveToFront(items []tmux.PickerItem, sessName string) []tmux.PickerItem {
+	return moveToFrontWithStack(items, sessName, defaultStackLoader)
+}
+
+func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack stackLoaderFunc) []tmux.PickerItem {
+	// Find the matching item
+	matchIdx := -1
 	for i, item := range items {
 		if tmux.SessionNameForWorktree(item.RepoName, item.WtDirName) == sessName {
-			reordered := make([]tmux.PickerItem, 0, len(items))
-			reordered = append(reordered, items[i])
-			reordered = append(reordered, items[:i]...)
-			reordered = append(reordered, items[i+1:]...)
-			return reordered
+			matchIdx = i
+			break
 		}
 	}
-	return items
+	if matchIdx < 0 {
+		return items
+	}
+
+	matched := items[matchIdx]
+
+	// Try to load stack for the matched item's repo
+	st := loadStack(matched.RepoName)
+	if st == nil || !st.IsTracked(matched.Branch) {
+		// Not in a stack — single-item move
+		return moveItemToFront(items, matchIdx)
+	}
+
+	// Walk up to find the tree root (first branch whose parent is not tracked)
+	root := matched.Branch
+	for {
+		parent := st.Parent(root)
+		if parent == "" || !st.IsTracked(parent) {
+			break
+		}
+		root = parent
+	}
+
+	// Collect all branches in this tree (root + descendants)
+	treeBranches := make(map[string]bool)
+	treeBranches[root] = true
+	for _, d := range st.Descendants(root) {
+		treeBranches[d] = true
+	}
+
+	// Partition: tree members (preserving original order) first, then the rest
+	var treeItems, rest []tmux.PickerItem
+	for _, item := range items {
+		if item.RepoName == matched.RepoName && treeBranches[item.Branch] {
+			treeItems = append(treeItems, item)
+		} else {
+			rest = append(rest, item)
+		}
+	}
+
+	result := make([]tmux.PickerItem, 0, len(items))
+	result = append(result, treeItems...)
+	result = append(result, rest...)
+	return result
+}
+
+func moveItemToFront(items []tmux.PickerItem, idx int) []tmux.PickerItem {
+	reordered := make([]tmux.PickerItem, 0, len(items))
+	reordered = append(reordered, items[idx])
+	reordered = append(reordered, items[:idx]...)
+	reordered = append(reordered, items[idx+1:]...)
+	return reordered
 }
 
 func findItemByPath(items []tmux.PickerItem, path string) *tmux.PickerItem {
