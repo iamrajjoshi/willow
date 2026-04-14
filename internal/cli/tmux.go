@@ -97,6 +97,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
 					fzf.WithNoSort(),
+					fzf.WithDelimiter("\\|"),
+					fzf.WithNth("1,2"),
 					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-B: New (stacked) | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
 					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
 					fzf.WithPrintQuery(),

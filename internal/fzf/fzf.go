@@ -19,6 +19,8 @@ type config struct {
 	printQuery bool
 	query      string
 	bindings   []string
+	delimiter  string
+	nth        string
 }
 
 func defaults() *config {
@@ -70,6 +72,14 @@ func WithBind(bindings ...string) Option {
 	return func(c *config) { c.bindings = append(c.bindings, bindings...) }
 }
 
+func WithDelimiter(d string) Option {
+	return func(c *config) { c.delimiter = d }
+}
+
+func WithNth(n string) Option {
+	return func(c *config) { c.nth = n }
+}
+
 func buildArgs(cfg *config) []string {
 	var args []string
 	if cfg.ansi {
@@ -104,6 +114,12 @@ func buildArgs(cfg *config) []string {
 	}
 	for _, b := range cfg.bindings {
 		args = append(args, "--bind", b)
+	}
+	if cfg.delimiter != "" {
+		args = append(args, "--delimiter", cfg.delimiter)
+	}
+	if cfg.nth != "" {
+		args = append(args, "--nth", cfg.nth)
 	}
 	return args
 }
