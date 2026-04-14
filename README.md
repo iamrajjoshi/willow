@@ -294,6 +294,27 @@ ww dash -i 5          # 5s refresh interval
 
 ![ww dashboard](screenshots/demo-dashboard.gif)
 
+### `ww log`
+
+Show activity log of worktree events (creates, removes, syncs).
+
+```bash
+ww log                          # last 20 events
+ww log --branch auth-refactor   # filter by branch
+ww log --repo myrepo            # filter by repo
+ww log --since 7d               # events from last 7 days
+ww log -n 50                    # last 50 events
+ww log --json                   # raw JSON output
+```
+
+| Flag | Description |
+|------|-------------|
+| `--branch` | Filter by branch name |
+| `-r, --repo` | Filter by repo name |
+| `--since` | Show events after duration (e.g. `7d`, `24h`) |
+| `-n, --limit` | Max events to show (default 20) |
+| `--json` | JSON output |
+
 ### `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.

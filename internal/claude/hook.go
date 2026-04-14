@@ -87,14 +87,16 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
+
 # Determine status from the hook event
 STATUS="BUSY"
 TOOL_FIELD=""
 
 case "$HOOK_EVENT" in
   SessionEnd)
-    DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
     rm -f "$DEST_DIR/$SESSION_ID.json"
+    rm -f "$DEST_DIR/$SESSION_ID.files"
     exit 0
     ;;
   UserPromptSubmit)
@@ -118,7 +120,6 @@ case "$HOOK_EVENT" in
     ;;
   Notification)
     # Don't overwrite DONE or BUSY — only set WAIT if currently idle/unknown
-    DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
     DEST_FILE="$DEST_DIR/$SESSION_ID.json"
     if [ -f "$DEST_FILE" ]; then
       CURRENT="$(sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
@@ -130,11 +131,47 @@ case "$HOOK_EVENT" in
     ;;
 esac
 
-# Write status file
-DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
 mkdir -p "$DEST_DIR"
-cat > "$DEST_DIR/$SESSION_ID.json" <<STATUSEOF
-{"status":"$STATUS",${TOOL_FIELD}"session_id":"$SESSION_ID","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","worktree":"$WT_NAME"}
+
+# --- Enrichment: read existing session data ---
+DEST_FILE="$DEST_DIR/$SESSION_ID.json"
+TOOL_COUNT=0
+START_TIME=""
+if [ -f "$DEST_FILE" ]; then
+  TOOL_COUNT="$(sed -n 's/.*"tool_count":\([0-9]*\).*/\1/p' "$DEST_FILE" | head -1)"
+  START_TIME="$(sed -n 's/.*"start_time":"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
+fi
+TOOL_COUNT="${TOOL_COUNT:-0}"
+
+case "$HOOK_EVENT" in
+  PreToolUse)
+    TOOL_COUNT=$((TOOL_COUNT + 1))
+    ;;
+esac
+
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+START_TIME="${START_TIME:-$NOW}"
+
+# Track files touched by write tools
+case "$HOOK_EVENT" in
+  PreToolUse)
+    case "$TOOL_NAME" in
+      Write|Edit|NotebookEdit)
+        FILE_PATH="$(echo "$INPUT" | sed -n 's/.*"file_path" *: *"\([^"]*\)".*/\1/p' | head -1)"
+        if [ -n "$FILE_PATH" ]; then
+          FLIST="$DEST_DIR/$SESSION_ID.files"
+          if [ ! -f "$FLIST" ] || ! grep -qxF "$FILE_PATH" "$FLIST"; then
+            echo "$FILE_PATH" >> "$FLIST"
+          fi
+        fi
+        ;;
+    esac
+    ;;
+esac
+
+# Write enriched status file
+cat > "$DEST_FILE" <<STATUSEOF
+{"status":"$STATUS",${TOOL_FIELD}"session_id":"$SESSION_ID","timestamp":"$NOW","worktree":"$WT_NAME","tool_count":$TOOL_COUNT,"start_time":"$START_TIME"}
 STATUSEOF
 `
 }

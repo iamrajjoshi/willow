@@ -13,6 +13,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -376,6 +377,13 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	done()
 
 	tr.Total()
+
+	// Log create event (best-effort)
+	meta := map[string]string{}
+	if baseBranch != "" {
+		meta["base"] = baseBranch
+	}
+	_ = log.Append(log.Event{Action: "create", Repo: repoName, Branch: branch, Metadata: meta})
 
 	if cdOnly {
 		fmt.Println(wtPath)

@@ -15,6 +15,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -294,6 +295,8 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 			u.Warn(fmt.Sprintf("Failed to save stack: %v", err))
 		}
 	}
+
+	_ = log.Append(log.Event{Action: "remove", Repo: repoNameFromDir(bareDir), Branch: wt.Branch})
 
 	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
 	return nil

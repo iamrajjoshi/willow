@@ -34,6 +34,8 @@ type SessionStatus struct {
 	Tool      string    `json:"tool,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 	Worktree  string    `json:"worktree,omitempty"`
+	ToolCount int       `json:"tool_count,omitempty"`
+	StartTime time.Time `json:"start_time,omitempty"`
 }
 
 func StatusDir() string {
@@ -268,6 +270,26 @@ func ScanAllSessions() ([]SessionFileInfo, error) {
 		}
 	}
 	return results, nil
+}
+
+// ReadFilesTouched reads the sidecar .files list for a session.
+// Returns deduplicated file paths the agent has written/edited.
+func ReadFilesTouched(repoName, worktreeDir, sessionID string) []string {
+	path := filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".files")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var result []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !seen[line] {
+			seen[line] = true
+			result = append(result, line)
+		}
+	}
+	return result
 }
 
 // CleanEmptyStatusDirs removes empty worktree/repo directories under StatusDir().

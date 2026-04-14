@@ -7,6 +7,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -184,6 +185,15 @@ func syncCmd() *cli.Command {
 
 				ahead, _ := wtGit.CommitsAhead(rebaseOnto)
 				u.Info(fmt.Sprintf("    %s Rebased onto %s (%d commits ahead)", u.Green("✔"), rebaseOnto, ahead))
+				_ = log.Append(log.Event{
+					Action: "sync",
+					Repo:   repoNameFromDir(bareDir),
+					Branch: branch,
+					Metadata: map[string]string{
+						"parent": parent,
+						"ahead":  fmt.Sprintf("%d", ahead),
+					},
+				})
 				synced++
 			}
 
