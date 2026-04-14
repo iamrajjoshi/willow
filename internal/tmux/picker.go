@@ -217,15 +217,31 @@ func FormatPickerLines(items []PickerItem) []string {
 				effStatus := claude.EffectiveStatus(ss.Status, ss.Timestamp)
 				subColor := statusColor(effStatus)
 				subIcon := claude.StatusIcon(effStatus)
-				subLabel := fmt.Sprintf("%-5s", claude.StatusLabel(effStatus))
-				toolInfo := ""
-				if ss.Tool != "" {
-					toolInfo = fmt.Sprintf(" %s(%s)%s", colorDim, ss.Tool, colorReset)
-				}
+				subLabel := fmt.Sprintf("%-6s", claude.StatusLabel(effStatus))
+
+				// Build second column and track plain width for padding
+				prefix := "\u2514 "
+				sid := truncate(ss.SessionID, 8)
 				timeAgo := claude.TimeSince(ss.Timestamp)
-				subLine := fmt.Sprintf("  %s%s %s%s | %s\u2514 %s%s %s%s%s | %s%s%s",
+
+				plainLen := utf8.RuneCountInString(prefix) + len(sid)
+				infoAnsi := colorDim + prefix + sid
+				if ss.Tool != "" {
+					infoAnsi += fmt.Sprintf(" %s(%s)%s", colorDim, ss.Tool, colorReset)
+					plainLen += 2 + len(ss.Tool) + 1 // " (" + tool + ")"
+				}
+				infoAnsi += " " + timeAgo
+				plainLen += 1 + utf8.RuneCountInString(timeAgo)
+
+				pad := nameW - plainLen
+				if pad < 0 {
+					pad = 0
+				}
+				infoCol := infoAnsi + strings.Repeat(" ", pad) + colorReset
+
+				subLine := fmt.Sprintf("  %s%s %s%s | %s | %s%s%s",
 					subColor, subIcon, subLabel, colorReset,
-					colorDim, truncate(ss.SessionID, 8), toolInfo, timeAgo, colorDim, colorReset,
+					infoCol,
 					colorDim, shortenPath(item.WtPath), colorReset,
 				)
 				lines = append(lines, subLine)
