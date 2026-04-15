@@ -95,6 +95,7 @@ func NewApp() *cli.Command {
 			shellInitCmd(),
 			gcCmd(),
 			doctorCmd(),
+			configCmd(),
 			refreshStatusCmd(),
 		},
 	}

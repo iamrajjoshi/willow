@@ -301,6 +301,47 @@ ww doctor
 | Stale sessions | Session files older than 30 minutes |
 | Config validity | Validates merged config for common issues |
 
+## `ww config`
+
+View, edit, and initialize willow configuration. Merges global (`~/.config/willow/config.json`) and local (per-repo `willow.json`) configs, showing the effective value and source for each field.
+
+```bash
+ww config show               # show merged config with source annotations
+ww config show --json        # raw JSON output
+ww config show -r myrepo     # show config for a specific repo
+ww config edit               # open global config in $EDITOR
+ww config edit --local       # open local (per-repo) config
+ww config edit --local -r myrepo  # open specific repo's local config
+ww config init               # create default global config
+ww config init --local       # create default local config
+ww config init --force       # overwrite existing config
+```
+
+### `ww config show`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--json` | Output raw JSON | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+
+### `ww config edit`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--global` | Edit global config (default) | `true` |
+| `--local` | Edit local (per-repo) config | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+
+Editor resolution: `$VISUAL` > `$EDITOR` > `vi`.
+
+### `ww config init`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--local` | Create local (per-repo) config | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--force` | Overwrite existing config | `false` |
+
 ## `ww shell-init [flags]`
 
 Print shell integration script.
