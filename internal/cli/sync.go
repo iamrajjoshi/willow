@@ -180,14 +180,15 @@ func syncCmd() *cli.Command {
 				} else {
 					u.Info(fmt.Sprintf("    %s Rebased onto %s (%d commits ahead)", u.Green("✔"), rebaseOnto, ahead))
 				}
+				meta := map[string]string{"parent": parent}
+				if aheadErr == nil {
+					meta["ahead"] = fmt.Sprintf("%d", ahead)
+				}
 				_ = log.Append(log.Event{
 					Action: "sync",
 					Repo:   repoNameFromDir(bareDir),
 					Branch: branch,
-					Metadata: map[string]string{
-						"parent": parent,
-						"ahead":  fmt.Sprintf("%d", ahead),
-					},
+					Metadata: meta,
 				})
 				synced++
 			}
