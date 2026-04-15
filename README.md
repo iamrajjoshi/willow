@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="website/docs/public/logo.svg" width="80" alt="willow logo" />
+  <img src="website/public/logo.svg" width="80" alt="willow logo" />
 </p>
 
 <h1 align="center">willow</h1>
