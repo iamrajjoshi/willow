@@ -1,42 +1,16 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
-import { DOCS_NAV } from "@/lib/docs-nav";
+import { DOCS_NAV, getPageHeadings } from "@/lib/docs-nav";
 import { useScrollSpy } from "@/hooks/use-scroll-spy";
 import { cn } from "@/lib/cn";
 
-interface TocItem {
-  id: string;
-  text: string;
-  level: number;
-}
-
 export function Sidebar() {
   const pathname = usePathname();
-  const [headings, setHeadings] = useState<TocItem[]>([]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const article = document.querySelector("article");
-      if (!article) return;
-
-      const elements = article.querySelectorAll("h2[id], h3[id]");
-      const items: TocItem[] = Array.from(elements).map((el) => ({
-        id: el.id,
-        text: el.textContent || "",
-        level: el.tagName === "H2" ? 2 : 3,
-      }));
-
-      setHeadings(items);
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [pathname]);
-
+  const headings = getPageHeadings(pathname);
   const activeId = useScrollSpy(
     headings.map((h) => h.id),
-    80,
+    0,
   );
 
   const currentPage = DOCS_NAV.flatMap((g) => g.items).find(

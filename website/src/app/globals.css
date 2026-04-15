@@ -76,6 +76,10 @@
   --tw-prose-pre-code: #a1a1aa;
 }
 
+.prose :is(h1, h2, h3, h4) {
+  scroll-margin-top: 6rem;
+}
+
 .prose h1 {
   font-family: var(--font-heading);
   font-weight: 700;

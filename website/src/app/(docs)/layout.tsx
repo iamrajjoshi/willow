@@ -27,7 +27,7 @@ export default function DocsLayout({
             <MobileSidebar />
           </div>
 
-          <article className="prose prose-invert max-w-none">
+          <article className="prose prose-invert max-w-none pb-[50vh]">
             {children}
           </article>
           <PrevNextLinks />
