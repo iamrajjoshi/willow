@@ -97,6 +97,7 @@ case "$HOOK_EVENT" in
   SessionEnd)
     rm -f "$DEST_DIR/$SESSION_ID.json"
     rm -f "$DEST_DIR/$SESSION_ID.files"
+    rm -f "$DEST_DIR/$SESSION_ID.timeline"
     exit 0
     ;;
   UserPromptSubmit)
@@ -173,6 +174,16 @@ esac
 cat > "$DEST_FILE" <<STATUSEOF
 {"status":"$STATUS",${TOOL_FIELD}"session_id":"$SESSION_ID","timestamp":"$NOW","worktree":"$WT_NAME","tool_count":$TOOL_COUNT,"start_time":"$START_TIME"}
 STATUSEOF
+
+# Append timeline entry (only on status change)
+TIMELINE_FILE="$DEST_DIR/$SESSION_ID.timeline"
+LAST_TIMELINE_STATUS=""
+if [ -f "$TIMELINE_FILE" ]; then
+  LAST_TIMELINE_STATUS="$(tail -1 "$TIMELINE_FILE" | sed -n 's/.*"s":"\([^"]*\)".*/\1/p')"
+fi
+if [ "$STATUS" != "$LAST_TIMELINE_STATUS" ]; then
+  echo "{\"s\":\"$STATUS\",\"t\":\"$NOW\"}" >> "$TIMELINE_FILE"
+fi
 `
 }
 

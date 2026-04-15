@@ -20,11 +20,16 @@ func dashboardCmd() *cli.Command {
 				Usage:   "Refresh interval in seconds",
 				Value:   2,
 			},
+			&cli.BoolFlag{
+				Name:  "no-timeline",
+				Usage: "Hide the timeline column",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			interval := time.Duration(cmd.Int("interval")) * time.Second
 			return dashboard.Run(ctx, dashboard.Config{
 				RefreshInterval: interval,
+				ShowTimeline:    !cmd.Bool("no-timeline"),
 			})
 		},
 	}
