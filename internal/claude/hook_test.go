@@ -177,21 +177,14 @@ func TestRemoveStatusDir(t *testing.T) {
 	repoName := "myrepo"
 	wtName := "wt1"
 
-	// Create session dir and legacy file
 	sessDir := filepath.Join(StatusDir(), repoName, wtName)
 	os.MkdirAll(sessDir, 0o755)
 	os.WriteFile(filepath.Join(sessDir, "s1.json"), []byte("{}"), 0o644)
-
-	legacyFile := filepath.Join(StatusDir(), repoName, wtName+".json")
-	os.WriteFile(legacyFile, []byte("{}"), 0o644)
 
 	RemoveStatusDir(repoName, wtName)
 
 	if _, err := os.Stat(sessDir); !os.IsNotExist(err) {
 		t.Error("session dir should be removed")
-	}
-	if _, err := os.Stat(legacyFile); !os.IsNotExist(err) {
-		t.Error("legacy file should be removed")
 	}
 }
 

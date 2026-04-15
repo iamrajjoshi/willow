@@ -200,7 +200,6 @@ func rmCmd() *cli.Command {
 func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.Worktree, bareDir string, cfg *config.Config, force, keepBranch, verbose bool) error {
 	wtGit := &git.Git{Dir: wt.Path, Verbose: verbose}
 
-	// Warn if branch has stacked children
 	st := stack.Load(bareDir)
 	if children := st.Children(wt.Branch); len(children) > 0 && !force {
 		u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
@@ -287,7 +286,6 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	claude.RemoveStatusDir(repoName, wtDir)
 	done()
 
-	// Remove from stack (re-parents children to this branch's parent)
 	if st.IsTracked(wt.Branch) {
 		if err := stack.Update(bareDir, func(s *stack.Stack) {
 			s.Remove(wt.Branch)

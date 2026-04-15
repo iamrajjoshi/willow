@@ -72,7 +72,6 @@ func syncCmd() *cli.Command {
 				return nil
 			}
 
-			// Build worktree path lookup
 			done = tr.Start("list worktrees")
 			wts, err := worktree.List(repoGit)
 			if err != nil {
@@ -86,12 +85,10 @@ func syncCmd() *cli.Command {
 			}
 			done()
 
-			// Handle --abort
 			if cmd.Bool("abort") {
 				return syncAbort(st, wtPaths, g.Verbose, u)
 			}
 
-			// Determine which branches to sync
 			var branches []string
 			if targetBranch := cmd.StringArg("branch"); targetBranch != "" {
 				if !st.IsTracked(targetBranch) {
@@ -107,7 +104,6 @@ func syncCmd() *cli.Command {
 				return nil
 			}
 
-			// Fetch origin once
 			if !cmd.Bool("no-fetch") {
 				done = tr.Start("git fetch")
 				u.Info("Fetching origin...")
@@ -119,7 +115,6 @@ func syncCmd() *cli.Command {
 
 			u.Info(fmt.Sprintf("\nSyncing %d stacked worktree(s):\n", len(branches)))
 
-			// Track which branches had conflicts so we skip their descendants
 			conflicted := make(map[string]bool)
 			synced := 0
 			skipped := 0
@@ -127,7 +122,6 @@ func syncCmd() *cli.Command {
 			for _, branch := range branches {
 				parent := st.Parent(branch)
 
-				// Skip if an ancestor had a conflict
 				if isAncestorConflicted(st, branch, conflicted) {
 					u.Info(fmt.Sprintf("  %s → %s", parent, branch))
 					u.Info(fmt.Sprintf("    %s Skipped (ancestor has conflict)", u.Dim("⊘")))
@@ -145,7 +139,6 @@ func syncCmd() *cli.Command {
 
 				wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
 
-				// Check for dirty worktree
 				dirty, err := wtGit.IsDirty()
 				if err != nil {
 					u.Info(fmt.Sprintf("  %s → %s", parent, branch))
@@ -160,7 +153,6 @@ func syncCmd() *cli.Command {
 					continue
 				}
 
-				// Check for in-progress rebase
 				if wtGit.IsRebaseInProgress() {
 					u.Info(fmt.Sprintf("  %s → %s", parent, branch))
 					u.Warn(fmt.Sprintf("    ⚠ Rebase in progress — resolve manually"))
@@ -168,7 +160,6 @@ func syncCmd() *cli.Command {
 					continue
 				}
 
-				// Resolve rebase target: tracked parent → local branch, untracked → origin/<parent>
 				rebaseOnto := parent
 				if !st.IsTracked(parent) {
 					rebaseOnto = "origin/" + parent
@@ -183,16 +174,21 @@ func syncCmd() *cli.Command {
 					continue
 				}
 
-				ahead, _ := wtGit.CommitsAhead(rebaseOnto)
-				u.Info(fmt.Sprintf("    %s Rebased onto %s (%d commits ahead)", u.Green("✔"), rebaseOnto, ahead))
+				ahead, aheadErr := wtGit.CommitsAhead(rebaseOnto)
+				if aheadErr != nil {
+					u.Info(fmt.Sprintf("    %s Rebased onto %s", u.Green("✔"), rebaseOnto))
+				} else {
+					u.Info(fmt.Sprintf("    %s Rebased onto %s (%d commits ahead)", u.Green("✔"), rebaseOnto, ahead))
+				}
+				meta := map[string]string{"parent": parent}
+				if aheadErr == nil {
+					meta["ahead"] = fmt.Sprintf("%d", ahead)
+				}
 				_ = log.Append(log.Event{
 					Action: "sync",
 					Repo:   repoNameFromDir(bareDir),
 					Branch: branch,
-					Metadata: map[string]string{
-						"parent": parent,
-						"ahead":  fmt.Sprintf("%d", ahead),
-					},
+					Metadata: meta,
 				})
 				synced++
 			}

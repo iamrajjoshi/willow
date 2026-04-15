@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -29,38 +28,6 @@ func TestExtractPathFromLine(t *testing.T) {
 	}
 }
 
-func TestStatusOrder(t *testing.T) {
-	tests := []struct {
-		status claude.Status
-		want   int
-	}{
-		{claude.StatusBusy, 0},
-		{claude.StatusWait, 1},
-		{claude.StatusDone, 2},
-		{claude.StatusIdle, 3},
-		{claude.StatusOffline, 4},
-		{claude.Status("UNKNOWN"), 4},
-	}
-	for _, tt := range tests {
-		t.Run(string(tt.status), func(t *testing.T) {
-			got := statusOrder(tt.status)
-			if got != tt.want {
-				t.Errorf("statusOrder(%q) = %d, want %d", tt.status, got, tt.want)
-			}
-		})
-	}
-
-	// Verify ordering: BUSY < WAIT < DONE < IDLE < OFFLINE
-	if statusOrder(claude.StatusBusy) >= statusOrder(claude.StatusWait) {
-		t.Error("BUSY should sort before WAIT")
-	}
-	if statusOrder(claude.StatusWait) >= statusOrder(claude.StatusDone) {
-		t.Error("WAIT should sort before DONE")
-	}
-	if statusOrder(claude.StatusDone) >= statusOrder(claude.StatusIdle) {
-		t.Error("DONE should sort before IDLE")
-	}
-}
 
 func TestBuildWorktreeLines(t *testing.T) {
 	// Use a temp HOME so claude.ReadStatus returns offline for all

@@ -84,7 +84,6 @@ func swCmd() *cli.Command {
 				return nil
 			}
 
-			// Single repo mode
 			bareDir := repos[0].BareDir
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 			worktrees, err := worktree.List(repoGit)
@@ -130,7 +129,7 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
-		return statusOrder(items[i].status.Status) < statusOrder(items[j].status.Status)
+		return claude.StatusOrder(items[i].status.Status) < claude.StatusOrder(items[j].status.Status)
 	})
 
 	branchW := 0
@@ -171,7 +170,7 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
-		return statusOrder(items[i].status.Status) < statusOrder(items[j].status.Status)
+		return claude.StatusOrder(items[i].status.Status) < claude.StatusOrder(items[j].status.Status)
 	})
 
 	nameW := 0
@@ -240,7 +239,6 @@ func fzfPickWorktrees(worktrees []worktree.Worktree, repoName string) ([]string,
 }
 
 func extractPathFromLine(line string) string {
-	// The path is the last whitespace-separated field
 	fields := strings.Fields(line)
 	if len(fields) == 0 {
 		return ""
@@ -248,17 +246,3 @@ func extractPathFromLine(line string) string {
 	return fields[len(fields)-1]
 }
 
-func statusOrder(s claude.Status) int {
-	switch s {
-	case claude.StatusBusy:
-		return 0
-	case claude.StatusWait:
-		return 1
-	case claude.StatusDone:
-		return 2
-	case claude.StatusIdle:
-		return 3
-	default:
-		return 4
-	}
-}

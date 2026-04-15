@@ -64,7 +64,6 @@ func checkoutCmd() *cli.Command {
 
 			branch := cmd.StringArg("branch")
 
-			// Resolve repos
 			done := tr.Start("resolve repos")
 			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
@@ -72,7 +71,6 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			// --pr flag: resolve PR number or URL to branch name
 			if prRef := cmd.String("pr"); prRef != "" {
 				done = tr.Start("resolve PR")
 				prBranch, err := resolvePRRef(prRef, repos[0].BareDir)
@@ -88,7 +86,6 @@ func checkoutCmd() *cli.Command {
 				done()
 			}
 
-			// PR URL auto-detection in branch arg
 			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
 				prBranch, err := resolvePRRef(branch, repos[0].BareDir)
@@ -108,14 +105,12 @@ func checkoutCmd() *cli.Command {
 				return errs.Userf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
 			}
 
-			// Step 1: Check if a worktree already exists for this branch
 			done = tr.Start("find existing worktree")
 			allWts := collectAllWorktrees(repos, g.Verbose)
 			rwt, _ := findCrossRepoWorktree(allWts, branch)
 			done()
 
 			if rwt != nil {
-				// Switch mode — worktree exists
 				wtDir := filepath.Base(rwt.Worktree.Path)
 				claude.MarkRead(rwt.Repo.Name, wtDir)
 
@@ -130,8 +125,6 @@ func checkoutCmd() *cli.Command {
 				return nil
 			}
 
-			// Step 2: No worktree found — need to create one.
-			// Resolve to a single repo.
 			done = tr.Start("resolve single repo")
 			if len(repos) > 1 {
 				return errs.Userf("multiple repos found — use --repo to specify which one")
@@ -145,10 +138,8 @@ func checkoutCmd() *cli.Command {
 
 			repoGit := &git.Git{Dir: repo.BareDir, Verbose: g.Verbose}
 
-			// Fetch to ensure we have the latest remote refs
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 
-			// Step 3: Check if branch exists on remote
 			if shouldFetch {
 				done = tr.Start("git fetch")
 				if cdOnly {
@@ -162,7 +153,6 @@ func checkoutCmd() *cli.Command {
 			}
 
 			if repoGit.RemoteBranchExists(branch) {
-				// Existing branch — create worktree for it
 				dirName := strings.ReplaceAll(branch, "/", "-")
 				wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
@@ -183,7 +173,6 @@ func checkoutCmd() *cli.Command {
 				return finishWorktree(tr, cfg, g, u, wtPath, repo.Name, branch, "", cdOnly)
 			}
 
-			// New branch — apply prefix, resolve base, create
 			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
 				branch = cfg.BranchPrefix + "/" + branch
 			}
@@ -201,7 +190,6 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			// Local branch as base (for stacked PRs) or remote
 			localBase := repoGit.LocalBranchExists(baseBranch)
 			gitRef := "origin/" + baseBranch
 			if localBase {
@@ -225,7 +213,6 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			// Record parent in stack
 			done = tr.Start("record stack parent")
 			if err := stack.Update(repo.BareDir, func(s *stack.Stack) {
 				s.SetParent(branch, baseBranch)

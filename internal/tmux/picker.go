@@ -61,17 +61,8 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 			continue
 		}
 
-		// Detect merged branches for this repo
 		cfg := config.Load(bareDir)
-		baseBranch := cfg.BaseBranch
-		if baseBranch == "" {
-			baseBranch = "main"
-		}
-		mergedBranches, _ := repoGit.MergedBranches(baseBranch)
-		mergedSet := make(map[string]bool)
-		for _, b := range mergedBranches {
-			mergedSet[b] = true
-		}
+		mergedSet := repoGit.MergedBranchSet(cfg.ResolveBaseBranch())
 
 		for _, wt := range wts {
 			if wt.IsBare {
@@ -95,27 +86,23 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 		}
 	}
 
-	// Compute stack prefixes and reorder: stacked branches grouped by tree, then non-stacked by status
 	items = applyStackOrder(items, repoNames)
 
 	return items, nil
 }
 
 func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
-	// Build branch set for tree line computation
 	branchSet := make(map[string]bool)
 	for _, item := range items {
 		branchSet[item.Branch] = true
 	}
 
-	// Build item lookup by repo/branch to avoid collisions across repos
 	itemMap := make(map[string]*PickerItem)
 	for i := range items {
 		key := items[i].RepoName + "/" + items[i].Branch
 		itemMap[key] = &items[i]
 	}
 
-	// Load stacks for each repo and compute tree lines
 	stackedKeys := make(map[string]bool)
 	var stackedItems []PickerItem
 
@@ -140,7 +127,6 @@ func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
 		}
 	}
 
-	// Collect non-stacked items
 	var nonStacked []PickerItem
 	for _, item := range items {
 		key := item.RepoName + "/" + item.Branch
@@ -149,15 +135,13 @@ func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
 		}
 	}
 
-	// Sort non-stacked by status (merged last)
 	sort.SliceStable(nonStacked, func(i, j int) bool {
 		if nonStacked[i].Merged != nonStacked[j].Merged {
 			return !nonStacked[i].Merged
 		}
-		return statusOrder(nonStacked[i].Status) < statusOrder(nonStacked[j].Status)
+		return claude.StatusOrder(nonStacked[i].Status) < claude.StatusOrder(nonStacked[j].Status)
 	})
 
-	// Stacked first (in tree order), then non-stacked (by status)
 	result := append(stackedItems, nonStacked...)
 	return result
 }
@@ -196,7 +180,6 @@ func FormatPickerLines(items []PickerItem) []string {
 			namePlain += " [merged]"
 			name += fmt.Sprintf(" %s[merged]%s", colorDim, colorReset)
 		}
-		// Pad based on plain text width to avoid ANSI miscount
 		padding := nameW - utf8.RuneCountInString(namePlain)
 		if padding < 0 {
 			padding = 0
@@ -210,7 +193,6 @@ func FormatPickerLines(items []PickerItem) []string {
 		)
 		lines = append(lines, line)
 
-		// Show sub-rows for multiple active sessions
 		activeSessions := filterActiveSessions(item.Sessions)
 		if len(activeSessions) > 1 {
 			for _, ss := range activeSessions {
@@ -219,7 +201,6 @@ func FormatPickerLines(items []PickerItem) []string {
 				subIcon := claude.StatusIcon(effStatus)
 				subLabel := fmt.Sprintf("%-6s", claude.StatusLabel(effStatus))
 
-				// Build second column and track plain width for padding
 				prefix := "\u2514 "
 				sid := truncate(ss.SessionID, 8)
 				timeAgo := claude.TimeSince(ss.Timestamp)
@@ -334,21 +315,6 @@ func statusColor(s claude.Status) string {
 		return colorYellow
 	default:
 		return colorDim
-	}
-}
-
-func statusOrder(s claude.Status) int {
-	switch s {
-	case claude.StatusBusy:
-		return 0
-	case claude.StatusWait:
-		return 1
-	case claude.StatusDone:
-		return 2
-	case claude.StatusIdle:
-		return 3
-	default:
-		return 4
 	}
 }
 

@@ -127,7 +127,6 @@ func newCmd() *cli.Command {
 			}
 			existing := cmd.Bool("existing")
 
-			// Resolve repo
 			var bareDir string
 			var err error
 			done := tr.Start("resolve repo")
@@ -153,7 +152,6 @@ func newCmd() *cli.Command {
 
 			branch := cmd.StringArg("branch")
 
-			// --pr flag: resolve PR number or URL to branch name
 			if prRef := cmd.String("pr"); prRef != "" {
 				done = tr.Start("resolve PR")
 				prBranch, err := resolvePRRef(prRef, bareDir)
@@ -170,7 +168,6 @@ func newCmd() *cli.Command {
 				done()
 			}
 
-			// PR URL auto-detection in branch arg
 			if branch != "" && isPRURL(branch) {
 				done = tr.Start("resolve PR branch")
 				prBranch, err := resolvePRRef(branch, bareDir)
@@ -187,7 +184,6 @@ func newCmd() *cli.Command {
 				done()
 			}
 
-			// Existing-branch picker: -e with no branch arg
 			if existing && branch == "" {
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
@@ -212,8 +208,6 @@ func newCmd() *cli.Command {
 			}
 
 			if existing {
-				// --- Existing branch path ---
-				// No branch prefix for existing branches
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
 					done = tr.Start("git fetch branch")
@@ -251,13 +245,10 @@ func newCmd() *cli.Command {
 				return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, "", cdOnly)
 			}
 
-			// --- New branch path ---
-			// Apply branch prefix from config
 			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
 				branch = cfg.BranchPrefix + "/" + branch
 			}
 
-			// Resolve base branch: flag → config → auto-detect
 			done = tr.Start("resolve base branch")
 			baseBranch := cmd.String("base")
 			explicitBase := baseBranch != ""
@@ -282,7 +273,6 @@ func newCmd() *cli.Command {
 				gitRef = baseBranch
 			}
 
-			// Fetch latest from remote (only for remote bases)
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") && !localBase
 			if shouldFetch {
 				done = tr.Start("git fetch")
@@ -317,7 +307,6 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			// Record parent in stack for stacked PRs
 			done = tr.Start("record stack parent")
 			if err := stack.Update(bareDir, func(s *stack.Stack) {
 				s.SetParent(branch, baseBranch)
@@ -378,7 +367,6 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 
 	tr.Total()
 
-	// Log create event (best-effort)
 	meta := map[string]string{}
 	if baseBranch != "" {
 		meta["base"] = baseBranch

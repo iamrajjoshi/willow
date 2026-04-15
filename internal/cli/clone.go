@@ -76,7 +76,6 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to create worktrees directory: %w", err)
 			}
 
-			// Clean up partial state on failure or Ctrl-C
 			cleanup := func() {
 				os.RemoveAll(bareDir)
 				os.RemoveAll(worktreesDir)
@@ -97,7 +96,6 @@ func cloneCmd() *cli.Command {
 			defer close(cleanupDone)
 			defer signal.Stop(sigCh)
 
-			// Bare clone
 			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
 			done := tr.Start("git clone --bare")
 			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
@@ -128,7 +126,6 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to detect default branch: %w", err)
 			}
 
-			// Create the initial worktree on the default branch
 			wtPath := filepath.Join(worktreesDir, defaultBranch)
 			u.Info(fmt.Sprintf("Creating worktree %s at %s...", u.Bold(defaultBranch), wtPath))
 			done = tr.Start("git worktree add")

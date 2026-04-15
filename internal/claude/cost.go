@@ -35,7 +35,6 @@ func EstimateFromSession(ss *SessionStatus, inputRate, outputRate float64) *Cost
 
 	toolCount := int64(ss.ToolCount)
 
-	// Duration-based component: ~500 input tokens per minute of active session
 	var durationMinutes float64
 	if !ss.StartTime.IsZero() {
 		dur := ss.Timestamp.Sub(ss.StartTime)

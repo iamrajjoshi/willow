@@ -18,8 +18,7 @@ const (
 	StatusIdle    Status = "IDLE"
 	StatusOffline Status = "--"
 
-	staleTimeout   = 2 * time.Minute
-	cleanupTimeout = 30 * time.Minute
+	staleTimeout = 2 * time.Minute
 )
 
 type WorktreeStatus struct {
@@ -45,8 +44,6 @@ func StatusDir() string {
 
 // ReadAllSessions reads all session status files from the directory-based layout:
 // ~/.willow/status/<repo>/<worktree>/*.json
-// This is a read-only operation — it never deletes files. Use CleanStaleSessions
-// for explicit cleanup.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -74,23 +71,20 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 }
 
 // ReadStatus reads the aggregate status for a worktree.
-// It checks the new directory-based layout first, then falls back to the legacy
-// single-file layout. Returns the highest-priority status across all sessions.
+// Returns the highest-priority status across all sessions.
 func ReadStatus(repoName, worktreeDir string) *WorktreeStatus {
 	sessions := ReadAllSessions(repoName, worktreeDir)
 	if len(sessions) > 0 {
 		return AggregateStatus(sessions)
 	}
-
-	// Legacy single-file fallback
-	return readLegacyStatus(repoName, worktreeDir)
+	return &WorktreeStatus{Status: StatusOffline}
 }
 
 func AggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
 	best := &WorktreeStatus{Status: StatusOffline}
 	for _, ss := range sessions {
 		effective := EffectiveStatus(ss.Status, ss.Timestamp)
-		if statusPriority(effective) < statusPriority(best.Status) {
+		if StatusOrder(effective) < StatusOrder(best.Status) {
 			best = &WorktreeStatus{
 				Status:    effective,
 				Timestamp: ss.Timestamp,
@@ -108,7 +102,9 @@ func EffectiveStatus(s Status, ts time.Time) Status {
 	return s
 }
 
-func statusPriority(s Status) int {
+// StatusOrder returns a sort-priority for statuses (lower = higher priority).
+// BUSY(0) < WAIT(1) < DONE(2) < IDLE(3) < everything else(4).
+func StatusOrder(s Status) int {
 	switch s {
 	case StatusBusy:
 		return 0
@@ -123,50 +119,10 @@ func statusPriority(s Status) int {
 	}
 }
 
-func readLegacyStatus(repoName, worktreeDir string) *WorktreeStatus {
-	path := filepath.Join(StatusDir(), repoName, worktreeDir+".json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return &WorktreeStatus{Status: StatusOffline}
-	}
-
-	var ws WorktreeStatus
-	if err := json.Unmarshal(data, &ws); err != nil {
-		return &WorktreeStatus{Status: StatusOffline}
-	}
-
-	ws.Status = EffectiveStatus(ws.Status, ws.Timestamp)
-	return &ws
-}
-
-// CleanStaleSessions removes session files older than 30 minutes.
-func CleanStaleSessions(repoName, worktreeDir string) {
-	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			continue
-		}
-		var ss SessionStatus
-		if err := json.Unmarshal(data, &ss); err != nil {
-			os.Remove(filepath.Join(dir, e.Name()))
-			continue
-		}
-		if time.Since(ss.Timestamp) > cleanupTimeout {
-			os.Remove(filepath.Join(dir, e.Name()))
-			// Also remove the companion timeline file
-			sessionID := strings.TrimSuffix(e.Name(), ".json")
-			os.Remove(filepath.Join(dir, sessionID+".timeline"))
-		}
-	}
+// IsActive reports whether a status represents an active agent session
+// (BUSY, WAIT, or DONE but not yet dismissed).
+func IsActive(s Status) bool {
+	return s == StatusBusy || s == StatusWait || s == StatusDone
 }
 
 // StatusIcon returns the emoji icon for a status.
@@ -329,7 +285,6 @@ func CleanEmptyStatusDirs() error {
 				os.Remove(wtPath)
 			}
 		}
-		// Re-check if repo dir is now empty
 		wtEntries, err = os.ReadDir(repoPath)
 		if err == nil && len(wtEntries) == 0 {
 			os.Remove(repoPath)
@@ -340,8 +295,5 @@ func CleanEmptyStatusDirs() error {
 
 // RemoveStatusDir removes the entire session directory for a worktree.
 func RemoveStatusDir(repoName, worktreeDir string) {
-	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
-	os.RemoveAll(dir)
-	// Also remove legacy single file if present
-	os.Remove(filepath.Join(StatusDir(), repoName, worktreeDir+".json"))
+	os.RemoveAll(filepath.Join(StatusDir(), repoName, worktreeDir))
 }

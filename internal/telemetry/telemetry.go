@@ -56,11 +56,6 @@ func Init(version string) func() {
 	}
 }
 
-// Enabled returns whether telemetry is active.
-func Enabled() bool {
-	return enabled
-}
-
 // StartCommand begins a Sentry transaction for a CLI command.
 // Returns a context carrying the transaction and a finish function.
 // The finish function captures errors, emits metrics, and ends the transaction.

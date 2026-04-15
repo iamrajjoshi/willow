@@ -12,35 +12,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// completeWorktrees provides shell completion for commands that take a branch argument.
-func completeWorktrees(ctx context.Context, cmd *cli.Command) {
-	if args := cmd.Args().Slice(); len(args) > 0 && strings.HasPrefix(args[len(args)-1], "-") {
-		cli.DefaultCompleteWithFlags(ctx, cmd)
-		return
-	}
-
-	g := &git.Git{}
-	bareDir, err := g.BareRepoDir()
-	if err != nil {
-		if dir, ok := resolveRepoFromCwd(); ok {
-			bareDir = dir
-		} else {
-			return
-		}
-	}
-	repoGit := &git.Git{Dir: bareDir}
-	wts, err := worktree.List(repoGit)
-	if err != nil {
-		return
-	}
-	w := cmd.Root().Writer
-	for _, wt := range wts {
-		if !wt.IsBare {
-			fmt.Fprintln(w, wt.Branch)
-		}
-	}
-}
-
 // findWorktree matches a target string against worktrees by exact branch name,
 // directory name, or substring match on the branch.
 func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Worktree, error) {

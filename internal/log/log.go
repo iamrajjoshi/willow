@@ -115,7 +115,6 @@ func Read(opts ReadOpts) ([]Event, error) {
 		}
 	}
 
-	// Sort by timestamp descending (most recent first).
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Timestamp.After(result[j].Timestamp)
 	})
@@ -145,7 +144,6 @@ func listLogFiles() ([]string, error) {
 		}
 	}
 
-	// Sort descending by name (YYYY-MM sorts chronologically).
 	sort.Sort(sort.Reverse(sort.StringSlice(files)))
 	return files, nil
 }

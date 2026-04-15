@@ -121,17 +121,6 @@ func CapturePane(target string) (string, error) {
 	return run("capture-pane", "-ept", target, "-S", "-")
 }
 
-func ListSessions() ([]string, error) {
-	out, err := run("list-sessions", "-F", "#{session_name}")
-	if err != nil {
-		return nil, err
-	}
-	if out == "" {
-		return nil, nil
-	}
-	return strings.Split(out, "\n"), nil
-}
-
 func SessionNameForWorktree(repoName, wtDirName string) string {
 	return repoName + "/" + wtDirName
 }

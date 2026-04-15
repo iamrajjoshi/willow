@@ -61,17 +61,14 @@ func notifyOnCmd() *cli.Command {
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 
-			// Check if already running
 			if pid, ok := readPidFile(); ok {
 				if isProcessRunning(pid) {
 					u.Info(fmt.Sprintf("Notification daemon already running (pid %d)", pid))
 					return nil
 				}
-				// Stale pid file
 				os.Remove(pidFilePath())
 			}
 
-			// Launch the daemon as a background process
 			self, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("failed to resolve executable: %w", err)
@@ -95,12 +92,10 @@ func notifyOnCmd() *cli.Command {
 			}
 			logFile.Close()
 
-			// Write PID file
 			if err := os.WriteFile(pidFilePath(), []byte(strconv.Itoa(daemon.Process.Pid)), 0o644); err != nil {
 				return fmt.Errorf("failed to write pid file: %w", err)
 			}
 
-			// Detach — don't wait for the child
 			daemon.Process.Release()
 
 			u.Success(fmt.Sprintf("Notification daemon started (pid %d)", daemon.Process.Pid))
@@ -221,7 +216,6 @@ func notifyRunCmd() *cli.Command {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 
-			// Clean up pid file on exit
 			defer os.Remove(pidFilePath())
 
 			cfg := config.Load("")
