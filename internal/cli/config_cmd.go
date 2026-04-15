@@ -228,6 +228,13 @@ func configInitCmd() *cli.Command {
 			}
 
 			cfg := config.DefaultConfig()
+
+			if u.Confirm("Enable anonymous telemetry (crash reports & usage stats)?") {
+				cfg.Telemetry = config.BoolPtr(true)
+			} else {
+				cfg.Telemetry = config.BoolPtr(false)
+			}
+
 			if err := config.Save(cfg, path); err != nil {
 				return fmt.Errorf("failed to write config: %w", err)
 			}
