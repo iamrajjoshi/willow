@@ -67,6 +67,13 @@ func (u *UI) Dim(s string) string {
 	return dim + s + reset
 }
 
+func (u *UI) Confirm(prompt string) bool {
+	fmt.Fprintf(u.out(), "%s [y/N] ", prompt)
+	var answer string
+	fmt.Fscanf(os.Stdin, "%s", &answer)
+	return answer == "y" || answer == "Y"
+}
+
 func CursorHome() string    { return "\033[H" }
 func ClearToEnd() string    { return "\033[J" }
 func HideCursor() string    { return "\033[?25l" }

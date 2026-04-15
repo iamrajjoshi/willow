@@ -9,19 +9,19 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
-func TestIsOptedOut_EnvVar(t *testing.T) {
+func TestIsEnabled_EnvVar(t *testing.T) {
 	tests := []struct {
-		value    string
-		optedOut bool
+		value   string
+		enabled bool
 	}{
-		{"off", true},
-		{"OFF", true},
-		{"false", true},
-		{"False", true},
-		{"0", true},
-		{"on", false},
-		{"true", false},
-		{"1", false},
+		{"on", true},
+		{"ON", true},
+		{"true", true},
+		{"True", true},
+		{"1", true},
+		{"off", false},
+		{"false", false},
+		{"0", false},
 		{"", false},
 	}
 
@@ -30,9 +30,9 @@ func TestIsOptedOut_EnvVar(t *testing.T) {
 			os.Setenv("WILLOW_TELEMETRY", tt.value)
 			defer os.Unsetenv("WILLOW_TELEMETRY")
 
-			got := isOptedOut()
-			if got != tt.optedOut {
-				t.Errorf("isOptedOut() = %v, want %v", got, tt.optedOut)
+			got := isEnabled()
+			if got != tt.enabled {
+				t.Errorf("isEnabled() = %v, want %v", got, tt.enabled)
 			}
 		})
 	}
@@ -51,19 +51,16 @@ func TestInit_DisabledByEnvVar(t *testing.T) {
 	}
 }
 
-func TestInit_EnabledByDefault(t *testing.T) {
+func TestInit_DisabledByDefault(t *testing.T) {
 	enabled = false
 	os.Unsetenv("WILLOW_TELEMETRY")
 
 	cleanup := Init("dev")
 	defer cleanup()
 
-	if !enabled {
-		t.Error("expected telemetry to be enabled by default")
+	if enabled {
+		t.Error("expected telemetry to be disabled by default")
 	}
-
-	// Reset for other tests
-	enabled = false
 }
 
 func TestStartCommand_NoopWhenDisabled(t *testing.T) {

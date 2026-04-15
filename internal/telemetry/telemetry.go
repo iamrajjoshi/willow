@@ -22,7 +22,7 @@ var enabled bool
 func Init(version string) func() {
 	noop := func() {}
 
-	if isOptedOut() {
+	if !isEnabled() {
 		return noop
 	}
 
@@ -138,16 +138,14 @@ func machineID() string {
 	return fmt.Sprintf("%x", hash[:8])
 }
 
-func isOptedOut() bool {
+func isEnabled() bool {
 	if v := os.Getenv("WILLOW_TELEMETRY"); v != "" {
 		v = strings.ToLower(v)
-		if v == "off" || v == "false" || v == "0" {
-			return true
-		}
+		return v == "on" || v == "true" || v == "1"
 	}
 
 	cfg := config.Load("")
-	if cfg.Telemetry != nil && !*cfg.Telemetry {
+	if cfg.Telemetry != nil && *cfg.Telemetry {
 		return true
 	}
 
