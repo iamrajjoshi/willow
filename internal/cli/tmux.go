@@ -15,6 +15,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -99,8 +100,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithNoSort(),
 					fzf.WithDelimiter("\\|"),
 					fzf.WithNth("1,2"),
-					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-B: New (stacked) | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-S: Sync | Ctrl-D: Delete"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-s", "ctrl-d"),
+					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-B: Stacked | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-G: Dispatch | Ctrl-S: Sync | Ctrl-D: Delete"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-s", "ctrl-d"),
 					fzf.WithPrintQuery(),
 					fzf.WithBind(startBind),
 				}
@@ -142,6 +143,13 @@ func tmuxPickCmd() *cli.Command {
 
 				case "ctrl-p":
 					if err := tmuxPickPR(self, repoFilter, sessionName, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-g":
+					if err := tmuxPickDispatch(self, result.Query, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -508,6 +516,55 @@ func extractBranchFromPRLine(line string) string {
 		return ""
 	}
 	return line[start+1 : end]
+}
+
+func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
+	if query == "" {
+		return errs.Userf("type a prompt first")
+	}
+
+	repo, err := resolveRepo(repoFilter, sessionName, items)
+	if err != nil {
+		return err
+	}
+
+	branch := "dispatch--" + slugify(query)
+	args := []string{"new", "--cd", "--repo", repo, "--", branch}
+
+	cmd := exec.Command(self, args...)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to create worktree: %w", err)
+	}
+
+	wtPath := strings.TrimSpace(string(out))
+	if wtPath == "" {
+		return fmt.Errorf("no path returned from willow new")
+	}
+
+	if err := os.WriteFile(filepath.Join(wtPath, ".willow-prompt"), []byte(query), 0o644); err != nil {
+		return fmt.Errorf("failed to write prompt file: %w", err)
+	}
+
+	meta := map[string]string{"prompt": truncatePrompt(query)}
+	_ = log.Append(log.Event{Action: "dispatch", Repo: repo, Branch: branch, Metadata: meta})
+
+	wtDir := filepath.Base(wtPath)
+	repoName := filepath.Base(filepath.Dir(wtPath))
+
+	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+	cfg := loadRepoConfig(repoName)
+	if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
+		return fmt.Errorf("failed to create tmux session: %w", err)
+	}
+
+	claudeCmd := `claude "$(cat .willow-prompt)"`
+	if err := tmux.SendKeys(sessName, claudeCmd, "Enter"); err != nil {
+		return fmt.Errorf("failed to send claude command: %w", err)
+	}
+
+	return tmux.SwitchClient(sessName)
 }
 
 func tmuxPickSync(self, repoFilter, sessionName string, items []tmux.PickerItem, branch string) error {

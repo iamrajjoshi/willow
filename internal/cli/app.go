@@ -90,6 +90,7 @@ func NewApp() *cli.Command {
 			statusCmd(),
 			dashboardCmd(),
 			logCmd(),
+			dispatchCmd(),
 			notifyCmd(),
 			tmuxCmd(),
 			setupCmd(),

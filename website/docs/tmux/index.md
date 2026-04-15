@@ -35,9 +35,14 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 | `Ctrl-B` | Create new worktree stacked on a base branch (opens branch picker) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
 | `Ctrl-P` | Browse open PRs and create a worktree for the selected one |
+| `Ctrl-G` | Dispatch: create worktree from query text as prompt, launch Claude Code |
 | `Ctrl-S` | Sync stacked worktrees (selected branch's subtree, or all) |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
 | `Esc` | Close picker |
+
+### Dispatch
+
+Type a prompt in the query field and press `Ctrl-G` to dispatch a Claude Code agent. This creates a worktree (branch auto-named from the prompt, e.g. `dispatch--fix-the-login-bug`), opens a tmux session, and launches `claude` with your prompt. You're switched to the session immediately.
 
 ### PR picker
 
