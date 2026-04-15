@@ -10,14 +10,21 @@ import (
 )
 
 type Config struct {
-	BaseBranch       string     `json:"baseBranch,omitempty"`
-	BranchPrefix     string     `json:"branchPrefix,omitempty"`
-	PostCheckoutHook string     `json:"postCheckoutHook,omitempty"`
-	Setup            []string   `json:"setup,omitempty"`
-	Teardown         []string   `json:"teardown,omitempty"`
-	Defaults         Defaults   `json:"defaults"`
-	Tmux             TmuxConfig `json:"tmux,omitempty"`
-	Telemetry        *bool      `json:"telemetry,omitempty"`
+	BaseBranch       string       `json:"baseBranch,omitempty"`
+	BranchPrefix     string       `json:"branchPrefix,omitempty"`
+	PostCheckoutHook string       `json:"postCheckoutHook,omitempty"`
+	Setup            []string     `json:"setup,omitempty"`
+	Teardown         []string     `json:"teardown,omitempty"`
+	Defaults         Defaults     `json:"defaults"`
+	Tmux             TmuxConfig   `json:"tmux,omitempty"`
+	Notify           NotifyConfig `json:"notify,omitempty"`
+	Telemetry        *bool        `json:"telemetry,omitempty"`
+}
+
+type NotifyConfig struct {
+	Desktop *bool  `json:"desktop,omitempty"`
+	Sound   *bool  `json:"sound,omitempty"`
+	Command string `json:"command,omitempty"`
 }
 
 type TmuxConfig struct {
@@ -228,6 +235,15 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Telemetry != nil {
 		base.Telemetry = overlay.Telemetry
+	}
+	if overlay.Notify.Desktop != nil {
+		base.Notify.Desktop = overlay.Notify.Desktop
+	}
+	if overlay.Notify.Sound != nil {
+		base.Notify.Sound = overlay.Notify.Sound
+	}
+	if overlay.Notify.Command != "" {
+		base.Notify.Command = overlay.Notify.Command
 	}
 }
 

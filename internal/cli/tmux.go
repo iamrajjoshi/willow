@@ -903,6 +903,9 @@ func tmuxStatusBarCmd() *cli.Command {
 				if cfg.Tmux.Notification == nil || *cfg.Tmux.Notification {
 					tmux.NotifyWithContext(transitions, cfg)
 				}
+				if cfg.Notify.Desktop != nil && *cfg.Notify.Desktop {
+					sendDesktopNotifications(transitions, cfg)
+				}
 			}
 
 			fmt.Printf("#[fg=#98be65]\U0001F333 %d #[fg=#51afef]\U0001F916 %d", totalWt, activeAgents)
