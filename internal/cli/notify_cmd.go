@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"log"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -24,14 +27,20 @@ func pidFilePath() string {
 	return filepath.Join(config.WillowHome(), "notify.pid")
 }
 
+func logFilePath() string {
+	return filepath.Join(config.WillowHome(), "notify.log")
+}
+
 func notifyCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "notify",
-		Usage: "Desktop notifications for agent status changes",
+		Name:    "notify",
+		Aliases: []string{"notif"},
+		Usage:   "Desktop notifications for agent status changes",
 		Commands: []*cli.Command{
 			notifyOnCmd(),
 			notifyOffCmd(),
 			notifyStatusCmd(),
+			notifyLogCmd(),
 			notifyRunCmd(),
 		},
 	}
@@ -70,14 +79,21 @@ func notifyOnCmd() *cli.Command {
 
 			interval := cmd.Int("interval")
 			daemon := exec.Command(self, "notify", "run", "--interval", strconv.Itoa(int(interval)))
-			daemon.Stdout = nil
-			daemon.Stderr = nil
+
+			logFile, err := os.OpenFile(logFilePath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if err != nil {
+				return fmt.Errorf("failed to open log file: %w", err)
+			}
+			daemon.Stdout = logFile
+			daemon.Stderr = logFile
 			daemon.Stdin = nil
 			daemon.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 			if err := daemon.Start(); err != nil {
+				logFile.Close()
 				return fmt.Errorf("failed to start daemon: %w", err)
 			}
+			logFile.Close()
 
 			// Write PID file
 			if err := os.WriteFile(pidFilePath(), []byte(strconv.Itoa(daemon.Process.Pid)), 0o644); err != nil {
@@ -152,6 +168,35 @@ func notifyStatusCmd() *cli.Command {
 	}
 }
 
+func notifyLogCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "log",
+		Usage: "Show notification daemon logs",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "follow",
+				Aliases: []string{"f"},
+				Usage:   "Follow log output (tail -f)",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			lp := logFilePath()
+			if _, err := os.Stat(lp); os.IsNotExist(err) {
+				fmt.Println("No log file yet. Start the daemon with: ww notify on")
+				return nil
+			}
+			tailCmd := "tail -50"
+			if cmd.Bool("follow") {
+				tailCmd = "tail -50 -f"
+			}
+			c := exec.Command("sh", "-c", tailCmd+" "+lp)
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			return c.Run()
+		},
+	}
+}
+
 // notifyRunCmd is the actual long-running daemon (called by `notify on`).
 func notifyRunCmd() *cli.Command {
 	return &cli.Command{
@@ -168,6 +213,8 @@ func notifyRunCmd() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			interval := time.Duration(cmd.Int("interval")) * time.Second
 
+			logger := log.New(os.Stderr, "", log.LstdFlags)
+
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -179,10 +226,12 @@ func notifyRunCmd() *cli.Command {
 
 			cfg := config.Load("")
 
+			logger.Printf("daemon started (interval=%s)", interval)
+
 			check := func() {
 				statuses := collectStatuses()
 				transitions := claude.DetectTransitions(statuses, claude.NotifyStateFile())
-				sendDesktopNotifications(transitions, cfg)
+				sendDesktopNotifications(logger, transitions, cfg)
 			}
 
 			check()
@@ -190,8 +239,10 @@ func notifyRunCmd() *cli.Command {
 			for {
 				select {
 				case <-ctx.Done():
+					logger.Println("daemon stopping (context cancelled)")
 					return nil
 				case <-sigCh:
+					logger.Println("daemon stopping (signal)")
 					return nil
 				case <-ticker.C:
 					check()
@@ -231,7 +282,7 @@ func collectStatuses() map[string]claude.Status {
 	return statuses
 }
 
-func sendDesktopNotifications(transitions []claude.Transition, cfg *config.Config) {
+func sendDesktopNotifications(logger *log.Logger, transitions []claude.Transition, cfg *config.Config) {
 	for _, t := range transitions {
 		title := "willow"
 		var body string
@@ -243,10 +294,21 @@ func sendDesktopNotifications(transitions []claude.Transition, cfg *config.Confi
 		default:
 			continue
 		}
+
+		var err error
 		if cfg.Notify.Command != "" {
-			notify.SendCustom(cfg.Notify.Command, title, body)
+			err = notify.SendCustom(cfg.Notify.Command, title, body)
 		} else {
-			notify.Send(title, body)
+			err = notify.Send(title, body)
+		}
+
+		if err != nil {
+			sentry.CaptureException(err)
+			if logger != nil {
+				logger.Printf("notification failed for %s: %v", t.Key, err)
+			}
+		} else if logger != nil {
+			logger.Printf("notified: %s", body)
 		}
 	}
 }
