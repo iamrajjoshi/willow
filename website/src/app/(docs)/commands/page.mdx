@@ -1,0 +1,500 @@
+export const metadata = { title: "Commands" }
+
+import { Callout } from "@/components/ui/Callout"
+
+# Commands
+
+All examples use the `ww` alias. `willow` and `ww` are interchangeable.
+
+## `ww clone <url> [name]`
+
+Bare-clone a repo and create an initial worktree on the default branch. **Required entry point** — all willow-managed repos must be set up via `ww clone`.
+
+```bash
+ww clone git@github.com:org/repo.git
+ww clone git@github.com:org/repo.git myrepo    # custom name
+ww clone git@github.com:org/repo.git --force    # re-clone from scratch
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--force` | Remove existing repo and re-clone from scratch | `false` |
+
+**What happens under the hood:**
+
+1. `git clone --bare <url> ~/.willow/repos/<name>.git`
+2. Configure remote fetch refs
+3. `git fetch origin`
+4. Create an initial worktree on the default branch
+
+## `ww new <branch> [flags]`
+
+Create a new worktree with a new branch, an existing branch, or a GitHub PR.
+
+```bash
+ww new feature/auth                    # create worktree
+ww new feature/auth -b develop         # fork from specific branch
+ww new -e existing-branch              # use existing branch
+ww new -e                              # pick from remote branches (fzf)
+ww new --pr 123                        # checkout PR #123
+ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
+ww new feature/auth -r myrepo          # target a specific repo
+ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-b, --base` | Base branch to fork from | Config default / auto-detected |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) | `false` |
+| `--pr` | GitHub PR number or URL | |
+| `--no-fetch` | Skip fetching from remote | `false` |
+| `--cd` | Print only the path (for scripting) | `false` |
+
+### Existing branch picker
+
+Running `ww new -e` without a branch name opens an fzf picker showing all remote branches that don't already have worktrees. Select one to create a worktree for it.
+
+### GitHub PR support
+
+Use `--pr` with a PR number or pass a full PR URL as the branch argument. Willow resolves the branch name via `gh`, fetches it, and creates the worktree. Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+
+```bash
+ww new --pr 123                              # by number
+ww new https://github.com/org/repo/pull/123  # by URL
+```
+
+This also works from the tmux picker — press `Ctrl-P` for a dedicated PR picker, or paste a PR URL and press `Ctrl-N`.
+
+## `ww checkout <branch-or-pr-url>` (alias: `co`)
+
+Smart switch-or-create. Figures out the right action based on what exists:
+
+1. **Worktree exists** for that branch → switch to it (like `ww sw`)
+2. **Branch exists on remote** but no worktree → create a worktree for it (like `ww new -e`)
+3. **Branch doesn't exist** → create a new branch + worktree (like `ww new`)
+4. **PR URL** → resolve the branch via `gh`, then apply the logic above
+
+```bash
+ww checkout auth-refactor                # switch if exists, create if not
+ww checkout --pr 123                     # checkout PR #123
+ww checkout https://github.com/org/repo/pull/123  # checkout a PR by URL
+ww checkout brand-new-feature            # creates new branch + worktree
+ww checkout brand-new -b develop         # new branch forked from develop
+ww checkout auth-refactor                # auto-cd via shell integration (tmux-aware)
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `-b, --base` | Base branch (only when creating a new branch) | Config default / auto-detected |
+| `--pr` | GitHub PR number or URL | |
+| `--no-fetch` | Skip fetching from remote | `false` |
+| `--cd` | Print only the path (for scripting) | `false` |
+
+## Stacked PRs
+
+Create a chain of branches where each builds on the previous:
+
+```bash
+ww new feature-a -b main              # start a stack
+ww new feature-b -b feature-a         # stack on top
+ww new feature-c -b feature-b         # third layer
+```
+
+When `--base` points to a local branch (another worktree), willow forks from it directly and records the parent relationship in `branches.json` per repo. Stacked branches are shown as a tree in `ww ls` and the tmux picker:
+
+```
+  BRANCH                    STATUS  PATH                                           AGE
+  ├─ feature-a              BUSY    ~/.willow/worktrees/repo/feature-a             2h
+  │  └─ feature-b           DONE    ~/.willow/worktrees/repo/feature-b             1h
+  │     └─ feature-c        --      ~/.willow/worktrees/repo/feature-c             30m
+  standalone                --      ~/.willow/worktrees/repo/standalone             1d
+```
+
+Removing a stacked branch re-parents its children to the removed branch's parent. Use `--force` if the branch has children.
+
+## `ww stack status` (alias: `ww stack s`)
+
+Show CI, review, and merge status for every PR in a stack at a glance. Fetches all data in a single `gh pr list` call, so it's O(1) regardless of stack depth.
+
+```bash
+ww stack status                    # current repo
+ww stack status -r myrepo          # target a specific repo
+ww stack status --json             # machine-readable output
+```
+
+```
+  feature-a              #42  ✓ CI  ✓ Review  MERGEABLE  +100 -20
+  └─ feature-b           #43  ✗ CI  ◯ Review  CONFLICTING  +50 -10
+     └─ feature-c        (no PR)
+```
+
+Each branch shows:
+- **PR number** — links to the GitHub PR
+- **CI status** — aggregate of all checks: `✓ CI` (pass), `✗ CI` (fail), `◯ CI` (pending), `- CI` (none)
+- **Review status** — `✓ Review` (approved), `✗ Review` (changes requested), `◯ Review` (required), `- Review` (none)
+- **Mergeable** — `MERGEABLE`, `CONFLICTING`, or `UNKNOWN`
+- **Diff stats** — additions and deletions
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--json` | Output as JSON | `false` |
+
+Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+
+## `ww sync [branch]`
+
+Rebase stacked worktrees onto their parents in topological order. Like `git machete traverse` but for worktrees.
+
+```bash
+ww sync                    # sync all stacks in current repo
+ww sync feature-b          # sync only feature-b and its descendants
+ww sync -r myrepo          # target specific repo
+ww sync --abort            # abort any in-progress rebases
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--no-fetch` | Skip `git fetch origin` | `false` |
+| `--abort` | Abort in-progress rebases across all stacked worktrees | `false` |
+
+**How it works:**
+1. Fetches `origin` once
+2. Processes branches in topological order (parents before children)
+3. For root branches (parent is `main`): rebases onto `origin/main`
+4. For stacked branches: rebases onto the local parent (which was just synced)
+5. On conflict: stops descendants of the conflicting branch, continues other stacks
+
+Dirty worktrees and in-progress rebases are skipped with a warning.
+
+## `ww sw`
+
+Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
+
+```
+🤖 BUSY   auth-refactor        ~/.willow/worktrees/repo/auth-refactor
+✅ DONE   api-cleanup          ~/.willow/worktrees/repo/api-cleanup
+⏳ WAIT   payments             ~/.willow/worktrees/repo/payments
+🟡 IDLE   main                 ~/.willow/worktrees/repo/main
+   --     old-feature          ~/.willow/worktrees/repo/old-feature
+```
+
+Active agents sorted first, offline sorted last. Requires [fzf](https://github.com/junegunn/fzf).
+
+## `ww rm [branch] [flags]`
+
+Remove a worktree. Without arguments, opens fzf picker with multi-select (TAB to toggle, Ctrl-A to select all).
+
+```bash
+ww rm auth-refactor              # direct removal
+ww rm                            # fzf picker
+ww rm auth-refactor --force      # skip safety checks
+ww rm auth-refactor --prune      # also run git worktree prune
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-f, --force` | Skip safety checks | `false` |
+| `--keep-branch` | Keep the local branch | `false` |
+| `--prune` | Run `git worktree prune` after | `false` |
+
+**Safety checks** (unless `--force`):
+- Warns if there are uncommitted changes
+- Warns if there are unpushed commits
+
+## `ww ls [repo]`
+
+List worktrees with status.
+
+```
+  BRANCH               STATUS  PATH                                        AGE
+  main                 IDLE    ~/.willow/worktrees/myrepo/main             3d
+  auth-refactor        BUSY    ~/.willow/worktrees/myrepo/auth-refactor    2h
+  payments             WAIT    ~/.willow/worktrees/myrepo/payments         1d
+  old-feature          --      ~/.willow/worktrees/myrepo/old-feature      5m
+```
+
+When run outside a willow repo, lists all repos and their worktree counts.
+
+| Flag | Description |
+|------|-------------|
+| `--json` | JSON output |
+| `--path-only` | Paths only (one per line) |
+
+## `ww status`
+
+Rich view of Claude Code agent status across all worktrees. Shows per-session rows when multiple Claude sessions run in the same worktree.
+
+```
+myrepo (4 worktrees, 3 sessions active, 1 unread)
+
+  🤖 auth-refactor          BUSY    2m ago
+  🤖 auth-refactor          BUSY    5m ago
+  ✅ payments               DONE●   12m ago
+  🟡 main                   IDLE    1h ago
+     old-feature            --
+```
+
+The `●` indicator marks completed sessions you haven't reviewed yet. Switching to a worktree via `ww sw` marks it as read.
+
+| Flag | Description |
+|------|-------------|
+| `--json` | JSON output |
+| `--cost` | Show estimated token cost per session |
+
+## `ww dashboard` (alias: `dash`, `d`)
+
+Live-refreshing TUI showing all Claude Code sessions across all repos. Renders in an alternate screen buffer with no flicker. Includes a timeline sparkline showing BUSY/WAIT/DONE transitions over the last 60 minutes.
+
+```bash
+ww dashboard              # default 2s refresh
+ww dash -i 5              # 5s refresh interval
+ww dash --no-timeline     # hide the timeline column
+ww dash --no-cost         # hide cost column
+```
+
+![ww dashboard](/demo-dashboard.gif)
+
+| Flag | Description |
+|------|-------------|
+| `-i, --interval` | Refresh interval in seconds (default: 2) |
+| `--no-timeline` | Hide the timeline sparkline column |
+| `--no-cost` | Hide the cost column |
+
+| Key | Action |
+|-----|--------|
+| `j/k` | Navigate rows |
+| `Enter` | Switch to tmux session |
+| `t` | Toggle timeline column |
+| `c` | Toggle cost column |
+| `r` | Refresh |
+| `q` / `Ctrl-C` | Quit |
+
+The timeline requires `ww cc-setup` to be re-run to install the updated hook that records status transitions.
+
+## `ww log`
+
+Show activity log of worktree events. Events are recorded automatically when you create, remove, or sync worktrees. Stored as monthly JSONL files under `~/.willow/log/`.
+
+```bash
+ww log                          # last 20 events
+ww log --branch auth-refactor   # filter by branch
+ww log --repo myrepo            # filter by repo
+ww log --since 7d               # events from last 7 days
+ww log -n 50                    # last 50 events
+ww log --json                   # raw JSON output
+```
+
+| Flag | Description |
+|------|-------------|
+| `--branch` | Filter by branch name |
+| `-r, --repo` | Filter by repo name |
+| `--since` | Show events after duration (e.g. `7d`, `24h`, `30m`) |
+| `-n, --limit` | Max events to show (default 20) |
+| `--json` | JSON output |
+
+**Event types:**
+
+| Action | Trigger |
+|--------|---------|
+| `create` | Worktree created via `ww new` or `ww checkout` |
+| `remove` | Worktree removed via `ww rm` |
+| `sync` | Branch rebased via `ww sync` |
+
+## `ww notify`
+
+Desktop notifications for agent status changes. Runs a background daemon that polls agent statuses and fires macOS Notification Center alerts.
+
+```bash
+ww notify on                   # start background daemon
+ww notify on --interval 5      # custom poll interval (seconds)
+ww notify off                  # stop daemon
+ww notify status               # check if running
+```
+
+**How it works:**
+
+1. `ww notify on` spawns a background daemon (PID written to `~/.willow/notify.pid`)
+2. The daemon polls all repos and worktrees at the configured interval
+3. Detects transitions from `BUSY` to `DONE` or `WAIT`
+4. Fires a macOS Notification Center alert for each transition
+
+**Enable desktop notifications:** Desktop notifications are off by default. Set `"notify": {"desktop": true}` in config to enable them for both `ww notify` and the tmux status bar.
+
+**Custom notification command:** Set `notify.command` in config to run your own script instead of `osascript`. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
+
+## `ww dispatch <prompt>`
+
+Create a worktree and launch Claude Code with a prompt. From the terminal, Claude runs interactively in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session.
+
+```bash
+ww dispatch "Fix the login validation bug"                  # auto-name branch
+ww dispatch "Add retry logic" --name add-retries             # explicit branch name
+ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
+ww dispatch "Refactor payments" --repo myrepo                # target specific repo
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--name` | Worktree/branch name | Auto-slugified from prompt (e.g. `dispatch--fix-the-login-validation`) |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `-b, --base` | Base branch to fork from | Config default |
+| `--no-fetch` | Skip fetching from remote | `false` |
+| `--yolo` | Run Claude with `--dangerously-skip-permissions` | `false` |
+
+**How it works:**
+1. Creates a new worktree (reuses `ww new` internally)
+2. Writes the prompt to `.willow-prompt` in the worktree
+3. Launches `claude "<prompt>"` (interactive session with prompt pre-loaded)
+4. Logs a `dispatch` event (visible in `ww log`)
+
+The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to it anytime with `ww sw`.
+
+## `ww cc-setup`
+
+One-time hook installation for Claude Code status tracking.
+
+1. Creates the status directory: `~/.willow/status/`
+2. Installs a hook script at `~/.willow/hooks/claude-status-hook.sh`
+3. Adds hook configuration to `~/.claude/settings.json`
+
+The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`), writing per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
+
+The hook also tracks enriched session data:
+- **`tool_count`** — number of tool invocations in the session
+- **`start_time`** — when the session first became active
+- **`files_touched`** — files written/edited by the agent (stored in a `.files` sidecar)
+
+## `ww doctor`
+
+Check your willow setup for common issues. Runs a series of checks and prints a checklist:
+
+```bash
+ww doctor
+```
+
+```
+✔ git 2.45.0
+✔ gh CLI installed
+✔ tmux installed
+✔ Claude Code hooks installed
+✔ ~/.willow exists
+✔ ~/.willow/repos exists
+✔ ~/.willow/worktrees exists
+✔ no stale session files
+✔ config valid
+```
+
+| Check | Details |
+|-------|---------|
+| git version | Warns if &lt; 2.30 |
+| gh CLI | Optional — warns if missing |
+| tmux | Optional — warns if missing |
+| Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks |
+| Willow directories | `~/.willow`, `repos/`, `worktrees/` |
+| Stale sessions | Session files older than 30 minutes |
+| Config validity | Validates merged config for common issues |
+
+## `ww config`
+
+View, edit, and initialize willow configuration. Merges global (`~/.config/willow/config.json`) and local (per-repo `willow.json`) configs, showing the effective value and source for each field.
+
+```bash
+ww config show               # show merged config with source annotations
+ww config show --json        # raw JSON output
+ww config show -r myrepo     # show config for a specific repo
+ww config edit               # open global config in $EDITOR
+ww config edit --local       # open local (per-repo) config
+ww config edit --local -r myrepo  # open specific repo's local config
+ww config init               # create default global config
+ww config init --local       # create default local config
+ww config init --force       # overwrite existing config
+```
+
+### `ww config show`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--json` | Output raw JSON | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+
+### `ww config edit`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--global` | Edit global config (default) | `true` |
+| `--local` | Edit local (per-repo) config | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+
+Editor resolution: `$VISUAL` > `$EDITOR` > `vi`.
+
+### `ww config init`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--local` | Create local (per-repo) config | `false` |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--force` | Overwrite existing config | `false` |
+
+## `ww shell-init [flags]`
+
+Print shell integration script.
+
+```bash
+eval "$(willow shell-init)"          # bash / zsh
+willow shell-init | source           # fish
+eval "$(willow shell-init --tab-title)"  # with tab titles
+```
+
+| Flag | Description |
+|------|-------------|
+| `--tab-title` | Include terminal tab title hook |
+
+## Agent status
+
+After running `ww cc-setup`, Claude Code automatically reports its state:
+
+| Icon | Status | Meaning |
+|------|--------|---------|
+| 🤖 | `BUSY` | Agent is actively working |
+| ✅ | `DONE` | Agent finished its turn |
+| ⏳ | `WAIT` | Agent is waiting for user input |
+| 🟡 | `IDLE` | Agent session ended |
+| | `--` | No activity detected |
+
+Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
+
+## `ww tmux`
+
+Tmux integration for worktree management. See the [Tmux Integration](/tmux/) page for full documentation.
+
+```bash
+ww tmux pick              # interactive worktree picker (for tmux popup)
+ww tmux list              # formatted picker lines (for fzf reload)
+ww tmux status-bar        # tmux status-right widget
+ww tmux install           # print tmux.conf lines to add
+```
+
+Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a `prefix + w` keybinding for the picker popup.
+
+## Aliases
+
+| Alias | Command |
+|-------|---------|
+| `ww n` | `ww new` |
+| `ww co` | `ww checkout` |
+| `ww l` | `ww ls` |
+| `ww s` | `ww status` |
+| `ww dash` / `ww d` | `ww dashboard` |
+| `ww stack s` | `ww stack status` |
+
+## Global flags
+
+```
+-C <path>       Run as if willow was started in <path>
+--verbose       Show git commands being executed
+--no-color      Disable colored output
+```

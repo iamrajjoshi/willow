@@ -33,5 +33,5 @@ dist/
 
 # Website
 website/node_modules/
-website/docs/.vitepress/dist/
-website/docs/.vitepress/cache/
+website/.next/
+website/out/
