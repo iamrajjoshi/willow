@@ -3,8 +3,8 @@ package notify
 import "testing"
 
 func TestSend_NoPanic(t *testing.T) {
-	// Send is non-blocking (goroutine). Verify it doesn't panic.
-	Send("test title", "test body")
+	// Send may fail in CI (no display), just verify it doesn't panic.
+	_ = Send("test title", "test body")
 }
 
 func TestSendCustom_NoPanic(t *testing.T) {

@@ -2,6 +2,7 @@ package notify
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,25 +44,22 @@ func ensureIcon() string {
 
 // Send fires a desktop notification with the willow icon.
 // Works on macOS (terminal-notifier or osascript) and Linux (notify-send).
-// Non-blocking: runs the notification in a goroutine.
-func Send(title, body string) {
-	go func() {
-		beeep.AppName = "willow"
-		beeep.Notify(title, body, ensureIcon())
-	}()
+func Send(title, body string) error {
+	beeep.AppName = "willow"
+	return beeep.Notify(title, body, ensureIcon())
 }
 
 // SendCustom runs a user-provided command with title/body available as
 // WILLOW_NOTIFY_TITLE and WILLOW_NOTIFY_BODY env vars.
 func SendCustom(command, title, body string) error {
 	cmd := exec.Command("sh", "-c", command)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(cmd.Environ(),
 		"WILLOW_NOTIFY_TITLE="+title,
 		"WILLOW_NOTIFY_BODY="+body,
 	)
-	if err := cmd.Start(); err != nil {
-		return err
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("custom notify command: %w: %s", err, out)
 	}
-	go cmd.Wait()
 	return nil
 }
