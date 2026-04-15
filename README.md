@@ -362,6 +362,25 @@ ww notify status               # check if running
 
 Desktop notifications are off by default. Enable with `"notify": {"desktop": true}` in config. This applies to both `ww notify` and the tmux status bar widget.
 
+### `ww dispatch <prompt> [flags]`
+
+Create a worktree and launch Claude Code with a prompt. From the terminal, Claude runs interactively in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session.
+
+```bash
+ww dispatch "Fix the login validation bug"                  # auto-name branch
+ww dispatch "Add retry logic" --name add-retries             # explicit branch name
+ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
+ww dispatch "Refactor payments" --repo myrepo                # target specific repo
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Worktree/branch name (default: auto-generated from prompt) |
+| `-r, --repo` | Target repo by name |
+| `-b, --base` | Base branch to fork from |
+| `--no-fetch` | Skip fetching from remote |
+| `--yolo` | Run Claude with `--dangerously-skip-permissions` |
+
 ### `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.

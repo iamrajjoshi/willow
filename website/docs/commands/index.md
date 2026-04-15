@@ -322,6 +322,33 @@ ww notify status               # check if running
 
 **Custom notification command:** Set `notify.command` in config to run your own script instead of `osascript`. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
 
+## `ww dispatch <prompt>`
+
+Create a worktree and launch Claude Code with a prompt. From the terminal, Claude runs interactively in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session.
+
+```bash
+ww dispatch "Fix the login validation bug"                  # auto-name branch
+ww dispatch "Add retry logic" --name add-retries             # explicit branch name
+ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
+ww dispatch "Refactor payments" --repo myrepo                # target specific repo
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--name` | Worktree/branch name | Auto-slugified from prompt (e.g. `dispatch--fix-the-login-validation`) |
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `-b, --base` | Base branch to fork from | Config default |
+| `--no-fetch` | Skip fetching from remote | `false` |
+| `--yolo` | Run Claude with `--dangerously-skip-permissions` | `false` |
+
+**How it works:**
+1. Creates a new worktree (reuses `ww new` internally)
+2. Writes the prompt to `.willow-prompt` in the worktree
+3. Launches `claude "<prompt>"` (interactive session with prompt pre-loaded)
+4. Logs a `dispatch` event (visible in `ww log`)
+
+The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to it anytime with `ww sw`.
+
 ## `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.
