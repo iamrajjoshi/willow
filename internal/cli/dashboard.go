@@ -24,12 +24,17 @@ func dashboardCmd() *cli.Command {
 				Name:  "no-timeline",
 				Usage: "Hide the timeline column",
 			},
+			&cli.BoolFlag{
+				Name:  "no-cost",
+				Usage: "Hide the cost column",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			interval := time.Duration(cmd.Int("interval")) * time.Second
 			return dashboard.Run(ctx, dashboard.Config{
 				RefreshInterval: interval,
 				ShowTimeline:    !cmd.Bool("no-timeline"),
+				ShowCost:        !cmd.Bool("no-cost"),
 			})
 		},
 	}

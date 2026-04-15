@@ -24,6 +24,7 @@ import (
 type Config struct {
 	RefreshInterval time.Duration
 	ShowTimeline    bool
+	ShowCost        bool
 }
 
 type session struct {
@@ -37,6 +38,7 @@ type session struct {
 	Unread    bool
 	WtDirName string
 	Timeline  string
+	Cost      string
 }
 
 type summary struct {
@@ -127,11 +129,12 @@ func Run(ctx context.Context, cfg Config) error {
 
 	selectedIdx := 0
 	showTimeline := cfg.ShowTimeline
+	showCost := cfg.ShowCost
 	keyCh := readKey(tty)
 
 	// Initial render
-	sessions, sum := collectData()
-	output := render(sessions, sum, cols, selectedIdx, showTimeline)
+	sessions, sum := collectData(showCost)
+	output := render(sessions, sum, cols, selectedIdx, showTimeline, showCost)
 	fmt.Print(ui.CursorHome())
 	fmt.Print(output)
 	fmt.Print(ui.ClearToEnd())
@@ -145,11 +148,11 @@ func Run(ctx context.Context, cfg Config) error {
 		case <-winchCh:
 			cols = termWidth()
 		case <-ticker.C:
-			sessions, sum = collectData()
+			sessions, sum = collectData(showCost)
 			if selectedIdx >= len(sessions) && len(sessions) > 0 {
 				selectedIdx = len(sessions) - 1
 			}
-			output = render(sessions, sum, cols, selectedIdx, showTimeline)
+			output = render(sessions, sum, cols, selectedIdx, showTimeline, showCost)
 			fmt.Print(ui.CursorHome())
 			fmt.Print(output)
 			fmt.Print(ui.ClearToEnd())
@@ -166,12 +169,14 @@ func Run(ctx context.Context, cfg Config) error {
 			case 'q', 3: // q or Ctrl+C
 				return nil
 			case 'r': // refresh
-				sessions, sum = collectData()
+				sessions, sum = collectData(showCost)
 				if selectedIdx >= len(sessions) && len(sessions) > 0 {
 					selectedIdx = len(sessions) - 1
 				}
 			case 't': // toggle timeline
 				showTimeline = !showTimeline
+			case 'c': // toggle cost column
+				showCost = !showCost
 			case 13: // Enter — switch to tmux session
 				if selectedIdx < len(sessions) {
 					s := sessions[selectedIdx]
@@ -183,7 +188,7 @@ func Run(ctx context.Context, cfg Config) error {
 					return nil
 				}
 			}
-			output = render(sessions, sum, cols, selectedIdx, showTimeline)
+			output = render(sessions, sum, cols, selectedIdx, showTimeline, showCost)
 			fmt.Print(ui.CursorHome())
 			fmt.Print(output)
 			fmt.Print(ui.ClearToEnd())
@@ -191,7 +196,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 }
 
-func collectData() ([]session, summary) {
+func collectData(computeCost bool) ([]session, summary) {
 	repos, err := config.ListRepos()
 	if err != nil {
 		return nil, summary{}
@@ -251,6 +256,10 @@ func collectData() ([]session, summary) {
 						WtDirName: wtDir,
 						Timeline:  claude.Sparkline(timeline, 30, 60*time.Minute),
 					}
+					if computeCost {
+						estimate := claude.EstimateFromSession(ss, cfg.Cost.InputRate, cfg.Cost.OutputRate)
+						s.Cost = claude.FormatCost(estimate)
+					}
 					sessions = append(sessions, s)
 					if effective == claude.StatusBusy || effective == claude.StatusWait || effective == claude.StatusDone {
 						sum.Agents++
@@ -280,7 +289,7 @@ func collectData() ([]session, summary) {
 	return sessions, sum
 }
 
-func render(sessions []session, sum summary, width int, selectedIdx int, showTimeline bool) string {
+func render(sessions []session, sum summary, width int, selectedIdx int, showTimeline bool, showCost bool) string {
 	var b strings.Builder
 	u := &ui.UI{}
 
@@ -309,6 +318,15 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	repoW := len("REPO")
 	branchW := len("BRANCH")
 	diffW := len("DIFF")
+	costW := 0
+	if showCost {
+		costW = len("COST")
+		for _, s := range sessions {
+			if len(s.Cost) > costW {
+				costW = len(s.Cost)
+			}
+		}
+	}
 	for i, s := range sessions {
 		text := string(s.Status)
 		if s.Unread {
@@ -340,6 +358,9 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	if showTimeline {
 		tableW += 2 + timelineW // 2 for gap + column width
 	}
+	if showCost {
+		tableW += 2 + costW
+	}
 
 	// Title centered over the table
 	title := "willow dashboard"
@@ -354,8 +375,12 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString("\n\n")
 
 	// Header row — icon placeholder is 2 spaces to match emoji visual width (2 columns)
-	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s  %s",
-		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF", "AGE")
+	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s",
+		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF")
+	if showCost {
+		headerLine += fmt.Sprintf("  %-*s", costW, "COST")
+	}
+	headerLine += "  AGE"
 	if showTimeline {
 		headerLine += fmt.Sprintf("  %-*s", timelineW, "TIMELINE")
 	}
@@ -374,12 +399,15 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	// Rows — status is padded as plain text, no ANSI inside padded fields
 	for i, s := range sessions {
 		icon := claude.StatusIcon(s.Status)
-		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s  %s",
+		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s",
 			icon, statusW, labels[i].text,
 			repoW, s.Repo,
 			branchW, s.Branch,
-			diffW, s.DiffStats,
-			u.Dim(s.Age))
+			diffW, s.DiffStats)
+		if showCost {
+			line += fmt.Sprintf("  %-*s", costW, s.Cost)
+		}
+		line += "  " + u.Dim(s.Age)
 		if showTimeline {
 			// Sparkline already contains ANSI codes; append it raw after a gap
 			line += "  " + s.Timeline
@@ -395,7 +423,7 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	}
 
 	b.WriteString("\n")
-	b.WriteString(u.Dim("  j/k: navigate | Enter: switch | t: timeline | r: refresh | q: quit"))
+	b.WriteString(u.Dim("  j/k: navigate | Enter: switch | t: timeline | c: cost | r: refresh | q: quit"))
 	b.WriteString("\n")
 
 	return b.String()

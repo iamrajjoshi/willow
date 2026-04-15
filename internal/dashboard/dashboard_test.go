@@ -51,7 +51,7 @@ func TestParseShortstat(t *testing.T) {
 }
 
 func TestRenderNoSessions(t *testing.T) {
-	out := render(nil, summary{Repos: 2, Agents: 0, Unread: 0}, 120, 0, false)
+	out := render(nil, summary{Repos: 2, Agents: 0, Unread: 0}, 120, 0, false, false)
 	if !strings.Contains(out, "No active sessions") {
 		t.Errorf("expected 'No active sessions' in output, got:\n%s", out)
 	}
@@ -71,7 +71,7 @@ func TestRenderSingleSession(t *testing.T) {
 			WtDirName: "feat--thing",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, false)
 
 	if !strings.Contains(out, "myrepo") {
 		t.Errorf("expected 'myrepo' in output, got:\n%s", out)
@@ -97,7 +97,7 @@ func TestRenderUnreadMarker(t *testing.T) {
 			WtDirName: "feat--done",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 1}, 120, 0, false)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 1}, 120, 0, false, false)
 
 	if !strings.Contains(out, "\u25CF") {
 		t.Errorf("expected unread marker (bullet) in output, got:\n%s", out)
@@ -118,7 +118,7 @@ func TestRenderBusyWithTool(t *testing.T) {
 			WtDirName: "feat--edit",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, false)
 
 	if !strings.Contains(out, "(Edit)") {
 		t.Errorf("expected '(Edit)' tool label in output, got:\n%s", out)
@@ -144,7 +144,7 @@ func TestRenderSelectedRow(t *testing.T) {
 			WtDirName: "branch-b",
 		},
 	}
-	out := render(sessions, summary{Repos: 2, Agents: 2, Unread: 0}, 120, 1, false)
+	out := render(sessions, summary{Repos: 2, Agents: 2, Unread: 0}, 120, 1, false, false)
 
 	if !strings.Contains(out, "\033[7m") {
 		t.Errorf("expected inverse video escape sequence for selected row, got:\n%s", out)
@@ -162,7 +162,7 @@ func TestRenderKeybindingHint(t *testing.T) {
 			WtDirName: "main",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, false)
 
 	if !strings.Contains(out, "j/k: navigate") {
 		t.Errorf("expected keybinding hint 'j/k: navigate' in output, got:\n%s", out)
@@ -184,7 +184,7 @@ func TestRenderTimelineColumn(t *testing.T) {
 	}
 
 	// With timeline enabled
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, true)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, true, false)
 	if !strings.Contains(out, "TIMELINE") {
 		t.Errorf("expected 'TIMELINE' header when showTimeline=true, got:\n%s", out)
 	}
@@ -193,7 +193,7 @@ func TestRenderTimelineColumn(t *testing.T) {
 	}
 
 	// With timeline disabled
-	out = render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, false)
+	out = render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, false, false)
 	if strings.Contains(out, "TIMELINE") {
 		t.Errorf("expected no 'TIMELINE' header when showTimeline=false, got:\n%s", out)
 	}
@@ -210,7 +210,7 @@ func TestRenderTimelineKeybindingHint(t *testing.T) {
 			WtDirName: "main",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, true)
+	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, true, false)
 	if !strings.Contains(out, "t: timeline") {
 		t.Errorf("expected 't: timeline' in keybinding hint, got:\n%s", out)
 	}
