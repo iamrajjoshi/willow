@@ -16,7 +16,6 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/notify"
-	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -182,7 +181,7 @@ func notifyRunCmd() *cli.Command {
 
 			check := func() {
 				statuses := collectStatuses()
-				transitions := tmux.CheckTransitions(statuses)
+				transitions := claude.DetectTransitions(statuses, claude.NotifyStateFile())
 				sendDesktopNotifications(transitions, cfg)
 			}
 
@@ -232,7 +231,7 @@ func collectStatuses() map[string]claude.Status {
 	return statuses
 }
 
-func sendDesktopNotifications(transitions []tmux.Transition, cfg *config.Config) {
+func sendDesktopNotifications(transitions []claude.Transition, cfg *config.Config) {
 	for _, t := range transitions {
 		title := "willow"
 		var body string
