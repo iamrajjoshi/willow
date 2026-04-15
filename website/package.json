@@ -3,12 +3,38 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev docs",
-    "build": "vitepress build docs",
-    "preview": "vitepress preview docs"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@mdx-js/loader": "^3.1",
+    "@mdx-js/react": "^3.1",
+    "@next/mdx": "^15.5.15",
+    "@react-three/fiber": "^9.0",
+    "@shadergradient/react": "^2.0",
+    "@types/mdx": "^2.0",
+    "clsx": "^2.1",
+    "framer-motion": "^12.0",
+    "lucide-react": "^0.500",
+    "next": "^15.5.15",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "rehype-pretty-code": "^0.14",
+    "rehype-slug": "^6.0",
+    "remark-gfm": "^4.0",
+    "shiki": "^3.0",
+    "tailwind-merge": "^3.0",
+    "three": "^0.173"
   },
   "devDependencies": {
-    "vitepress": "^1.6.4",
-    "vue": "^3.5.29"
+    "@tailwindcss/postcss": "^4.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.173",
+    "tailwindcss": "^4.0",
+    "typescript": "^5.8"
   }
 }
