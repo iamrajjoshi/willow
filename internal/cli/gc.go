@@ -33,7 +33,6 @@ func gcCmd() *cli.Command {
 			dryRun := cmd.Bool("dry-run")
 			prune := cmd.Bool("prune")
 
-			// Phase 1: Clean trash directory
 			trashDir := config.TrashDir()
 			entries, err := os.ReadDir(trashDir)
 			if err != nil {
@@ -56,7 +55,6 @@ func gcCmd() *cli.Command {
 				u.Success(fmt.Sprintf("Cleaned up %d trash entries", len(entries)))
 			}
 
-			// Phase 2: Scan all repos for merged branches
 			repos, err := config.ListRepos()
 			if err != nil {
 				return fmt.Errorf("failed to list repos: %w", err)
@@ -76,13 +74,8 @@ func gcCmd() *cli.Command {
 				}
 
 				cfg := config.Load(bareDir)
-				baseBranch := cfg.BaseBranch
-				if baseBranch == "" {
-					baseBranch = "main"
-				}
-
 				repoGit := &git.Git{Dir: bareDir}
-				merged, err := repoGit.MergedBranches(baseBranch)
+				merged, err := repoGit.MergedBranches(cfg.ResolveBaseBranch())
 				if err != nil {
 					u.Warn(fmt.Sprintf("Skipping repo %s: failed to get merged branches: %v", repoName, err))
 					continue
@@ -135,7 +128,6 @@ func gcCmd() *cli.Command {
 				return nil
 			}
 
-			// Interactive prune
 			fmt.Fprintf(os.Stderr, "\nRemove %d merged worktree(s)? [y/N] ", len(candidates))
 			var answer string
 			fmt.Fscanf(os.Stdin, "%s", &answer)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/dashboard"
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -73,7 +72,6 @@ func tmuxPickCmd() *cli.Command {
 
 				lines := tmux.FormatPickerLines(items)
 
-				// Move current worktree to the top so it's selected by default
 				curSess := sessionName
 				if curSess == "" {
 					curSess, _ = tmux.CurrentSession()
@@ -156,7 +154,6 @@ func tmuxPickCmd() *cli.Command {
 					return nil
 
 				case "ctrl-s":
-					// Sync selected branch's subtree, or all stacks if no selection
 					branch := ""
 					if result.Selection != "" {
 						wtPath := tmux.ExtractPathFromLine(result.Selection)
@@ -167,7 +164,6 @@ func tmuxPickCmd() *cli.Command {
 					if err := tmuxPickSync(self, repoFilter, sessionName, items, branch); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					}
-					// Re-enter picker loop to show refreshed state
 					fmt.Fprintf(os.Stderr, "\nPress Enter to return to picker...\n")
 					fmt.Fscanln(os.Stdin)
 					continue
@@ -212,16 +208,8 @@ func tmuxSwCmd() *cli.Command {
 			wtDir := filepath.Base(wtPath)
 			repoName := filepath.Base(filepath.Dir(wtPath))
 
-			sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-			if !tmux.SessionExists(sessName) {
-				cfg := loadRepoConfig(repoName)
-				if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-					return fmt.Errorf("failed to create session: %w", err)
-				}
-			}
-
 			claude.MarkRead(repoName, wtDir)
-			return tmux.SwitchClient(sessName)
+			return ensureTmuxSession(repoName, wtDir, wtPath)
 		},
 	}
 }
@@ -233,16 +221,8 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 		return fmt.Errorf("worktree not found: %s", wtPath)
 	}
 
-	sessName := tmux.SessionNameForWorktree(item.RepoName, item.WtDirName)
-	if !tmux.SessionExists(sessName) {
-		cfg := loadRepoConfig(item.RepoName)
-		if err := tmux.NewSession(sessName, item.WtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-	}
-
 	claude.MarkRead(item.RepoName, item.WtDirName)
-	return tmux.SwitchClient(sessName)
+	return ensureTmuxSession(item.RepoName, item.WtDirName, item.WtPath)
 }
 
 func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
@@ -269,19 +249,7 @@ func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.Picke
 		return fmt.Errorf("no path returned from willow new")
 	}
 
-	// Path format: ~/.willow/worktrees/<repo>/<dir>
-	wtDir := filepath.Base(wtPath)
-	repoName := filepath.Base(filepath.Dir(wtPath))
-
-	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-	if !tmux.SessionExists(sessName) {
-		cfg := loadRepoConfig(repoName)
-		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-	}
-
-	return tmux.SwitchClient(sessName)
+	return ensureTmuxSessionFromPath(wtPath)
 }
 
 func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
@@ -340,18 +308,7 @@ func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tm
 		return fmt.Errorf("no path returned from willow new")
 	}
 
-	wtDir := filepath.Base(wtPath)
-	repoName := filepath.Base(filepath.Dir(wtPath))
-
-	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-	if !tmux.SessionExists(sessName) {
-		cfg := loadRepoConfig(repoName)
-		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-	}
-
-	return tmux.SwitchClient(sessName)
+	return ensureTmuxSessionFromPath(wtPath)
 }
 
 func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
@@ -374,7 +331,6 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		return errs.Userf("no remote branches found")
 	}
 
-	// Filter out branches that already have worktrees
 	wts, err := worktree.List(repoGit)
 	if err != nil {
 		return fmt.Errorf("failed to list worktrees: %w", err)
@@ -395,7 +351,6 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		return errs.Userf("all remote branches already have worktrees")
 	}
 
-	// Pick branch in-process (no nested shell-out)
 	branch, err := fzf.Run(available,
 		fzf.WithReverse(),
 		fzf.WithHeader("Select a branch to check out"),
@@ -407,7 +362,6 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		return nil // user cancelled
 	}
 
-	// Create worktree via `ww new -e --cd`
 	args := []string{"new", "-e", "--cd", "--repo", repo, "--", branch}
 	cmd := exec.Command(self, args...)
 	cmd.Stderr = os.Stderr
@@ -421,18 +375,7 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		return fmt.Errorf("no path returned from willow new")
 	}
 
-	wtDir := filepath.Base(wtPath)
-	repoName := filepath.Base(filepath.Dir(wtPath))
-
-	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-	if !tmux.SessionExists(sessName) {
-		cfg := loadRepoConfig(repoName)
-		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-	}
-
-	return tmux.SwitchClient(sessName)
+	return ensureTmuxSessionFromPath(wtPath)
 }
 
 func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
@@ -494,18 +437,7 @@ func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) e
 		return fmt.Errorf("no path returned from checkout")
 	}
 
-	wtDir := filepath.Base(wtPath)
-	repoName := filepath.Base(filepath.Dir(wtPath))
-
-	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-	if !tmux.SessionExists(sessName) {
-		cfg := loadRepoConfig(repoName)
-		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-	}
-
-	return tmux.SwitchClient(sessName)
+	return ensureTmuxSessionFromPath(wtPath)
 }
 
 // extractBranchFromPRLine parses "[branch-name]" from the end of a PR picker line.
@@ -608,7 +540,7 @@ func resolveRepo(repoFilter, sessionName string, items []tmux.PickerItem) (strin
 	}
 	activeRepos := make(map[string]bool)
 	for _, item := range items {
-		if item.Status == claude.StatusBusy || item.Status == claude.StatusWait || item.Status == claude.StatusDone {
+		if claude.IsActive(item.Status) {
 			activeRepos[item.RepoName] = true
 		}
 	}
@@ -659,6 +591,27 @@ func loadRepoConfig(repoName string) *config.Config {
 	return config.Load(bareDir)
 }
 
+// ensureTmuxSession creates a tmux session for the worktree if it doesn't exist,
+// then switches to it.
+func ensureTmuxSession(repoName, wtDir, wtPath string) error {
+	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+	if !tmux.SessionExists(sessName) {
+		cfg := loadRepoConfig(repoName)
+		if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
+			return fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+	return tmux.SwitchClient(sessName)
+}
+
+// ensureTmuxSessionFromPath derives repo/worktree names from a worktree path
+// and calls ensureTmuxSession.
+func ensureTmuxSessionFromPath(wtPath string) error {
+	wtDir := filepath.Base(wtPath)
+	repoName := filepath.Base(filepath.Dir(wtPath))
+	return ensureTmuxSession(repoName, wtDir, wtPath)
+}
+
 // stackLoaderFunc loads a stack for a given repo name. Injected for testing.
 type stackLoaderFunc func(repoName string) *stack.Stack
 
@@ -675,7 +628,6 @@ func moveToFront(items []tmux.PickerItem, sessName string) []tmux.PickerItem {
 }
 
 func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack stackLoaderFunc) []tmux.PickerItem {
-	// Find the matching item
 	matchIdx := -1
 	for i, item := range items {
 		if tmux.SessionNameForWorktree(item.RepoName, item.WtDirName) == sessName {
@@ -689,14 +641,11 @@ func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack st
 
 	matched := items[matchIdx]
 
-	// Try to load stack for the matched item's repo
 	st := loadStack(matched.RepoName)
 	if st == nil || !st.IsTracked(matched.Branch) {
-		// Not in a stack — single-item move
 		return moveItemToFront(items, matchIdx)
 	}
 
-	// Walk up to find the tree root (first branch whose parent is not tracked)
 	root := matched.Branch
 	for {
 		parent := st.Parent(root)
@@ -706,14 +655,12 @@ func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack st
 		root = parent
 	}
 
-	// Collect all branches in this tree (root + descendants)
 	treeBranches := make(map[string]bool)
 	treeBranches[root] = true
 	for _, d := range st.Descendants(root) {
 		treeBranches[d] = true
 	}
 
-	// Partition: tree members (preserving original order) first, then the rest
 	var treeItems, rest []tmux.PickerItem
 	for _, item := range items {
 		if item.RepoName == matched.RepoName && treeBranches[item.Branch] {
@@ -763,7 +710,6 @@ func tmuxPreviewCmd() *cli.Command {
 
 			sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 
-			// Metadata header
 			fmt.Printf("\033[0;34m\u2500\u2500 %s/%s \u2500\u2500\033[0m\n\n", repoName, wtDir)
 			printPreviewMetadata(wtPath, repoName)
 
@@ -789,10 +735,7 @@ func tmuxPreviewCmd() *cli.Command {
 func printPreviewMetadata(wtPath, repoName string) {
 	g := &git.Git{Dir: wtPath}
 	repoCfg := loadRepoConfig(repoName)
-	baseBranch := repoCfg.BaseBranch
-	if baseBranch == "" {
-		baseBranch = "main"
-	}
+	baseBranch := repoCfg.ResolveBaseBranch()
 
 	branch := ""
 	if b, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
@@ -800,7 +743,6 @@ func printPreviewMetadata(wtPath, repoName string) {
 		fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
 	}
 
-	// Show stack chain if branch is stacked
 	bareDir, _ := config.ResolveRepo(repoName)
 	if bareDir != "" {
 		st := stack.Load(bareDir)
@@ -811,7 +753,7 @@ func printPreviewMetadata(wtPath, repoName string) {
 	}
 
 	if diffOut, err := g.Run("diff", "--shortstat", fmt.Sprintf("origin/%s...HEAD", baseBranch)); err == nil {
-		stats := dashboard.ParseShortstat(diffOut)
+		stats := git.ParseShortstat(diffOut)
 		fmt.Printf("  \033[1mDiff:\033[0m    %s\n", stats)
 	}
 
@@ -834,7 +776,6 @@ func printPreviewMetadata(wtPath, repoName string) {
 
 // buildStackChain returns a display string like "main → feature-a → [feature-b] → feature-c"
 func buildStackChain(st *stack.Stack, current string) string {
-	// Walk up to find the root
 	var ancestors []string
 	b := current
 	for {
@@ -849,7 +790,6 @@ func buildStackChain(st *stack.Stack, current string) string {
 		b = parent
 	}
 
-	// Walk down to find descendants
 	var descendants []string
 	queue := st.Children(current)
 	for len(queue) > 0 {
@@ -936,7 +876,7 @@ func tmuxStatusBarCmd() *cli.Command {
 					sessions := claude.ReadAllSessions(repoName, wtDir)
 					ws := claude.AggregateStatus(sessions)
 
-					// Self-heal: clean orphaned BUSY/WAIT sessions when tmux session is gone
+					// Clean orphaned sessions whose tmux session no longer exists
 					sessName := tmux.SessionNameForWorktree(repoName, wtDir)
 					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !tmux.SessionExists(sessName) {
 						for _, ss := range sessions {
@@ -948,7 +888,7 @@ func tmuxStatusBarCmd() *cli.Command {
 					}
 
 					currentStatuses[repoName+"/"+wtDir] = ws.Status
-					if ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait || ws.Status == claude.StatusDone {
+					if claude.IsActive(ws.Status) {
 						activeAgents++
 					}
 				}

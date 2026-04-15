@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/git"
 )
 
-func TestParseShortstat(t *testing.T) {
+func TestParseShortstatFromGit(t *testing.T) {
 	tests := []struct {
 		name string
 		out  string
@@ -42,9 +43,9 @@ func TestParseShortstat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ParseShortstat(tt.out)
+			got := git.ParseShortstat(tt.out)
 			if got != tt.want {
-				t.Errorf("ParseShortstat(%q) = %q, want %q", tt.out, got, tt.want)
+				t.Errorf("git.ParseShortstat(%q) = %q, want %q", tt.out, got, tt.want)
 			}
 		})
 	}

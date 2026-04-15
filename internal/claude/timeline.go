@@ -101,7 +101,6 @@ func dominantStatus(entries []TimelineEntry, start, end time.Time) Status {
 		currentStatus = e.Status
 		cursor = e.Time
 	}
-	// Remainder of bucket
 	if currentStatus != "" {
 		durations[currentStatus] += end.Sub(cursor)
 	}

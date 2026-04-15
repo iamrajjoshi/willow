@@ -60,10 +60,6 @@ func WithPrintQuery() Option {
 	return func(c *config) { c.printQuery = true }
 }
 
-func WithCycle() Option {
-	return func(c *config) { c.cycle = true }
-}
-
 func WithQuery(q string) Option {
 	return func(c *config) { c.query = q }
 }

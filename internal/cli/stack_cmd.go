@@ -75,7 +75,6 @@ func stackStatusCmd() *cli.Command {
 			}
 			treeLines := st.TreeLines(branchSet)
 
-			// Find a worktree path to run gh in
 			repoName := repoNameFromDir(bareDir)
 			wtDir := filepath.Join(config.WorktreesDir(), repoName)
 			ghDir, err := findGHDir(wtDir)
@@ -94,7 +93,6 @@ func stackStatusCmd() *cli.Command {
 				return enc.Encode(prMap)
 			}
 
-			// Compute max display width for branch column alignment
 			maxBranchWidth := 0
 			for _, tl := range treeLines {
 				w := utf8.RuneCountInString(tl.Prefix) + utf8.RuneCountInString(tl.Branch)

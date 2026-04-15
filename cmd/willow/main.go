@@ -23,6 +23,7 @@ func run() int {
 		if r := recover(); r != nil {
 			sentry.CurrentHub().Recover(r)
 			sentry.Flush(2 * time.Second)
+			panic(r)
 		}
 	}()
 

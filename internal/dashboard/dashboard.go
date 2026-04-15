@@ -100,7 +100,6 @@ func Run(ctx context.Context, cfg Config) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// Open /dev/tty for keyboard input
 	tty, err := os.Open("/dev/tty")
 	if err != nil {
 		return fmt.Errorf("open /dev/tty: %w", err)
@@ -110,7 +109,6 @@ func Run(ctx context.Context, cfg Config) error {
 	setRawMode(tty)
 	defer restoreMode(tty)
 
-	// Enter alternate screen, hide cursor
 	fmt.Print(ui.AltScreenOn())
 	fmt.Print(ui.HideCursor())
 
@@ -119,7 +117,6 @@ func Run(ctx context.Context, cfg Config) error {
 		fmt.Print(ui.AltScreenOff())
 	}()
 
-	// Handle SIGWINCH for terminal resize
 	winchCh := make(chan os.Signal, 1)
 	signal.Notify(winchCh, syscall.SIGWINCH)
 
@@ -132,7 +129,6 @@ func Run(ctx context.Context, cfg Config) error {
 	showCost := cfg.ShowCost
 	keyCh := readKey(tty)
 
-	// Initial render
 	sessions, sum := collectData(showCost)
 	output := render(sessions, sum, cols, selectedIdx, showTimeline, showCost)
 	fmt.Print(ui.CursorHome())
@@ -231,12 +227,7 @@ func collectData(computeCost bool) ([]session, summary) {
 				sum.Unread++
 			}
 
-			baseBranch := cfg.BaseBranch
-			if baseBranch == "" {
-				baseBranch = "main"
-			}
-
-			diff := getDiffStats(wt.Path, baseBranch)
+			diff := getDiffStats(wt.Path, cfg.ResolveBaseBranch())
 
 			timelineSince := time.Now().Add(-60 * time.Minute)
 
@@ -261,7 +252,7 @@ func collectData(computeCost bool) ([]session, summary) {
 						s.Cost = claude.FormatCost(estimate)
 					}
 					sessions = append(sessions, s)
-					if effective == claude.StatusBusy || effective == claude.StatusWait || effective == claude.StatusDone {
+					if claude.IsActive(effective) {
 						sum.Agents++
 					}
 				}
@@ -309,7 +300,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		return b.String()
 	}
 
-	// Build plain-text status labels to compute column widths
 	type rowLabel struct {
 		text string
 	}
@@ -350,10 +340,7 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		}
 	}
 
-	// Timeline column has a fixed visual width of 30, but string length is longer due to ANSI
 	timelineW := 30
-
-	// Table width: 2 (indent) + 2 (icon) + 1 (space) + statusW + 2 + repoW + 2 + branchW + 2 + diffW + 2 + 8 (AGE)
 	tableW := 2 + 2 + 1 + statusW + 2 + repoW + 2 + branchW + 2 + diffW + 2 + 8
 	if showTimeline {
 		tableW += 2 + timelineW // 2 for gap + column width
@@ -362,7 +349,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		tableW += 2 + costW
 	}
 
-	// Title centered over the table
 	title := "willow dashboard"
 	stats := fmt.Sprintf("%d repos | %d agents | %d unread", sum.Repos, sum.Agents, sum.Unread)
 	headerText := title + "  " + stats
@@ -374,7 +360,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString(u.Bold(headerText))
 	b.WriteString("\n\n")
 
-	// Header row — icon placeholder is 2 spaces to match emoji visual width (2 columns)
 	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s",
 		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF")
 	if showCost {
@@ -387,7 +372,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString(u.Bold(headerLine))
 	b.WriteString("\n")
 
-	// Separator
 	sepLen := tableW - 2
 	if sepLen > width-2 && width > 0 {
 		sepLen = width - 2
@@ -396,7 +380,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString(u.Dim(strings.Repeat("\u2500", sepLen)))
 	b.WriteString("\n")
 
-	// Rows — status is padded as plain text, no ANSI inside padded fields
 	for i, s := range sessions {
 		icon := claude.StatusIcon(s.Status)
 		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s",
@@ -409,7 +392,6 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		}
 		line += "  " + u.Dim(s.Age)
 		if showTimeline {
-			// Sparkline already contains ANSI codes; append it raw after a gap
 			line += "  " + s.Timeline
 		}
 		if i == selectedIdx {
@@ -443,7 +425,7 @@ func getDiffStats(wtPath, baseBranch string) string {
 		return "--"
 	}
 
-	stats := ParseShortstat(out)
+	stats := git.ParseShortstat(out)
 
 	diffCacheMu.Lock()
 	diffCache[wtPath] = cachedDiff{stats: stats, at: time.Now()}
@@ -452,45 +434,8 @@ func getDiffStats(wtPath, baseBranch string) string {
 	return stats
 }
 
-// ParseShortstat converts git diff --shortstat output into a compact summary.
-func ParseShortstat(out string) string {
-	if out == "" {
-		return "--"
-	}
-	// "3 files changed, 42 insertions(+), 12 deletions(-)"
-	parts := strings.Split(out, ",")
-	files := ""
-	ins := ""
-	del := ""
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		fields := strings.Fields(p)
-		if len(fields) >= 2 {
-			switch {
-			case strings.Contains(p, "file"):
-				files = fields[0] + "f"
-			case strings.Contains(p, "insertion"):
-				ins = "+" + fields[0]
-			case strings.Contains(p, "deletion"):
-				del = "-" + fields[0]
-			}
-		}
-	}
-	result := files
-	if ins != "" {
-		result += " " + ins
-	}
-	if del != "" {
-		result += " " + del
-	}
-	if result == "" {
-		return "--"
-	}
-	return result
-}
 
 func termWidth() int {
-	// Use /dev/tty so stty works even when stdin is piped
 	cmd := exec.Command("stty", "size")
 	tty, err := os.Open("/dev/tty")
 	if err != nil {

@@ -54,6 +54,14 @@ type CostConfig struct {
 
 func BoolPtr(v bool) *bool { return &v }
 
+// ResolveBaseBranch returns the configured base branch, or "main" as a default.
+func (cfg *Config) ResolveBaseBranch() string {
+	if cfg.BaseBranch != "" {
+		return cfg.BaseBranch
+	}
+	return "main"
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Defaults: Defaults{

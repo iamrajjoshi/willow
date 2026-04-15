@@ -113,27 +113,6 @@ func TestStatusColor(t *testing.T) {
 	}
 }
 
-func TestStatusOrder(t *testing.T) {
-	tests := []struct {
-		name   string
-		status claude.Status
-		want   int
-	}{
-		{"BUSY", claude.StatusBusy, 0},
-		{"WAIT", claude.StatusWait, 1},
-		{"DONE", claude.StatusDone, 2},
-		{"IDLE", claude.StatusIdle, 3},
-		{"OFFLINE", claude.StatusOffline, 4},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := statusOrder(tt.status)
-			if got != tt.want {
-				t.Errorf("statusOrder(%q) = %d, want %d", tt.status, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestDisplayName(t *testing.T) {
 	item := PickerItem{RepoName: "myrepo", Branch: "feat-auth"}

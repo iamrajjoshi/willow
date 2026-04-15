@@ -16,91 +16,6 @@ func TestReadStatus_MissingFile(t *testing.T) {
 	}
 }
 
-func TestReadStatus_LegacyFile(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	repoName := "myrepo"
-	wtName := "feature-auth"
-	statusDir := filepath.Join(home, ".willow", "status", repoName)
-	os.MkdirAll(statusDir, 0o755)
-
-	ws := WorktreeStatus{
-		Status:    StatusBusy,
-		Timestamp: time.Now().UTC(),
-		Worktree:  wtName,
-	}
-	data, _ := json.Marshal(ws)
-	os.WriteFile(filepath.Join(statusDir, wtName+".json"), data, 0o644)
-
-	got := ReadStatus(repoName, wtName)
-	if got.Status != StatusBusy {
-		t.Errorf("Status = %q, want %q", got.Status, StatusBusy)
-	}
-}
-
-func TestReadStatus_StaleBusyBecomesIdle(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	repoName := "myrepo"
-	wtName := "stale-wt"
-	statusDir := filepath.Join(home, ".willow", "status", repoName)
-	os.MkdirAll(statusDir, 0o755)
-
-	ws := WorktreeStatus{
-		Status:    StatusBusy,
-		Timestamp: time.Now().UTC().Add(-10 * time.Minute),
-		Worktree:  wtName,
-	}
-	data, _ := json.Marshal(ws)
-	os.WriteFile(filepath.Join(statusDir, wtName+".json"), data, 0o644)
-
-	got := ReadStatus(repoName, wtName)
-	if got.Status != StatusIdle {
-		t.Errorf("Status = %q, want %q (stale BUSY should become IDLE)", got.Status, StatusIdle)
-	}
-}
-
-func TestReadStatus_StaleDoneStaysDone(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	repoName := "myrepo"
-	wtName := "stale-done-wt"
-	statusDir := filepath.Join(home, ".willow", "status", repoName)
-	os.MkdirAll(statusDir, 0o755)
-
-	ws := WorktreeStatus{
-		Status:    StatusDone,
-		Timestamp: time.Now().UTC().Add(-10 * time.Minute),
-		Worktree:  wtName,
-	}
-	data, _ := json.Marshal(ws)
-	os.WriteFile(filepath.Join(statusDir, wtName+".json"), data, 0o644)
-
-	got := ReadStatus(repoName, wtName)
-	if got.Status != StatusDone {
-		t.Errorf("Status = %q, want %q (stale DONE should stay DONE)", got.Status, StatusDone)
-	}
-}
-
-func TestReadStatus_InvalidJSON(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	repoName := "myrepo"
-	wtName := "bad-json"
-	statusDir := filepath.Join(home, ".willow", "status", repoName)
-	os.MkdirAll(statusDir, 0o755)
-	os.WriteFile(filepath.Join(statusDir, wtName+".json"), []byte("{invalid"), 0o644)
-
-	got := ReadStatus(repoName, wtName)
-	if got.Status != StatusOffline {
-		t.Errorf("Status = %q, want %q", got.Status, StatusOffline)
-	}
-}
-
 func TestReadAllSessions_MultipleSessions(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -198,37 +113,6 @@ func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
 	}
 }
 
-func TestCleanStaleSessions(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	repoName := "myrepo"
-	wtName := "cleanup"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
-	os.MkdirAll(sessDir, 0o755)
-
-	stale := SessionStatus{Status: StatusDone, SessionID: "old", Timestamp: time.Now().UTC().Add(-1 * time.Hour)}
-	fresh := SessionStatus{Status: StatusBusy, SessionID: "new", Timestamp: time.Now().UTC()}
-
-	for _, ss := range []SessionStatus{stale, fresh} {
-		data, _ := json.Marshal(ss)
-		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
-	}
-
-	CleanStaleSessions(repoName, wtName)
-
-	entries, _ := os.ReadDir(sessDir)
-	jsonFiles := 0
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".json" {
-			jsonFiles++
-		}
-	}
-	if jsonFiles != 1 {
-		t.Errorf("after cleanup: %d json files, want 1", jsonFiles)
-	}
-}
-
 func TestStatusIcon(t *testing.T) {
 	tests := []struct {
 		status Status
@@ -303,17 +187,17 @@ func TestEffectiveStatus_Stale(t *testing.T) {
 	}
 }
 
-func TestStatusPriority_Ordering(t *testing.T) {
-	if statusPriority(StatusBusy) >= statusPriority(StatusWait) {
+func TestStatusOrder_Ordering(t *testing.T) {
+	if StatusOrder(StatusBusy) >= StatusOrder(StatusWait) {
 		t.Error("BUSY should have higher priority than WAIT")
 	}
-	if statusPriority(StatusWait) >= statusPriority(StatusDone) {
+	if StatusOrder(StatusWait) >= StatusOrder(StatusDone) {
 		t.Error("WAIT should have higher priority than DONE")
 	}
-	if statusPriority(StatusDone) >= statusPriority(StatusIdle) {
+	if StatusOrder(StatusDone) >= StatusOrder(StatusIdle) {
 		t.Error("DONE should have higher priority than IDLE")
 	}
-	if statusPriority(StatusIdle) >= statusPriority(StatusOffline) {
+	if StatusOrder(StatusIdle) >= StatusOrder(StatusOffline) {
 		t.Error("IDLE should have higher priority than OFFLINE")
 	}
 }

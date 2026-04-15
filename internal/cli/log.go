@@ -75,7 +75,6 @@ func logCmd() *cli.Command {
 				return enc.Encode(events)
 			}
 
-			// Column widths
 			actionW, repoW, branchW := 0, 0, 0
 			for _, e := range events {
 				if len(e.Action) > actionW {
@@ -114,7 +113,6 @@ func formatMetadata(m map[string]string) string {
 		if v == "" {
 			continue
 		}
-		// Truncate long values (e.g. prompts)
 		if len(v) > 60 {
 			v = v[:57] + "..."
 		}

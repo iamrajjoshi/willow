@@ -46,7 +46,7 @@ func TestInit_DisabledByEnvVar(t *testing.T) {
 	cleanup := Init("dev")
 	defer cleanup()
 
-	if Enabled() {
+	if enabled {
 		t.Error("expected telemetry to be disabled when WILLOW_TELEMETRY=off")
 	}
 }
@@ -58,7 +58,7 @@ func TestInit_EnabledByDefault(t *testing.T) {
 	cleanup := Init("dev")
 	defer cleanup()
 
-	if !Enabled() {
+	if !enabled {
 		t.Error("expected telemetry to be enabled by default")
 	}
 

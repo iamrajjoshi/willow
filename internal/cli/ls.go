@@ -44,7 +44,6 @@ func lsCmd() *cli.Command {
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 
-			// If an explicit repo name was given, resolve it and list its worktrees
 			if repoArg := cmd.StringArg("repo"); repoArg != "" {
 				bareDir, err := config.ResolveRepo(repoArg)
 				if err != nil {
@@ -53,7 +52,6 @@ func lsCmd() *cli.Command {
 				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
-			// Try to detect the current repo (git context or worktrees dir)
 			bareDir, err := g.BareRepoDir()
 			if err == nil && config.IsWillowRepo(bareDir) {
 				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
@@ -62,7 +60,6 @@ func lsCmd() *cli.Command {
 				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
-			// Outside a willow repo — list all repos
 			return printRepoList(flags)
 		},
 	}
@@ -136,7 +133,7 @@ func printRepoList(flags Flags) error {
 			count++
 			wtDir := filepath.Base(wt.Path)
 			ws := claude.ReadStatus(r, wtDir)
-			if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
+			if claude.IsActive(ws.Status) {
 				activeCount++
 			}
 			if claude.IsUnread(r, wtDir) {
@@ -180,19 +177,9 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		return
 	}
 
-	// Detect merged branches
 	cfg := config.Load(repoGit.Dir)
-	baseBranch := cfg.BaseBranch
-	if baseBranch == "" {
-		baseBranch = "main"
-	}
-	mergedBranches, _ := repoGit.MergedBranches(baseBranch)
-	mergedSet := make(map[string]bool)
-	for _, b := range mergedBranches {
-		mergedSet[b] = true
-	}
+	mergedSet := repoGit.MergedBranchSet(cfg.ResolveBaseBranch())
 
-	// Load stack for tree display
 	st := stack.Load(repoGit.Dir)
 	branchSet := make(map[string]bool)
 	wtMap := make(map[string]worktree.Worktree)
@@ -201,7 +188,6 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		wtMap[wt.Branch] = wt
 	}
 
-	// Build ordered rows: stacked branches in tree order, then non-stacked
 	var rows []lsRow
 	stackedBranches := make(map[string]bool)
 
@@ -220,7 +206,6 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		}
 	}
 
-	// Non-stacked branches
 	for _, wt := range worktrees {
 		if !stackedBranches[wt.Branch] {
 			rows = append(rows, lsRow{
@@ -231,7 +216,6 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 		}
 	}
 
-	// Calculate column widths
 	branchW := len("BRANCH")
 	statusW := len("STATUS")
 	pathW := len("PATH")

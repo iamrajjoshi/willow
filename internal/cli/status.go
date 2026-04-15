@@ -64,7 +64,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree, costCfg *
 				}
 				rs.Entries = append(rs.Entries, entry)
 
-				if effective == claude.StatusBusy || effective == claude.StatusDone || effective == claude.StatusWait {
+				if claude.IsActive(effective) {
 					rs.ActiveCount++
 				}
 			}
@@ -81,7 +81,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree, costCfg *
 			}
 			rs.Entries = append(rs.Entries, entry)
 
-			if ws.Status == claude.StatusBusy || ws.Status == claude.StatusDone || ws.Status == claude.StatusWait {
+			if claude.IsActive(ws.Status) {
 				rs.ActiveCount++
 			}
 		}
@@ -166,7 +166,6 @@ func statusCmd() *cli.Command {
 					}
 				}
 
-				// Compute total cost across entries if showing cost
 				var totalCost float64
 				for _, e := range rs.Entries {
 					icon := claude.StatusIcon(claude.Status(e.Status))

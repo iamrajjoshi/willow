@@ -67,7 +67,6 @@ func (u *UI) Dim(s string) string {
 	return dim + s + reset
 }
 
-// ANSI terminal control sequences for TUI rendering
 func CursorHome() string    { return "\033[H" }
 func ClearToEnd() string    { return "\033[J" }
 func HideCursor() string    { return "\033[?25l" }

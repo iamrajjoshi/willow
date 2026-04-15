@@ -34,7 +34,6 @@ func Load(bareDir string) *Stack {
 	if err != nil {
 		return s
 	}
-	// Support both {"parents": {...}} and flat {...} formats
 	var wrapped struct {
 		Parents map[string]string `json:"parents"`
 	}
@@ -42,7 +41,6 @@ func Load(bareDir string) *Stack {
 		s.Parents = wrapped.Parents
 		return s
 	}
-	// Try flat format
 	var flat map[string]string
 	if err := json.Unmarshal(data, &flat); err == nil {
 		s.Parents = flat
@@ -175,7 +173,6 @@ func (s *Stack) TopoSort() []string {
 			return
 		}
 		visited[branch] = true
-		// Visit parent first (if it's tracked)
 		if parent, ok := s.Parents[branch]; ok {
 			if _, parentTracked := s.Parents[parent]; parentTracked {
 				visit(parent)
@@ -184,11 +181,9 @@ func (s *Stack) TopoSort() []string {
 		result = append(result, branch)
 	}
 
-	// Process roots first for stable ordering
 	for _, root := range s.Roots() {
 		visit(root)
 	}
-	// Then any remaining
 	for branch := range s.Parents {
 		visit(branch)
 	}
@@ -225,10 +220,8 @@ func (s *Stack) TreeLines(branchSet map[string]bool) []TreeLine {
 	}
 
 	var lines []TreeLine
-	// Process each root and its subtree
 	for _, root := range s.Roots() {
 		if !branchSet[root] {
-			// Still process children that might have worktrees
 			s.collectTreeLines(&lines, root, "", 0, branchSet, true)
 			continue
 		}
@@ -247,7 +240,6 @@ func (s *Stack) collectTreeLines(lines *[]TreeLine, branch, prefix string, depth
 	}
 
 	children := s.Children(branch)
-	// Filter to children that have worktrees (or have descendants with worktrees)
 	var visibleChildren []string
 	for _, child := range children {
 		if branchSet[child] || s.hasDescendantIn(child, branchSet) {
@@ -259,8 +251,7 @@ func (s *Stack) collectTreeLines(lines *[]TreeLine, branch, prefix string, depth
 		isLast := i == len(visibleChildren)-1
 		var childPrefix, nextPrefix string
 		if depth == 0 && skipSelf {
-			// Root is not shown, children are at top level
-			if isLast {
+				if isLast {
 				childPrefix = "└─ "
 				nextPrefix = "   "
 			} else {
@@ -286,7 +277,6 @@ func (s *Stack) collectTreeLines(lines *[]TreeLine, branch, prefix string, depth
 				Depth:  depth + 1,
 			})
 		}
-		// Recurse into grandchildren
 		for _, grandchild := range s.Children(child) {
 			s.collectTreeLines(lines, grandchild, nextPrefix, depth+2, branchSet, false)
 		}

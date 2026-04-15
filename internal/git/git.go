@@ -21,13 +21,7 @@ func (g *Git) Run(args ...string) (string, error) {
 		cmd.Dir = g.Dir
 	}
 
-	if g.Verbose {
-		if g.Dir != "" {
-			fmt.Fprintf(os.Stderr, "$ git -C %s %s\n", g.Dir, strings.Join(args, " "))
-		} else {
-			fmt.Fprintf(os.Stderr, "$ git %s\n", strings.Join(args, " "))
-		}
-	}
+	g.logCmd(args)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -45,13 +39,7 @@ func (g *Git) RunStream(stderr io.Writer, args ...string) (string, error) {
 		cmd.Dir = g.Dir
 	}
 
-	if g.Verbose {
-		if g.Dir != "" {
-			fmt.Fprintf(os.Stderr, "$ git -C %s %s\n", g.Dir, strings.Join(args, " "))
-		} else {
-			fmt.Fprintf(os.Stderr, "$ git %s\n", strings.Join(args, " "))
-		}
-	}
+	g.logCmd(args)
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -61,6 +49,17 @@ func (g *Git) RunStream(stderr io.Writer, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func (g *Git) logCmd(args []string) {
+	if !g.Verbose {
+		return
+	}
+	if g.Dir != "" {
+		fmt.Fprintf(os.Stderr, "$ git -C %s %s\n", g.Dir, strings.Join(args, " "))
+	} else {
+		fmt.Fprintf(os.Stderr, "$ git %s\n", strings.Join(args, " "))
+	}
 }
 
 func (g *Git) BareRepoDir() (string, error) {
@@ -116,6 +115,16 @@ func (g *Git) MergedBranches(base string) ([]string, error) {
 		}
 	}
 	return branches, nil
+}
+
+// MergedBranchSet returns a set of branches that have been merged into origin/<base>.
+func (g *Git) MergedBranchSet(base string) map[string]bool {
+	merged, _ := g.MergedBranches(base)
+	set := make(map[string]bool, len(merged))
+	for _, b := range merged {
+		set[b] = true
+	}
+	return set
 }
 
 // RemoteBranches returns remote branch names from origin, stripping the
@@ -200,4 +209,42 @@ func (g *Git) HasUnpushedCommits() (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(out) != "0", nil
+}
+
+// ParseShortstat converts git diff --shortstat output into a compact summary
+// like "3f +42 -12".
+func ParseShortstat(out string) string {
+	if out == "" {
+		return "--"
+	}
+	// "3 files changed, 42 insertions(+), 12 deletions(-)"
+	parts := strings.Split(out, ",")
+	files := ""
+	ins := ""
+	del := ""
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		fields := strings.Fields(p)
+		if len(fields) >= 2 {
+			switch {
+			case strings.Contains(p, "file"):
+				files = fields[0] + "f"
+			case strings.Contains(p, "insertion"):
+				ins = "+" + fields[0]
+			case strings.Contains(p, "deletion"):
+				del = "-" + fields[0]
+			}
+		}
+	}
+	result := files
+	if ins != "" {
+		result += " " + ins
+	}
+	if del != "" {
+		result += " " + del
+	}
+	if result == "" {
+		return "--"
+	}
+	return result
 }
