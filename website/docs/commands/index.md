@@ -110,6 +110,36 @@ When `--base` points to a local branch (another worktree), willow forks from it 
 
 Removing a stacked branch re-parents its children to the removed branch's parent. Use `--force` if the branch has children.
 
+## `ww stack status` (alias: `ww stack s`)
+
+Show CI, review, and merge status for every PR in a stack at a glance. Fetches all data in a single `gh pr list` call, so it's O(1) regardless of stack depth.
+
+```bash
+ww stack status                    # current repo
+ww stack status -r myrepo          # target a specific repo
+ww stack status --json             # machine-readable output
+```
+
+```
+  feature-a              #42  ✓ CI  ✓ Review  MERGEABLE  +100 -20
+  └─ feature-b           #43  ✗ CI  ◯ Review  CONFLICTING  +50 -10
+     └─ feature-c        (no PR)
+```
+
+Each branch shows:
+- **PR number** — links to the GitHub PR
+- **CI status** — aggregate of all checks: `✓ CI` (pass), `✗ CI` (fail), `◯ CI` (pending), `- CI` (none)
+- **Review status** — `✓ Review` (approved), `✗ Review` (changes requested), `◯ Review` (required), `- Review` (none)
+- **Mergeable** — `MERGEABLE`, `CONFLICTING`, or `UNKNOWN`
+- **Diff stats** — additions and deletions
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd |
+| `--json` | Output as JSON | `false` |
+
+Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+
 ## `ww sync [branch]`
 
 Rebase stacked worktrees onto their parents in topological order. Like `git machete traverse` but for worktrees.
@@ -428,6 +458,7 @@ Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a
 | `ww l` | `ww ls` |
 | `ww s` | `ww status` |
 | `ww dash` / `ww d` | `ww dashboard` |
+| `ww stack s` | `ww stack status` |
 
 ## Global flags
 
