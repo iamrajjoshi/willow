@@ -237,6 +237,8 @@ ww stack status --json             # JSON output
      └─ feature-c        (no PR)
 ```
 
+![ww stack status](screenshots/demo-stack-status.gif)
+
 | Flag | Description |
 |------|-------------|
 | `-r, --repo` | Target repo by name |
@@ -367,6 +369,8 @@ ww dispatch "Add retry logic" --name add-retries             # explicit branch n
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
 ```
+
+![ww dispatch](screenshots/demo-dispatch.gif)
 
 | Flag | Description |
 |------|-------------|

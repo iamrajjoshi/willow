@@ -4,7 +4,7 @@ Set Shell "zsh"
 Set FontSize 16
 Set Width 1200
 Set Height 700
-Set Theme { "name": "Willow", "black": "#000000", "red": "#fc4346", "green": "#50fb7b", "yellow": "#f0fb8c", "blue": "#49baff", "purple": "#fc4cb4", "cyan": "#8be9fd", "white": "#ededec", "brightBlack": "#555555", "brightRed": "#fc4346", "brightGreen": "#50fb7b", "brightYellow": "#f0fb8c", "brightBlue": "#49baff", "brightPurple": "#fc4cb4", "brightCyan": "#8be9fd", "brightWhite": "#ededec", "background": "#131318", "foreground": "#ebece6", "selectionBackground": "#81aec6", "cursorColor": "#e4e4e4" }
+Set Theme { "name": "Willow Dark", "background": "#0a0a0f", "foreground": "#fafafa", "selectionBackground": "#5eead4", "cursorColor": "#5eead4", "black": "#3f3f46", "red": "#f87171", "green": "#5eead4", "yellow": "#fbbf24", "blue": "#5eead4", "purple": "#5eead4", "cyan": "#5eead4", "white": "#fafafa", "brightBlack": "#71717a", "brightRed": "#f87171", "brightGreen": "#5eead4", "brightYellow": "#fbbf24", "brightBlue": "#5eead4", "brightPurple": "#5eead4", "brightCyan": "#5eead4", "brightWhite": "#fafafa" }
 Set Padding 20
 Set TypingSpeed 50ms
 
