@@ -23,7 +23,10 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 ### Requirements
 
 - [git](https://git-scm.com/)
-- [tmux](https://github.com/tmux/tmux) — optional, for `ww tmux` integration
+- [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
+- [gh](https://cli.github.com/) — optional, required for `ww new --pr` and `ww stack status`
+
+fzf is compiled into the willow binary, so no separate install is needed.
 
 ## Shell integration (recommended)
 
@@ -61,6 +64,34 @@ Each tab shows `repo/branch` (e.g. `myrepo/auth-refactor`) when inside a willow 
 <Callout type="tip">
 All examples below use `ww`, which is the shell alias for `willow`. If you skipped shell integration, replace `ww` with `willow` in all commands.
 </Callout>
+
+## Claude Code skill
+
+Willow ships a Claude Code skill at `skills/willow/` that teaches Claude when to reach for `ww` commands. Once installed, Claude uses `ww checkout`, `ww sync`, `ww dispatch`, and the rest automatically whenever you ask it to work on branches, PRs, or parallel tasks.
+
+Install with the [`skills` CLI](https://github.com/vercel-labs/agent-skills):
+
+```bash
+# Global — available across all projects
+npx skills add iamrajjoshi/willow --skill willow -g -a claude-code
+
+# Project-local — only inside the current project
+npx skills add iamrajjoshi/willow --skill willow -a claude-code
+```
+
+What the flags do:
+
+- `-g` installs to `~/.claude/skills/` instead of the current project's `.claude/skills/`.
+- `-a claude-code` targets Claude Code. The CLI supports other agents too — see `npx skills add --help`.
+- `--skill willow` picks just the willow skill. Without it, the CLI prompts for each skill in the repo.
+
+Alternatively, clone the repo into your skills directory:
+
+```bash
+git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
+```
+
+The skill is non-invocable by design (`user_invocable: false`) — Claude auto-triggers it when it sees worktree, branch, or PR intent in a prompt.
 
 ## Claude Code status tracking
 

@@ -182,7 +182,11 @@ Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by
    --     old-feature          ~/.willow/worktrees/repo/old-feature
 ```
 
-Active agents sorted first, offline sorted last. Requires [fzf](https://github.com/junegunn/fzf).
+Active agents sorted first, offline sorted last. Pass a name to skip the picker: `ww sw auth-refactor`.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name (defaults to all repos) | Auto-detected from cwd |
 
 ## `ww rm [branch] [flags]`
 
@@ -303,6 +307,24 @@ ww log --json                   # raw JSON output
 | `create` | Worktree created via `ww new` or `ww checkout` |
 | `remove` | Worktree removed via `ww rm` |
 | `sync` | Branch rebased via `ww sync` |
+
+## `ww gc`
+
+Clean up leftover trash from removed worktrees and, optionally, prune worktrees whose branches have been merged into the base branch.
+
+```bash
+ww gc                    # empty ~/.willow/trash/ and list merged worktrees
+ww gc --prune            # also interactively remove merged worktrees
+ww gc --dry-run          # preview without touching anything
+ww gc --prune --dry-run  # list what --prune would remove
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--prune` | Interactively remove merged worktrees | `false` |
+| `--dry-run` | Show what would be cleaned up without removing anything | `false` |
+
+Without `--prune`, willow only empties the trash directory and prints the commands you'd run to remove each merged worktree. With `--prune`, it reads `branches.json` across all repos, cross-references `git branch --merged`, and prompts before removing each one.
 
 ## Desktop notifications
 
@@ -483,7 +505,7 @@ Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a
 ## Global flags
 
 ```
--C <path>       Run as if willow was started in <path>
+-C <path>       Run as if willow was started in <path> (env: WILLOW_DIR)
 --verbose       Show git commands being executed
---no-color      Disable colored output
+--trace         Print timing trace to stderr for performance debugging (env: WILLOW_TRACE)
 ```

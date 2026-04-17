@@ -68,7 +68,8 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 ### Requirements
 
 - [git](https://git-scm.com/)
-- [fzf](https://github.com/junegunn/fzf) — for `ww sw` and `ww rm` interactive picker
+- [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
+- [gh](https://cli.github.com/) — optional, required for `ww new --pr` and `ww stack status`
 
 ## Setup
 
@@ -102,17 +103,20 @@ eval "$(willow shell-init --tab-title)"
 
 ### 2. Claude Code skill (optional)
 
-Teach Claude Code how to use willow automatically:
+Teach Claude Code how to use willow automatically. The repo ships a skill at `skills/willow/SKILL.md` that the [`skills` CLI](https://github.com/vercel-labs/agent-skills) can install:
 
 ```bash
-# Option 1: npx
-npx skills add https://github.com/iamrajjoshi/willow --skill willow
+# Global (available across all projects)
+npx skills add iamrajjoshi/willow --skill willow -g -a claude-code
 
-# Option 2: git clone
+# Project-local (only inside the current project)
+npx skills add iamrajjoshi/willow --skill willow -a claude-code
+
+# Or clone directly
 git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
 ```
 
-Once installed, Claude Code will use `ww checkout`, `ww sync`, and other willow commands automatically when you ask it to work on branches, PRs, or parallel tasks.
+`-g` installs to `~/.claude/skills/`, `-a claude-code` targets Claude Code specifically, and `--skill willow` avoids installing everything in the repo. Once installed, Claude Code will reach for `ww checkout`, `ww sync`, `ww dispatch`, and other willow commands automatically when you ask it to work on branches, PRs, or parallel tasks.
 
 ### 3. Claude Code status tracking (optional)
 
@@ -506,16 +510,16 @@ go build -o bin/willow ./cmd/willow
 go test ./...
 ```
 
-Requires Go 1.25+ and [fzf](https://github.com/junegunn/fzf).
+Requires Go 1.26+. fzf is bundled into the binary — no external `fzf` install needed.
 
 ## Website
 
-The [docs site](https://getwillow.dev) is built with [VitePress](https://vitepress.dev/).
+The [docs site](https://getwillow.dev) is built with [Next.js](https://nextjs.org/) using MDX.
 
 ```bash
 cd website
 pnpm install
-pnpm dev       # localhost:5173
+pnpm dev       # localhost:3000
 pnpm build     # production build
 ```
 

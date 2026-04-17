@@ -1,6 +1,6 @@
 ---
 name: willow
-description: "Git worktree manager for AI agent workflows. Use this skill whenever the user mentions worktrees, wants to work on a branch in isolation, check out a PR, run parallel tasks, manage stacked PRs, or sync branches. Also trigger when the project uses willow (look for ~/.willow directory, ww commands in shell history, or willow.json config). This skill is essential for any branch-switching, PR checkout, or parallel development workflow — use it instead of raw git checkout/branch commands."
+description: "Git worktree manager for AI agent workflows. Use this skill whenever the user wants to work on a branch in isolation, check out a PR, run parallel tasks, manage stacked PRs, sync branches, or dispatch a Claude Code agent to a task. Also trigger when the project uses willow — look for a ~/.willow directory, ww commands in shell history, or a willow.json config. Prefer ww commands over raw git checkout/branch/worktree."
 user_invocable: false
 ---
 
@@ -16,17 +16,29 @@ Use willow (`ww`) commands instead of `git checkout`, `git branch`, or `git work
 
 | Situation | Command |
 |-----------|---------|
+| Set up a new repo for willow (one-time) | `ww clone <url>` |
 | Work on a branch (don't know if worktree exists) | `ww checkout <branch>` |
 | Create a new feature branch | `ww new <branch>` |
 | Check out someone's PR | `ww checkout --pr <number>` |
+| Hand a task to a fresh Claude agent | `ww dispatch "<prompt>"` |
 | Stack a branch on another | `ww new <child> -b <parent>` |
 | Rebase a stack after upstream changes | `ww sync` |
+| Check CI/review for the whole stack | `ww stack status` |
 | Switch to an existing worktree | `ww sw <name>` |
 | See all worktrees and their status | `ww ls` |
 | Remove a worktree you're done with | `ww rm <branch>` |
 | Clean up merged branches | `ww gc --prune` |
 
 ## Core commands
+
+### `ww clone <url> [name]`
+
+Required first step for any repo. Willow only manages repos that live under `~/.willow/repos/`, so a plain `git clone` elsewhere won't work with the rest of these commands. If `ww ls` doesn't list the repo, run `ww clone` first.
+
+```bash
+ww clone git@github.com:org/repo.git          # default name from URL
+ww clone git@github.com:org/repo.git myrepo   # custom name
+```
 
 ### `ww checkout <branch>` (alias: `co`)
 
@@ -72,6 +84,29 @@ ww sync --abort           # abort any in-progress rebases
 
 The algorithm: fetches origin once, then for each branch in dependency order, rebases it onto its parent. If a conflict occurs, it stops descendants of that branch but continues other independent stacks.
 
+### `ww stack status` (alias: `ww stack s`)
+
+Shows CI, review, and merge status for every PR in a stack in one `gh pr list` call. Use this before running `ww sync` to spot which layers still need attention, or to answer "is the whole stack green?" without opening GitHub.
+
+```bash
+ww stack status
+ww stack status --json
+```
+
+Requires the GitHub CLI (`gh`).
+
+### `ww dispatch <prompt>`
+
+Create a worktree and launch Claude Code with a prompt in one step. The branch name is auto-slugified from the prompt. Use this when the user says "spin up an agent to do X" or when you'd otherwise create a worktree and immediately start Claude yourself.
+
+```bash
+ww dispatch "Fix the login validation bug"
+ww dispatch "Add retry logic" --name add-retries
+ww dispatch "Write tests for auth" -b feature/auth   # stacked on a branch
+```
+
+From a terminal, Claude runs in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session so the user can keep working.
+
 ### `ww sw [name]`
 
 Switch between existing worktrees via fzf picker. Shows Claude Code agent status per worktree (BUSY/DONE/WAIT/IDLE). If a name is given, switches directly without the picker.
@@ -97,9 +132,15 @@ List worktrees with status. Shows tree structure for stacked branches and `[merg
 
 Rich view of Claude Code agent activity. Shows per-session status when multiple agents run in the same worktree.
 
-### `ww gc --prune`
+### `ww gc [--prune] [--dry-run]`
 
-Garbage collection. Without `--prune`, just cleans trash. With `--prune`, interactively removes worktrees whose branches have been merged.
+Garbage collection. Without flags, just empties `~/.willow/trash/`. With `--prune`, interactively removes worktrees whose branches have been merged into the base. Pair with `--dry-run` to preview before committing — useful when the user wants to see what would go before running the real thing.
+
+```bash
+ww gc                       # empty trash only
+ww gc --prune               # interactively remove merged worktrees
+ww gc --prune --dry-run     # preview the prune without removing anything
+```
 
 ## Stacked PR workflow
 
