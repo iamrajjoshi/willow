@@ -17,7 +17,7 @@ func hookCmd() *cli.Command {
 		Usage:  "Claude Code status hook (internal, registered by cc-setup)",
 		Hidden: true,
 		Action: func(_ context.Context, _ *cli.Command) error {
-			return claude.HandleHook(os.Stdin, os.Stderr)
+			return claude.HandleHook(os.Stdin)
 		},
 	}
 }

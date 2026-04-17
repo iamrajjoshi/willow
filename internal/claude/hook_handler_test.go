@@ -42,8 +42,7 @@ func TestHandleHook_UserPromptSubmitWritesBusy(t *testing.T) {
 
 	in := HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"}
 	raw, _ := json.Marshal(in)
-	var errOut bytes.Buffer
-	if err := HandleHook(bytes.NewReader(raw), &errOut); err != nil {
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
 		t.Fatalf("HandleHook: %v", err)
 	}
 
@@ -64,7 +63,7 @@ func TestHandleHook_PreToolUseIncrementsCount(t *testing.T) {
 
 	send := func(ev HookInput) {
 		raw, _ := json.Marshal(ev)
-		if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+		if err := HandleHook(bytes.NewReader(raw)); err != nil {
 			t.Fatalf("HandleHook: %v", err)
 		}
 	}
@@ -102,7 +101,7 @@ func TestHandleHook_WaitTools(t *testing.T) {
 			repo, wt := setupWorktreeHome(t)
 			in := HookInput{SessionID: "s1", HookEventName: tc.event, ToolName: tc.tool}
 			raw, _ := json.Marshal(in)
-			if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+			if err := HandleHook(bytes.NewReader(raw)); err != nil {
 				t.Fatalf("HandleHook: %v", err)
 			}
 			got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
@@ -118,7 +117,7 @@ func TestHandleHook_StopSetsDone(t *testing.T) {
 
 	in := HookInput{SessionID: "s1", HookEventName: "Stop"}
 	raw, _ := json.Marshal(in)
-	if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
 		t.Fatalf("HandleHook: %v", err)
 	}
 
@@ -138,7 +137,7 @@ func TestHandleHook_SessionEndRemovesFiles(t *testing.T) {
 
 	in := HookInput{SessionID: "s1", HookEventName: "SessionEnd"}
 	raw, _ := json.Marshal(in)
-	if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
 		t.Fatalf("HandleHook: %v", err)
 	}
 
@@ -153,11 +152,11 @@ func TestHandleHook_NotificationRespectsBusy(t *testing.T) {
 	repo, wt := setupWorktreeHome(t)
 	// Prime session as BUSY
 	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
-	HandleHook(bytes.NewReader(raw), os.Stderr)
+	HandleHook(bytes.NewReader(raw))
 
 	// Now Notification should NOT overwrite BUSY with WAIT
 	raw, _ = json.Marshal(HookInput{SessionID: "s1", HookEventName: "Notification"})
-	HandleHook(bytes.NewReader(raw), os.Stderr)
+	HandleHook(bytes.NewReader(raw))
 
 	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
 	if got.Status != StatusBusy {
@@ -169,7 +168,7 @@ func TestHandleHook_NotificationSetsWaitWhenIdle(t *testing.T) {
 	repo, wt := setupWorktreeHome(t)
 
 	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "Notification"})
-	HandleHook(bytes.NewReader(raw), os.Stderr)
+	HandleHook(bytes.NewReader(raw))
 
 	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
 	if got.Status != StatusWait {
@@ -182,7 +181,7 @@ func TestHandleHook_TracksWriteFiles(t *testing.T) {
 
 	send := func(ev HookInput) {
 		raw, _ := json.Marshal(ev)
-		HandleHook(bytes.NewReader(raw), os.Stderr)
+		HandleHook(bytes.NewReader(raw))
 	}
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Write", FilePath: "/a"})
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Edit", FilePath: "/b"})
@@ -204,7 +203,7 @@ func TestHandleHook_TimelineDedupes(t *testing.T) {
 
 	send := func(ev HookInput) {
 		raw, _ := json.Marshal(ev)
-		HandleHook(bytes.NewReader(raw), os.Stderr)
+		HandleHook(bytes.NewReader(raw))
 	}
 	// BUSY, BUSY, BUSY -> one timeline entry
 	send(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
@@ -232,7 +231,7 @@ func TestHandleHook_OutsideWorktreeIsNoop(t *testing.T) {
 	os.Chdir(home) // not under ~/.willow/worktrees
 
 	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "Stop"})
-	if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
 		t.Errorf("HandleHook should swallow out-of-worktree: %v", err)
 	}
 	// No status dir should have been created
@@ -245,7 +244,7 @@ func TestHandleHook_MissingSessionIDIsNoop(t *testing.T) {
 	setupWorktreeHome(t)
 
 	raw, _ := json.Marshal(HookInput{HookEventName: "Stop"})
-	if err := HandleHook(bytes.NewReader(raw), os.Stderr); err != nil {
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
 		t.Errorf("HandleHook should swallow missing session_id: %v", err)
 	}
 }
@@ -253,7 +252,7 @@ func TestHandleHook_MissingSessionIDIsNoop(t *testing.T) {
 func TestHandleHook_InvalidJSONIsNoop(t *testing.T) {
 	setupWorktreeHome(t)
 
-	if err := HandleHook(bytes.NewReader([]byte("not json")), os.Stderr); err != nil {
+	if err := HandleHook(bytes.NewReader([]byte("not json"))); err != nil {
 		t.Errorf("HandleHook should swallow bad JSON: %v", err)
 	}
 }
@@ -263,7 +262,7 @@ func TestHandleHook_PreservesStartTime(t *testing.T) {
 
 	send := func(ev HookInput) {
 		raw, _ := json.Marshal(ev)
-		HandleHook(bytes.NewReader(raw), os.Stderr)
+		HandleHook(bytes.NewReader(raw))
 	}
 	send(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
 	first := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json")).StartTime

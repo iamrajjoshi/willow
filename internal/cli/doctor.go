@@ -31,7 +31,6 @@ func doctorCmd() *cli.Command {
 			checkGitVersion(u)
 			checkBinary(u, "gh", "gh CLI", "https://cli.github.com")
 			checkBinary(u, "tmux", "tmux", "https://github.com/tmux/tmux")
-			checkBinary(u, "terminal-notifier", "terminal-notifier", "brew install terminal-notifier")
 			checkClaudeHooks(u, cmd.Bool("fix"))
 			checkWillowDirs(u)
 			checkStaleSessions(u)

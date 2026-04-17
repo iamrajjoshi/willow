@@ -26,10 +26,10 @@ type HookInput struct {
 
 // HandleHook reads a JSON event from r, updates status files for the current
 // worktree, and fires a desktop notification on BUSY → DONE/WAIT transitions.
-// Errors are written to errOut; the function returns nil when there's nothing
-// to do (not a willow worktree, missing session_id, etc.) so the hook never
-// blocks Claude Code.
-func HandleHook(r io.Reader, errOut io.Writer) error {
+// Returns nil when there's nothing to do (not a willow worktree, missing
+// session_id, etc.) so the hook never blocks Claude Code. Notification
+// dispatch errors are captured via Sentry.
+func HandleHook(r io.Reader) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)

@@ -1,52 +1,39 @@
 package notify
 
 import (
-	_ "embed"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"sync"
-
-	"github.com/gen2brain/beeep"
+	"runtime"
 )
 
-//go:embed icon.png
-var iconData []byte
-
-var (
-	iconOnce sync.Once
-	iconPath string
-)
-
-// ensureIcon extracts the embedded icon to ~/.willow/icon.png on first call.
-func ensureIcon() string {
-	iconOnce.Do(func() {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return
-		}
-		p := filepath.Join(home, ".willow", "icon.png")
-		if _, err := os.Stat(p); err == nil {
-			iconPath = p
-			return
-		}
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return
-		}
-		if err := os.WriteFile(p, iconData, 0o644); err != nil {
-			return
-		}
-		iconPath = p
-	})
-	return iconPath
+// Send fires a desktop notification.
+// macOS: uses `osascript` (shipped on every Mac).
+// Linux: uses `notify-send`.
+// Notifications appear under the sender tool's identity in Notification
+// Center — custom icons and app names require a signed .app bundle, which
+// willow doesn't ship.
+func Send(title, body string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return sendDarwin(title, body)
+	case "linux":
+		return sendLinux(title, body)
+	default:
+		return fmt.Errorf("notify.Send: unsupported platform %q", runtime.GOOS)
+	}
 }
 
-// Send fires a desktop notification with the willow icon.
-// Works on macOS (terminal-notifier or osascript) and Linux (notify-send).
-func Send(title, body string) error {
-	beeep.AppName = "willow"
-	return beeep.Notify(title, body, ensureIcon())
+func sendDarwin(title, body string) error {
+	script := fmt.Sprintf("display notification %q with title %q", body, title)
+	return exec.Command("osascript", "-e", script).Run()
+}
+
+func sendLinux(title, body string) error {
+	bin, err := exec.LookPath("notify-send")
+	if err != nil {
+		return fmt.Errorf("notify.Send: notify-send not found: %w", err)
+	}
+	return exec.Command(bin, "-a", "willow", title, body).Run()
 }
 
 // SendCustom runs a user-provided command with title/body available as
