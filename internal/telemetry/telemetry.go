@@ -51,8 +51,8 @@ func Init(version string) func() {
 		scope.SetUser(sentry.User{ID: machineID()})
 	})
 
-	// Bridge trace.Span → Sentry child spans. Only installed when telemetry
-	// is enabled, so opting out of telemetry also means no spans are sent.
+	// Installed only on the enabled path — opting out of telemetry means
+	// no spans are sent.
 	trace.SetSpanHook(func(ctx context.Context, label string) func() {
 		span := sentry.StartSpan(ctx, "willow."+label)
 		return span.Finish

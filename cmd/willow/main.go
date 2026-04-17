@@ -33,9 +33,7 @@ func run() int {
 	cmdName := telemetry.ResolveCommandName(os.Args)
 	ctx, finish := telemetry.StartCommand(context.Background(), cmdName)
 
-	// urfave/cli hasn't parsed flags yet, so inspect argv/env directly. The
-	// tracer only controls stderr output — Sentry spans are wired through
-	// the hook registered by telemetry.Init and fire regardless of --trace.
+	// Inspect argv/env directly — urfave/cli hasn't parsed flags yet.
 	tr := trace.New(traceStderrRequested(os.Args))
 	ctx = trace.WithTracer(ctx, tr)
 

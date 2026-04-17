@@ -125,26 +125,16 @@ func TestInit_DoesNotInstallSpanHookWhenDisabled(t *testing.T) {
 	cleanup := Init("dev")
 	defer cleanup()
 
-	// With telemetry off, a Span call must not reach any hook.
-	hookRan := false
+	// A probe hook registered after Init must be the only one firing;
+	// if Init had installed its own, we'd see two invocations.
+	count := 0
 	trace.SetSpanHook(func(ctx context.Context, label string) func() {
-		hookRan = true
+		count++
 		return func() {}
 	})
 	trace.Span(context.Background(), "probe")()
-	if !hookRan {
-		// Sanity: we *can* still set a hook manually. The assertion we care
-		// about is that Init itself did not set one, which is implicit in
-		// the fact that `hookRan` above actually triggered our probe.
-		t.Fatal("manual hook should have fired; test harness broken")
-	}
-
-	// Clear and verify Init truly left the hook alone.
-	trace.SetSpanHook(nil)
-	var leftOver bool
-	trace.Span(context.Background(), "probe")()
-	if leftOver {
-		t.Error("Init should not install a span hook when telemetry is disabled")
+	if count != 1 {
+		t.Errorf("span hook invoked %d times, want 1 (Init should not have installed one)", count)
 	}
 }
 
