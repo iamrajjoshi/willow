@@ -380,10 +380,11 @@ One-time hook installation for Claude Code status tracking.
 
 ### `ww doctor`
 
-Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity.
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy willow hooks left over from older releases.
 
 ```bash
-ww doctor
+ww doctor          # report issues only
+ww doctor --fix    # prompt to remove legacy willow hooks from ~/.claude/settings.json
 ```
 
 ### `ww config`

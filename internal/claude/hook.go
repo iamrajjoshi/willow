@@ -65,8 +65,9 @@ func Install() (changed bool, err error) {
 
 // UnmarkedLegacyHooks returns command strings in ~/.claude/settings.json that
 // look like willow-installed hooks from an older release (no "source":"willow"
-// marker). Reported by `ww doctor`; never auto-removed. If settings.json is
-// unreadable or malformed, returns nil — doctor will surface that elsewhere.
+// marker). Reported by `ww doctor`; removed only via `ww doctor --fix`. If
+// settings.json is unreadable or malformed, returns nil — doctor will surface
+// that elsewhere.
 func UnmarkedLegacyHooks() []string {
 	settings, err := readClaudeSettings()
 	if err != nil {
@@ -115,6 +116,75 @@ func ruleCommands(ruleMap map[string]any) []string {
 		out = append(out, cmd)
 	}
 	return out
+}
+
+// RemoveLegacyWillowHooks strips unmarked willow-looking hook rules from
+// ~/.claude/settings.json. Only invoked by `ww doctor --fix` after the user
+// confirms. Returns the removed command strings so the caller can report
+// what changed, and a changed flag so the caller knows whether settings.json
+// was rewritten.
+func RemoveLegacyWillowHooks() (removed []string, changed bool, err error) {
+	settings, err := readClaudeSettings()
+	if err != nil {
+		return nil, false, err
+	}
+	hooksMap, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		return nil, false, nil
+	}
+
+	for _, event := range hookEvents {
+		rules, _ := hooksMap[event].([]any)
+		if len(rules) == 0 {
+			continue
+		}
+		kept := make([]any, 0, len(rules))
+		for _, rule := range rules {
+			ruleMap, ok := rule.(map[string]any)
+			if !ok {
+				kept = append(kept, rule)
+				continue
+			}
+			// Marker-tagged willow rules stay; the installer owns those.
+			if src, _ := ruleMap["source"].(string); src == "willow" {
+				kept = append(kept, rule)
+				continue
+			}
+			// Drop unmarked rules that match the legacy willow shape.
+			isLegacy := false
+			for _, cmd := range ruleCommands(ruleMap) {
+				if looksLikeLegacyWillowCommand(cmd) {
+					removed = append(removed, cmd)
+					isLegacy = true
+				}
+			}
+			if !isLegacy {
+				kept = append(kept, rule)
+			}
+		}
+		if len(kept) != len(rules) {
+			changed = true
+			hooksMap[event] = kept
+		}
+	}
+
+	if !changed {
+		return nil, false, nil
+	}
+
+	settings["hooks"] = hooksMap
+	settingsPath := claudeSettingsPath()
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		return nil, false, err
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, false, err
+	}
+	if err := os.WriteFile(settingsPath, append(data, '\n'), 0o644); err != nil {
+		return nil, false, err
+	}
+	return removed, true, nil
 }
 
 // looksLikeLegacyWillowCommand recognizes hook commands willow wrote before

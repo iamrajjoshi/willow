@@ -262,6 +262,88 @@ func TestUnmarkedLegacyHooks(t *testing.T) {
 	}
 }
 
+// TestRemoveLegacyWillowHooks verifies doctor's --fix path strips unmarked
+// legacy rules while leaving marker-tagged willow rules and third-party rules
+// in place.
+func TestRemoveLegacyWillowHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settingsPath), 0o755)
+	seed := map[string]any{
+		"hooks": map[string]any{
+			"Stop": []any{
+				// Legacy shell hook — MUST be removed
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/Users/x/.willow/hooks/claude-status-hook.sh",
+					}},
+				},
+				// Legacy binary hook without marker — MUST be removed
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/usr/local/bin/willow hook",
+					}},
+				},
+				// Current marked rule — MUST stay
+				map[string]any{
+					"source": "willow",
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/opt/homebrew/bin/willow hook",
+					}},
+				},
+				// Third-party rule — MUST stay
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/opt/third-party/notify.sh",
+					}},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(seed)
+	os.WriteFile(settingsPath, data, 0o644)
+
+	removed, changed, err := RemoveLegacyWillowHooks()
+	if err != nil {
+		t.Fatalf("RemoveLegacyWillowHooks: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+	if len(removed) != 2 {
+		t.Errorf("removed count = %d, want 2: %v", len(removed), removed)
+	}
+
+	got, _ := readClaudeSettings()
+	rules := got["hooks"].(map[string]any)["Stop"].([]any)
+	if len(rules) != 2 {
+		t.Fatalf("remaining rule count = %d, want 2 (marked willow + third-party)", len(rules))
+	}
+	for _, r := range rules {
+		rm := r.(map[string]any)
+		inner := rm["hooks"].([]any)
+		cmd := inner[0].(map[string]any)["command"].(string)
+		if strings.HasSuffix(cmd, "claude-status-hook.sh") || strings.HasPrefix(cmd, "/usr/local/bin") {
+			t.Errorf("legacy rule %q was not removed", cmd)
+		}
+	}
+
+	// Second call is a no-op.
+	removed2, changed2, err := RemoveLegacyWillowHooks()
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if changed2 || len(removed2) != 0 {
+		t.Errorf("second call changed=%v removed=%v, want no-op", changed2, removed2)
+	}
+}
+
 func TestEventHasHook_FlatFormat(t *testing.T) {
 	hooksMap := map[string]any{
 		"Stop": []any{

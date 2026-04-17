@@ -359,7 +359,8 @@ The hook also tracks enriched session data:
 Check your willow setup for common issues. Runs a series of checks and prints a checklist:
 
 ```bash
-ww doctor
+ww doctor          # report only
+ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings.json
 ```
 
 ```
@@ -379,10 +380,12 @@ ww doctor
 | git version | Warns if &lt; 2.30 |
 | gh CLI | Optional — warns if missing |
 | tmux | Optional — warns if missing |
-| Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks |
+| Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks; flags unmarked legacy entries from older releases |
 | Willow directories | `~/.willow`, `repos/`, `worktrees/` |
 | Stale sessions | Session files older than 30 minutes |
 | Config validity | Validates merged config for common issues |
+
+**`--fix` flag:** When legacy willow hooks are detected, `ww doctor --fix` prompts for confirmation and removes them from `~/.claude/settings.json`. Marker-tagged (`source: "willow"`) and third-party rules are never touched.
 
 ## `ww config`
 
