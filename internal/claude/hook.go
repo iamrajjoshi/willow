@@ -27,17 +27,20 @@ var hookEvents = []string{
 
 // hookCommand returns the shell-quoted command string that Claude Code will
 // invoke for every registered hook event: `<abs path to willow> hook`.
-// The absolute path is resolved once at install time via os.Executable() so
-// the registration survives PATH changes.
+// Symlinks are intentionally preserved: Homebrew ships willow as a symlink at
+// /opt/homebrew/bin/willow -> ../Cellar/willow/<version>/bin/willow, and
+// resolving through it would pin hooks to a versioned Cellar path that
+// disappears on the next `brew upgrade`.
 func hookCommand() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolve willow executable: %w", err)
 	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-	return exe + " hook", nil
+	return hookCommandFor(exe), nil
+}
+
+func hookCommandFor(exe string) string {
+	return exe + " hook"
 }
 
 // Install registers the willow `hook` subcommand for every required Claude
