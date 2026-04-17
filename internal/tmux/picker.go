@@ -62,7 +62,7 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 		}
 
 		cfg := config.Load(bareDir)
-		mergedSet := repoGit.MergedBranchSet(cfg.ResolveBaseBranch())
+		mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch))
 
 		for _, wt := range wts {
 			if wt.IsBare {

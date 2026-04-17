@@ -214,6 +214,7 @@ func collectData(computeCost bool) ([]session, summary) {
 		}
 
 		cfg := config.Load(bareDir)
+		baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
 
 		for _, wt := range wts {
 			if wt.IsBare {
@@ -227,7 +228,7 @@ func collectData(computeCost bool) ([]session, summary) {
 				sum.Unread++
 			}
 
-			diff := getDiffStats(wt.Path, cfg.ResolveBaseBranch())
+			diff := getDiffStats(wt.Path, baseBranch)
 
 			timelineSince := time.Now().Add(-60 * time.Minute)
 

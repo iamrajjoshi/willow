@@ -90,6 +90,19 @@ func (g *Git) DefaultBranch() (string, error) {
 	return strings.TrimPrefix(ref, "refs/heads/"), nil
 }
 
+// ResolveBaseBranch picks the base branch to use for operations like merge
+// detection. It prefers an explicit configured value, then falls back to the
+// repo's HEAD symbolic ref (typically "main" or "master"), and finally "main".
+func (g *Git) ResolveBaseBranch(configured string) string {
+	if configured != "" {
+		return configured
+	}
+	if b, err := g.DefaultBranch(); err == nil && b != "" {
+		return b
+	}
+	return "main"
+}
+
 func (g *Git) IsDirty() (bool, error) {
 	out, err := g.Run("status", "--porcelain")
 	if err != nil {
@@ -99,20 +112,35 @@ func (g *Git) IsDirty() (bool, error) {
 }
 
 // MergedBranches returns branches that have been merged into origin/<base>.
+// Branches whose tip SHA equals origin/<base> are excluded — a brand-new
+// branch forked from origin/<base> has zero unique commits and would
+// otherwise be reported as "merged" before any work has happened.
 func (g *Git) MergedBranches(base string) ([]string, error) {
-	out, err := g.Run("branch", "--merged", "origin/"+base, "--format=%(refname:short)")
+	out, err := g.Run("branch", "--merged", "origin/"+base, "--format=%(refname:short) %(objectname)")
 	if err != nil {
 		return nil, err
 	}
 	if out == "" {
 		return nil, nil
 	}
+	baseSHA, _ := g.Run("rev-parse", "origin/"+base)
 	var branches []string
-	for _, b := range strings.Split(out, "\n") {
-		b = strings.TrimSpace(b)
-		if b != "" && b != base {
-			branches = append(branches, b)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		name, sha, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		if name == base {
+			continue
+		}
+		if baseSHA != "" && sha == baseSHA {
+			continue
+		}
+		branches = append(branches, name)
 	}
 	return branches, nil
 }

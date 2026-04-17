@@ -75,7 +75,7 @@ func gcCmd() *cli.Command {
 
 				cfg := config.Load(bareDir)
 				repoGit := &git.Git{Dir: bareDir}
-				merged, err := repoGit.MergedBranches(cfg.ResolveBaseBranch())
+				merged, err := repoGit.MergedBranches(repoGit.ResolveBaseBranch(cfg.BaseBranch))
 				if err != nil {
 					u.Warn(fmt.Sprintf("Skipping repo %s: failed to get merged branches: %v", repoName, err))
 					continue

@@ -178,7 +178,7 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 	}
 
 	cfg := config.Load(repoGit.Dir)
-	mergedSet := repoGit.MergedBranchSet(cfg.ResolveBaseBranch())
+	mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch))
 
 	st := stack.Load(repoGit.Dir)
 	branchSet := make(map[string]bool)

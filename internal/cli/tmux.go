@@ -735,7 +735,8 @@ func tmuxPreviewCmd() *cli.Command {
 func printPreviewMetadata(wtPath, repoName string) {
 	g := &git.Git{Dir: wtPath}
 	repoCfg := loadRepoConfig(repoName)
-	baseBranch := repoCfg.ResolveBaseBranch()
+	bareDir, _ := config.ResolveRepo(repoName)
+	baseBranch := (&git.Git{Dir: bareDir}).ResolveBaseBranch(repoCfg.BaseBranch)
 
 	branch := ""
 	if b, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
@@ -743,7 +744,6 @@ func printPreviewMetadata(wtPath, repoName string) {
 		fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
 	}
 
-	bareDir, _ := config.ResolveRepo(repoName)
 	if bareDir != "" {
 		st := stack.Load(bareDir)
 		if st.IsTracked(branch) {
