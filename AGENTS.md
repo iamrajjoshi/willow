@@ -30,7 +30,7 @@ CI runs this on both ubuntu and macos via `.github/workflows/test.yml`.
 - `internal/tmux/` - Tmux CLI primitives, picker logic, and notifications
 - `internal/stack/` - Stacked branch tracking (branches.json per repo, topo sort, tree display)
 - `internal/dashboard/` - Live TUI dashboard
-- `website/` - VitePress docs site (https://getwillow.dev)
+- `website/` - Next.js docs site (https://getwillow.dev). Use `pnpm` (not `npm`) for all website commands: `pnpm install`, `pnpm dev`, `pnpm build`.
 
 ## Conventions
 

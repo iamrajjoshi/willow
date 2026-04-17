@@ -56,10 +56,10 @@ export default function ShaderGradientBg() {
       />
       {/* Bottom fade to page background */}
       <div
-        className="absolute inset-x-0 bottom-0 h-48"
+        className="absolute inset-x-0 bottom-0 h-[75vh]"
         style={{
           background:
-            "linear-gradient(to bottom, transparent, #0a0a0f)",
+            "linear-gradient(to bottom, transparent 0%, rgba(10,10,15,0.15) 25%, rgba(10,10,15,0.45) 50%, rgba(10,10,15,0.8) 75%, #0a0a0f 100%)",
         }}
       />
     </div>
