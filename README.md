@@ -349,18 +349,11 @@ ww log --json                   # raw JSON output
 | `-n, --limit` | Max events to show (default 20) |
 | `--json` | JSON output |
 
-### `ww notify`
+### Desktop notifications
 
-Desktop notifications for agent status changes. Runs a background daemon that polls agent statuses and fires macOS Notification Center alerts when agents finish or need input.
+Desktop notifications fire directly from Claude Code's hook system — no daemon, no polling. Run `ww cc-setup` once; whenever an agent transitions from BUSY to DONE or WAIT, a macOS Notification Center alert appears within ~200ms.
 
-```bash
-ww notify on                   # start background daemon
-ww notify on --interval 5      # custom poll interval
-ww notify off                  # stop daemon
-ww notify status               # check if running
-```
-
-Desktop notifications are off by default. Enable with `"notify": {"desktop": true}` in config. This applies to both `ww notify` and the tmux status bar widget.
+Enable with `"notify": {"desktop": true}` in config. Set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
 
 ### `ww dispatch <prompt> [flags]`
 
@@ -387,10 +380,11 @@ One-time hook installation for Claude Code status tracking.
 
 ### `ww doctor`
 
-Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity.
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy willow hooks left over from older releases.
 
 ```bash
-ww doctor
+ww doctor          # report issues only
+ww doctor --fix    # prompt to remove legacy willow hooks from ~/.claude/settings.json
 ```
 
 ### `ww config`

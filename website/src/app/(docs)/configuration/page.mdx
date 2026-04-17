@@ -70,12 +70,10 @@ The local config lives inside the bare repo directory, so it's private to your m
 │       ├── main/
 │       ├── auth-refactor/
 │       └── payments/
-├── status/                      # Claude Code agent status
-│   └── myrepo/
-│       ├── main.json
-│       └── auth-refactor.json
-└── hooks/                       # Hook scripts
-    └── claude-status-hook.sh
+└── status/                      # Claude Code agent status
+    └── myrepo/
+        ├── main.json
+        └── auth-refactor.json
 ```
 
 ### `~/.willow/repos/`
@@ -99,6 +97,6 @@ Created by `ww cc-setup`. Contains JSON files with Claude Code agent status for 
 }
 ```
 
-### `~/.willow/hooks/`
+### Claude Code hooks
 
-Contains hook scripts installed by `ww cc-setup`. The `claude-status-hook.sh` fires on Claude Code `PostToolUse` and `Stop` events.
+`ww cc-setup` registers the hidden `willow hook` subcommand in `~/.claude/settings.json`. When Claude Code fires a hook event, it invokes the willow binary directly — there is no intermediate shell script or background daemon.

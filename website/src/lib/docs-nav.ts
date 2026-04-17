@@ -58,7 +58,7 @@ export const DOCS_NAV: DocNavGroup[] = [
           { id: "ww-status", text: "ww status", level: 2 },
           { id: "ww-dashboard-alias-dash-d", text: "ww dashboard", level: 2 },
           { id: "ww-log", text: "ww log", level: 2 },
-          { id: "ww-notify", text: "ww notify", level: 2 },
+          { id: "desktop-notifications", text: "Desktop notifications", level: 2 },
           { id: "ww-dispatch-prompt", text: "ww dispatch <prompt>", level: 2 },
           { id: "ww-cc-setup", text: "ww cc-setup", level: 2 },
           { id: "ww-doctor", text: "ww doctor", level: 2 },

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -17,19 +18,18 @@ func setupCmd() *cli.Command {
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 
-			if claude.IsInstalled() {
-				u.Info("Claude Code hooks are already installed.")
-				return nil
-			}
-
-			u.Info("Installing Claude Code status hooks...")
-
-			if err := claude.Install(); err != nil {
+			changed, err := claude.Install()
+			if err != nil {
 				return err
 			}
 
-			u.Success("Installed Claude Code hooks")
-			u.Info(fmt.Sprintf("  hook:   %s", u.Dim(claude.HookScriptPath())))
+			exe, _ := os.Executable()
+			if changed {
+				u.Success("Installed Claude Code hooks")
+			} else {
+				u.Success("Claude Code hooks up to date")
+			}
+			u.Info(fmt.Sprintf("  hook:   %s", u.Dim(exe+" hook")))
 			u.Info(fmt.Sprintf("  status: %s", u.Dim(claude.StatusDir())))
 			u.Info("")
 			u.Info("Claude Code will now report agent status for willow-managed worktrees.")

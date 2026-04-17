@@ -18,6 +18,12 @@ func doctorCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
 		Usage: "Check your willow setup for common issues",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "fix",
+				Usage: "Remove unmarked legacy willow hooks from ~/.claude/settings.json after confirmation",
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
@@ -25,8 +31,7 @@ func doctorCmd() *cli.Command {
 			checkGitVersion(u)
 			checkBinary(u, "gh", "gh CLI", "https://cli.github.com")
 			checkBinary(u, "tmux", "tmux", "https://github.com/tmux/tmux")
-			checkBinary(u, "terminal-notifier", "terminal-notifier", "brew install terminal-notifier")
-			checkClaudeHooks(u)
+			checkClaudeHooks(u, cmd.Bool("fix"))
 			checkWillowDirs(u)
 			checkStaleSessions(u)
 			checkConfig(u)
@@ -114,12 +119,51 @@ func checkBinary(u binaryChecker, name, label, installURL string) {
 	u.Success(fmt.Sprintf("%s installed", label))
 }
 
-func checkClaudeHooks(u interface{ Success(string); Warn(string) }) {
-	if claude.IsInstalled() {
-		u.Success("Claude Code hooks installed")
+type claudeHooksUI interface {
+	Success(string)
+	Warn(string)
+	Info(string)
+	Confirm(string) bool
+}
+
+func checkClaudeHooks(u claudeHooksUI, fix bool) {
+	if !claude.IsInstalled() {
+		u.Warn("Claude Code hooks not installed (run: ww cc-setup)")
 		return
 	}
-	u.Warn("Claude Code hooks not installed (run: ww cc-setup)")
+	u.Success("Claude Code hooks installed")
+
+	legacy := claude.UnmarkedLegacyHooks()
+	if len(legacy) == 0 {
+		return
+	}
+
+	// Collapse duplicate commands across events for display; one warn per unique command.
+	seen := map[string]bool{}
+	for _, h := range legacy {
+		if seen[h.Command] {
+			continue
+		}
+		seen[h.Command] = true
+		u.Warn(fmt.Sprintf("legacy willow hook in ~/.claude/settings.json: %q", h.Command))
+	}
+
+	if !fix {
+		u.Info("  run 'ww doctor --fix' to remove these")
+		return
+	}
+
+	if !u.Confirm(fmt.Sprintf("Remove %d legacy willow hook rule(s) across %d event(s)?", len(legacy), len(seen))) {
+		u.Info("  skipped")
+		return
+	}
+
+	removed, _, err := claude.RemoveLegacyWillowHooks()
+	if err != nil {
+		u.Warn(fmt.Sprintf("could not remove legacy hooks: %v", err))
+		return
+	}
+	u.Success(fmt.Sprintf("Removed %d legacy hook(s)", len(removed)))
 }
 
 func checkWillowDirs(u interface {
