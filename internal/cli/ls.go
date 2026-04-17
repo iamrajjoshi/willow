@@ -178,15 +178,19 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 	}
 
 	cfg := config.Load(repoGit.Dir)
-	mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch))
 
 	st := stack.Load(repoGit.Dir)
 	branchSet := make(map[string]bool)
 	wtMap := make(map[string]worktree.Worktree)
+	branches := make([]string, 0, len(worktrees))
 	for _, wt := range worktrees {
 		branchSet[wt.Branch] = true
 		wtMap[wt.Branch] = wt
+		if wt.Branch != "" {
+			branches = append(branches, wt.Branch)
+		}
 	}
+	mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch), branches)
 
 	var rows []lsRow
 	stackedBranches := make(map[string]bool)

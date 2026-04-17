@@ -78,3 +78,28 @@ func TestIsUnread_NoSessions(t *testing.T) {
 		t.Error("IsUnread = true for nonexistent dir, want false")
 	}
 }
+
+func TestCountUnreadIn_UsesProvidedSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "wt-count"
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sessions := []*SessionStatus{
+		{Status: StatusDone, SessionID: "a", Timestamp: past},
+		{Status: StatusBusy, SessionID: "b", Timestamp: past},
+		{Status: StatusDone, SessionID: "c", Timestamp: past},
+	}
+
+	if got := CountUnreadIn(repoName, wtName, sessions); got != 2 {
+		t.Errorf("CountUnreadIn = %d, want 2", got)
+	}
+
+	if err := MarkRead(repoName, wtName); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	if got := CountUnreadIn(repoName, wtName, sessions); got != 0 {
+		t.Errorf("CountUnreadIn after MarkRead = %d, want 0", got)
+	}
+}

@@ -39,8 +39,11 @@ func IsUnread(repoName, worktreeDir string) bool {
 
 // UnreadCount returns the number of DONE sessions whose timestamp is after .lastread.
 func UnreadCount(repoName, worktreeDir string) int {
+	return CountUnreadIn(repoName, worktreeDir, ReadAllSessions(repoName, worktreeDir))
+}
+
+func CountUnreadIn(repoName, worktreeDir string, sessions []*SessionStatus) int {
 	lr := lastReadTime(repoName, worktreeDir)
-	sessions := ReadAllSessions(repoName, worktreeDir)
 	count := 0
 	for _, ss := range sessions {
 		if ss.Status == StatusDone && (lr.IsZero() || ss.Timestamp.After(lr)) {

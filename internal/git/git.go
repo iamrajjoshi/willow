@@ -145,12 +145,41 @@ func (g *Git) MergedBranches(base string) ([]string, error) {
 	return branches, nil
 }
 
-// MergedBranchSet returns a set of branches that have been merged into origin/<base>.
-func (g *Git) MergedBranchSet(base string) map[string]bool {
-	merged, _ := g.MergedBranches(base)
-	set := make(map[string]bool, len(merged))
-	for _, b := range merged {
-		set[b] = true
+// MergedBranchSet returns the subset of the given branches merged into
+// origin/<base>. Uses for-each-ref with exact refname paths rather than
+// `git branch --merged`, which scans every local ref and would take
+// hundreds of ms on repos with thousands of branches. Excludes trivial
+// forks whose tip SHA equals origin/<base> (same filter as MergedBranches).
+func (g *Git) MergedBranchSet(base string, branches []string) map[string]bool {
+	if len(branches) == 0 {
+		return map[string]bool{}
+	}
+	args := []string{"for-each-ref", "--merged=origin/" + base, "--format=%(refname:short) %(objectname)"}
+	for _, b := range branches {
+		args = append(args, "refs/heads/"+b)
+	}
+	out, err := g.Run(args...)
+	if err != nil || out == "" {
+		return map[string]bool{}
+	}
+	baseSHA, _ := g.Run("rev-parse", "origin/"+base)
+	set := make(map[string]bool)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, sha, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		if name == base {
+			continue
+		}
+		if baseSHA != "" && sha == baseSHA {
+			continue
+		}
+		set[name] = true
 	}
 	return set
 }

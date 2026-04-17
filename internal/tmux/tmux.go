@@ -26,6 +26,23 @@ func SessionExists(name string) bool {
 	return err == nil
 }
 
+// ListSessions returns the set of tmux session names, or an empty set if
+// tmux isn't running.
+func ListSessions() map[string]bool {
+	out, err := run("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return map[string]bool{}
+	}
+	names := strings.Split(out, "\n")
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" {
+			set[n] = true
+		}
+	}
+	return set
+}
+
 func SendKeys(target string, keys ...string) error {
 	args := append([]string{"send-keys", "-t", target}, keys...)
 	_, err := run(args...)

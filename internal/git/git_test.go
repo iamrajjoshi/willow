@@ -151,3 +151,70 @@ func TestMergedBranches_IncludesRealMerges(t *testing.T) {
 		t.Errorf("real merged branch missing from %v", merged)
 	}
 }
+
+func TestMergedBranchSet_FiltersToGivenBranches(t *testing.T) {
+	work := setupRemoteAndClone(t, "main")
+	g := &Git{Dir: work}
+
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	runGit("checkout", "-b", "wt-merged", "origin/main")
+	if err := os.WriteFile(filepath.Join(work, "a"), []byte("a"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "a")
+	runGit("commit", "-m", "wt-merged work")
+	runGit("checkout", "main")
+	runGit("merge", "--no-ff", "wt-merged", "-m", "merge wt-merged")
+	runGit("push", "origin", "main")
+	runGit("fetch", "origin")
+
+	runGit("checkout", "-b", "wt-unmerged", "origin/main")
+	if err := os.WriteFile(filepath.Join(work, "b"), []byte("b"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "b")
+	runGit("commit", "-m", "wt-unmerged work")
+
+	runGit("checkout", "-b", "other-merged", "origin/main")
+	if err := os.WriteFile(filepath.Join(work, "c"), []byte("c"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "c")
+	runGit("commit", "-m", "other work")
+	runGit("checkout", "main")
+	runGit("merge", "--no-ff", "other-merged", "-m", "merge other")
+	runGit("push", "origin", "main")
+	runGit("fetch", "origin")
+
+	set := g.MergedBranchSet("main", []string{"wt-merged", "wt-unmerged"})
+	if !set["wt-merged"] {
+		t.Errorf("wt-merged should be in set, got %v", set)
+	}
+	if set["wt-unmerged"] {
+		t.Errorf("wt-unmerged should not be in set, got %v", set)
+	}
+	if set["other-merged"] {
+		t.Errorf("other-merged not in input list, must not leak into set, got %v", set)
+	}
+}
+
+func TestMergedBranchSet_EmptyInput(t *testing.T) {
+	work := setupRemoteAndClone(t, "main")
+	g := &Git{Dir: work}
+	set := g.MergedBranchSet("main", nil)
+	if len(set) != 0 {
+		t.Errorf("empty input should return empty set, got %v", set)
+	}
+}
