@@ -25,10 +25,6 @@ func dashboardCmd() *cli.Command {
 				Name:  "no-timeline",
 				Usage: "Hide the timeline column",
 			},
-			&cli.BoolFlag{
-				Name:  "no-cost",
-				Usage: "Hide the cost column",
-			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			defer trace.Span(ctx, "cli.dashboard")()
@@ -36,7 +32,6 @@ func dashboardCmd() *cli.Command {
 			return dashboard.Run(ctx, dashboard.Config{
 				RefreshInterval: interval,
 				ShowTimeline:    !cmd.Bool("no-timeline"),
-				ShowCost:        !cmd.Bool("no-cost"),
 			})
 		},
 	}

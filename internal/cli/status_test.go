@@ -20,7 +20,7 @@ func TestCollectRepoStatus_NoSessions(t *testing.T) {
 		{Branch: "feature", Path: "/wt/repo/feature"},
 	}
 
-	rs := collectRepoStatus("repo", wts, nil)
+	rs := collectRepoStatus("repo", wts)
 	if rs.WorktreeCount != 2 {
 		t.Errorf("WorktreeCount = %d, want 2", rs.WorktreeCount)
 	}
@@ -65,7 +65,7 @@ func TestCollectRepoStatus_WithSessions(t *testing.T) {
 		{Branch: "feature", Path: "/wt/myrepo/" + wtName},
 	}
 
-	rs := collectRepoStatus(repoName, wts, nil)
+	rs := collectRepoStatus(repoName, wts)
 	if rs.ActiveCount != 2 {
 		t.Errorf("ActiveCount = %d, want 2", rs.ActiveCount)
 	}
@@ -85,7 +85,7 @@ func TestCollectRepoStatus_RepoNameSet(t *testing.T) {
 		{Branch: "main", Path: "/wt/myrepo/main"},
 	}
 
-	rs := collectRepoStatus("myrepo", wts, nil)
+	rs := collectRepoStatus("myrepo", wts)
 	if rs.Name != "myrepo" {
 		t.Errorf("Name = %q, want %q", rs.Name, "myrepo")
 	}
@@ -119,7 +119,7 @@ func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 		{Branch: "done-branch", Path: "/wt/myrepo/" + wtName},
 	}
 
-	rs := collectRepoStatus(repoName, wts, nil)
+	rs := collectRepoStatus(repoName, wts)
 	if len(rs.Entries) != 1 {
 		t.Fatalf("Entries = %d, want 1", len(rs.Entries))
 	}
@@ -129,7 +129,7 @@ func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 
 	// Mark as read, then re-collect
 	claude.MarkRead(repoName, wtName)
-	rs = collectRepoStatus(repoName, wts, nil)
+	rs = collectRepoStatus(repoName, wts)
 	if rs.Entries[0].Unread {
 		t.Error("DONE session should not be unread after MarkRead")
 	}
@@ -142,7 +142,7 @@ func TestCollectRepoStatus_EmptyWorktrees(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	rs := collectRepoStatus("empty", nil, nil)
+	rs := collectRepoStatus("empty", nil)
 	if rs.WorktreeCount != 0 {
 		t.Errorf("WorktreeCount = %d, want 0", rs.WorktreeCount)
 	}

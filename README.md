@@ -309,17 +309,15 @@ Rich view of Claude Code agent status. Shows per-session rows when multiple agen
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output |
-| `--cost` | Show estimated token cost per session |
 
 ### `ww dashboard` (alias: `dash`, `d`)
 
-Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, per-session activity, a timeline sparkline showing agent status transitions over the last 60 minutes, and estimated token cost. Press `c` to toggle the cost column.
+Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, per-session activity, and a timeline sparkline showing agent status transitions over the last 60 minutes.
 
 ```bash
 ww dashboard              # default 2s refresh
 ww dash -i 5              # 5s refresh interval
 ww dash --no-timeline     # hide the timeline column
-ww dash --no-cost         # hide cost column
 ```
 
 | Key | Action |
@@ -452,10 +450,6 @@ Config merges two tiers (local wins):
       { "command": "cd website" },
       { "command": "cd website" }
     ]
-  },
-  "cost": {
-    "inputRate": 3.0,   // $/M tokens (default: Sonnet 4)
-    "outputRate": 15.0  // $/M tokens (default: Sonnet 4)
   }
 }
 ```
