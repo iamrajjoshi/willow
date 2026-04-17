@@ -38,34 +38,22 @@ const TREE_LINES = [
     badge: "wait" as const,
   },
   {
-    structure: "├── ",
+    structure: "└── ",
     dir: "status/",
     file: "",
     annotation: "Claude Code agent status",
   },
-  { structure: "│   └── ", dir: "myrepo/", file: "", annotation: "" },
+  { structure: "    └── ", dir: "myrepo/", file: "", annotation: "" },
   {
-    structure: "│       ├── ",
+    structure: "        ├── ",
     dir: "",
     file: "auth-refactor.json",
     annotation: "",
   },
   {
-    structure: "│       └── ",
+    structure: "        └── ",
     dir: "",
     file: "payments.json",
-    annotation: "",
-  },
-  {
-    structure: "└── ",
-    dir: "hooks/",
-    file: "",
-    annotation: "hook scripts",
-  },
-  {
-    structure: "    └── ",
-    dir: "",
-    file: "claude-status-hook.sh",
     annotation: "",
   },
 ] as const;

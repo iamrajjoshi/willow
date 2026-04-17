@@ -4,33 +4,22 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestInstall_CreatesHookAndSettings(t *testing.T) {
+func TestInstall_WritesSettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if err := Install(); err != nil {
+	if _, err := Install(); err != nil {
 		t.Fatalf("Install() error: %v", err)
 	}
 
-	// Hook script should exist
-	hookPath := HookScriptPath()
-	info, err := os.Stat(hookPath)
-	if err != nil {
-		t.Fatalf("hook script not created: %v", err)
-	}
-	if info.Mode().Perm()&0o111 == 0 {
-		t.Error("hook script should be executable")
-	}
-
-	// Status dir should exist
 	if _, err := os.Stat(StatusDir()); err != nil {
 		t.Fatalf("status dir not created: %v", err)
 	}
 
-	// Claude settings should contain hooks
 	settingsPath := filepath.Join(home, ".claude", "settings.json")
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
@@ -49,6 +38,15 @@ func TestInstall_CreatesHookAndSettings(t *testing.T) {
 			t.Errorf("missing hook event %q", event)
 		}
 	}
+
+	// Every registered command must end in " hook"
+	cmd, err := hookCommand()
+	if err != nil {
+		t.Fatalf("hookCommand error: %v", err)
+	}
+	if !strings.HasSuffix(cmd, " hook") {
+		t.Errorf("hookCommand = %q, want suffix %q", cmd, " hook")
+	}
 }
 
 func TestIsInstalled_FalseWithNoSettings(t *testing.T) {
@@ -64,7 +62,7 @@ func TestIsInstalled_TrueAfterInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if err := Install(); err != nil {
+	if _, err := Install(); err != nil {
 		t.Fatalf("Install() error: %v", err)
 	}
 
@@ -77,14 +75,21 @@ func TestInstall_Idempotent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if err := Install(); err != nil {
+	changed1, err := Install()
+	if err != nil {
 		t.Fatalf("first Install() error: %v", err)
 	}
-	if err := Install(); err != nil {
+	if !changed1 {
+		t.Error("first Install() should report changed=true")
+	}
+	changed2, err := Install()
+	if err != nil {
 		t.Fatalf("second Install() error: %v", err)
 	}
+	if changed2 {
+		t.Error("second Install() should report changed=false")
+	}
 
-	// Should still have exactly 1 hook per event
 	settings, err := readClaudeSettings()
 	if err != nil {
 		t.Fatalf("readClaudeSettings error: %v", err)
@@ -101,19 +106,175 @@ func TestInstall_Idempotent(t *testing.T) {
 	}
 }
 
+// TestInstall_ReplacesOnlyMarkedRules verifies Install() replaces rules
+// carrying "source":"willow" (idempotency across upgrades that move the
+// willow binary) and leaves everything else alone — legacy willow artifacts
+// are flagged by `ww doctor`, not auto-mutated.
+func TestInstall_ReplacesOnlyMarkedRules(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settingsPath), 0o755)
+	seed := map[string]any{
+		"hooks": map[string]any{
+			"Stop": []any{
+				// Marked willow rule with stale path — MUST be replaced
+				map[string]any{
+					"source": "willow",
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/old/path/to/willow hook",
+					}},
+				},
+				// Legacy unmarked shell hook — MUST be preserved (doctor's job)
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/Users/x/.willow/hooks/claude-status-hook.sh",
+					}},
+				},
+				// Unrelated third-party rule — MUST be preserved
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/opt/third-party/notify.sh",
+					}},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(seed)
+	os.WriteFile(settingsPath, data, 0o644)
+
+	if _, err := Install(); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	got, _ := readClaudeSettings()
+	rules := got["hooks"].(map[string]any)["Stop"].([]any)
+
+	if len(rules) != 3 {
+		t.Fatalf("Stop rule count = %d, want 3 (1 replaced willow + 2 preserved)", len(rules))
+	}
+
+	var markedWillow, legacyShell, thirdParty int
+	for _, r := range rules {
+		rm := r.(map[string]any)
+		if src, _ := rm["source"].(string); src == "willow" {
+			markedWillow++
+			continue
+		}
+		inner := rm["hooks"].([]any)
+		cmd := inner[0].(map[string]any)["command"].(string)
+		switch {
+		case strings.HasSuffix(cmd, "claude-status-hook.sh"):
+			legacyShell++
+		case strings.Contains(cmd, "third-party"):
+			thirdParty++
+		default:
+			t.Errorf("unexpected residual rule: %s", cmd)
+		}
+	}
+
+	if markedWillow != 1 {
+		t.Errorf("marked willow rule count = %d, want 1", markedWillow)
+	}
+	if legacyShell != 1 {
+		t.Errorf("legacy shell hook count = %d, want 1 (preserved for doctor)", legacyShell)
+	}
+	if thirdParty != 1 {
+		t.Errorf("third-party rule count = %d, want 1", thirdParty)
+	}
+
+	// The stale "/old/path/to/willow hook" must be gone.
+	for _, r := range rules {
+		rm := r.(map[string]any)
+		if inner, ok := rm["hooks"].([]any); ok {
+			for _, h := range inner {
+				if cmd, _ := h.(map[string]any)["command"].(string); strings.HasPrefix(cmd, "/old/path") {
+					t.Errorf("stale marked willow rule should have been replaced: %s", cmd)
+				}
+			}
+		}
+	}
+}
+
+// TestUnmarkedLegacyHooks verifies doctor's legacy detector recognizes hooks
+// from before the "source":"willow" marker existed.
+func TestUnmarkedLegacyHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settingsPath), 0o755)
+	seed := map[string]any{
+		"hooks": map[string]any{
+			"Stop": []any{
+				// Legacy shell hook
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/Users/x/.willow/hooks/claude-status-hook.sh",
+					}},
+				},
+				// Legacy binary hook without marker
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/usr/local/bin/willow hook",
+					}},
+				},
+				// Current marked rule — NOT legacy
+				map[string]any{
+					"source": "willow",
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/opt/homebrew/bin/willow hook",
+					}},
+				},
+				// Third-party rule — NOT legacy
+				map[string]any{
+					"hooks": []any{map[string]any{
+						"type":    "command",
+						"command": "/opt/third-party/notify.sh",
+					}},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(seed)
+	os.WriteFile(settingsPath, data, 0o644)
+
+	legacy := UnmarkedLegacyHooks()
+	if len(legacy) != 2 {
+		t.Fatalf("legacy count = %d, want 2: %v", len(legacy), legacy)
+	}
+	found := map[string]bool{}
+	for _, cmd := range legacy {
+		found[cmd] = true
+	}
+	if !found["/Users/x/.willow/hooks/claude-status-hook.sh"] {
+		t.Errorf("legacy shell hook not reported: %v", legacy)
+	}
+	if !found["/usr/local/bin/willow hook"] {
+		t.Errorf("legacy binary hook not reported: %v", legacy)
+	}
+}
+
 func TestEventHasHook_FlatFormat(t *testing.T) {
 	hooksMap := map[string]any{
 		"Stop": []any{
 			map[string]any{
 				"type":    "command",
-				"command": "/path/to/hook.sh",
+				"command": "/abs/willow hook",
 			},
 		},
 	}
-	if !eventHasHook(hooksMap, "Stop", "/path/to/hook.sh") {
+	if !eventHasHook(hooksMap, "Stop", "/abs/willow hook") {
 		t.Error("should find hook in flat format")
 	}
-	if eventHasHook(hooksMap, "Stop", "/other/hook.sh") {
+	if eventHasHook(hooksMap, "Stop", "/other/willow hook") {
 		t.Error("should not find non-matching hook")
 	}
 }
@@ -125,20 +286,20 @@ func TestEventHasHook_NestedFormat(t *testing.T) {
 				"hooks": []any{
 					map[string]any{
 						"type":    "command",
-						"command": "/path/to/hook.sh",
+						"command": "/abs/willow hook",
 					},
 				},
 			},
 		},
 	}
-	if !eventHasHook(hooksMap, "Stop", "/path/to/hook.sh") {
+	if !eventHasHook(hooksMap, "Stop", "/abs/willow hook") {
 		t.Error("should find hook in nested format")
 	}
 }
 
 func TestEventHasHook_MissingEvent(t *testing.T) {
 	hooksMap := map[string]any{}
-	if eventHasHook(hooksMap, "Stop", "/path/to/hook.sh") {
+	if eventHasHook(hooksMap, "Stop", "/abs/willow hook") {
 		t.Error("should return false for missing event")
 	}
 }

@@ -115,11 +115,15 @@ func checkBinary(u binaryChecker, name, label, installURL string) {
 }
 
 func checkClaudeHooks(u interface{ Success(string); Warn(string) }) {
-	if claude.IsInstalled() {
-		u.Success("Claude Code hooks installed")
+	if !claude.IsInstalled() {
+		u.Warn("Claude Code hooks not installed (run: ww cc-setup)")
 		return
 	}
-	u.Warn("Claude Code hooks not installed (run: ww cc-setup)")
+	u.Success("Claude Code hooks installed")
+
+	for _, cmd := range claude.UnmarkedLegacyHooks() {
+		u.Warn(fmt.Sprintf("legacy willow hook in ~/.claude/settings.json: %q (remove manually, then run: ww cc-setup)", cmd))
+	}
 }
 
 func checkWillowDirs(u interface {

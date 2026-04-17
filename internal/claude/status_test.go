@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -223,22 +222,6 @@ func TestReadStatus_WaitAggregation(t *testing.T) {
 	got := ReadStatus(repoName, wtName)
 	if got.Status != StatusWait {
 		t.Errorf("aggregate Status = %q, want %q (WAIT should win over DONE)", got.Status, StatusWait)
-	}
-}
-
-func TestHookScript_NotEmpty(t *testing.T) {
-	script := HookScript()
-	if len(script) == 0 {
-		t.Error("HookScript() returned empty string")
-	}
-}
-
-func TestHookScript_ContainsEnrichmentFields(t *testing.T) {
-	script := HookScript()
-	for _, field := range []string{"tool_count", "start_time", ".files"} {
-		if !strings.Contains(script, field) {
-			t.Errorf("HookScript() missing enrichment field %q", field)
-		}
 	}
 }
 

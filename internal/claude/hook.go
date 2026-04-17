@@ -1,21 +1,14 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
-
-func HooksDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".willow", "hooks")
-}
-
-func HookScriptPath() string {
-	return filepath.Join(HooksDir(), "claude-status-hook.sh")
-}
 
 func claudeSettingsPath() string {
 	home, _ := os.UserHomeDir()
@@ -32,192 +25,121 @@ var hookEvents = []string{
 	"SessionEnd",
 }
 
-// HookScript returns the shell script content for the Claude status hook.
-// It reads stdin JSON to extract session_id, hook_event_name, and tool_name,
-// and writes per-session status files to ~/.willow/status/<repo>/<worktree>/<session_id>.json.
-func HookScript() string {
-	return `#!/usr/bin/env bash
-# Willow Claude Code status hook
-# Writes agent status to ~/.willow/status/<repo>/<worktree>/<session_id>.json
-
-set -euo pipefail
-
-WILLOW_HOME="$HOME/.willow"
-STATUS_DIR="$WILLOW_HOME/status"
-
-# Only run inside a willow-managed worktree
-REPOS_DIR="$WILLOW_HOME/repos"
-WT_DIR="$WILLOW_HOME/worktrees"
-
-resolve_path() {
-  cd "$1" 2>/dev/null && pwd -P
+// hookCommand returns the shell-quoted command string that Claude Code will
+// invoke for every registered hook event: `<abs path to willow> hook`.
+// The absolute path is resolved once at install time via os.Executable() so
+// the registration survives PATH changes.
+func hookCommand() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve willow executable: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return exe + " hook", nil
 }
 
-CWD="$(resolve_path "$PWD")" || exit 0
-RESOLVED_WT_DIR="$(resolve_path "$WT_DIR")" || exit 0
-
-# Check if we're under the worktrees directory
-case "$CWD" in
-  "$RESOLVED_WT_DIR"/*)
-    REL="${CWD#"$RESOLVED_WT_DIR"/}"
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-
-# Extract repo name and worktree dir name
-REPO_NAME="${REL%%/*}"
-WT_NAME="${REL#*/}"
-WT_NAME="${WT_NAME%%/*}"
-
-if [ -z "$REPO_NAME" ] || [ -z "$WT_NAME" ]; then
-  exit 0
-fi
-
-# Read stdin JSON once
-INPUT="$(cat)"
-
-# Parse fields from stdin JSON using sed
-SESSION_ID="$(echo "$INPUT" | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)"
-HOOK_EVENT="$(echo "$INPUT" | sed -n 's/.*"hook_event_name" *: *"\([^"]*\)".*/\1/p' | head -1)"
-TOOL_NAME="$(echo "$INPUT" | sed -n 's/.*"tool_name" *: *"\([^"]*\)".*/\1/p' | head -1)"
-
-if [ -z "$SESSION_ID" ]; then
-  exit 0
-fi
-
-DEST_DIR="$STATUS_DIR/$REPO_NAME/$WT_NAME"
-
-# Determine status from the hook event
-STATUS="BUSY"
-TOOL_FIELD=""
-
-case "$HOOK_EVENT" in
-  SessionEnd)
-    rm -f "$DEST_DIR/$SESSION_ID.json"
-    rm -f "$DEST_DIR/$SESSION_ID.files"
-    rm -f "$DEST_DIR/$SESSION_ID.timeline"
-    exit 0
-    ;;
-  UserPromptSubmit)
-    STATUS="BUSY"
-    ;;
-  PreToolUse)
-    case "$TOOL_NAME" in
-      ExitPlanMode|AskUserQuestion)
-        STATUS="WAIT"
-        ;;
-      *)
-        STATUS="BUSY"
-        ;;
-    esac
-    if [ -n "$TOOL_NAME" ]; then
-      TOOL_FIELD="\"tool\":\"$TOOL_NAME\","
-    fi
-    ;;
-  PostToolUse)
-    if [ "$TOOL_NAME" = "AskUserQuestion" ]; then
-      STATUS="WAIT"
-    else
-      STATUS="BUSY"
-    fi
-    ;;
-  Stop)
-    STATUS="DONE"
-    ;;
-  Notification)
-    # Don't overwrite DONE or BUSY — only set WAIT if currently idle/unknown
-    DEST_FILE="$DEST_DIR/$SESSION_ID.json"
-    if [ -f "$DEST_FILE" ]; then
-      CURRENT="$(sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
-      if [ "$CURRENT" = "DONE" ] || [ "$CURRENT" = "BUSY" ]; then
-        exit 0
-      fi
-    fi
-    STATUS="WAIT"
-    ;;
-esac
-
-mkdir -p "$DEST_DIR"
-
-# --- Enrichment: read existing session data ---
-DEST_FILE="$DEST_DIR/$SESSION_ID.json"
-TOOL_COUNT=0
-START_TIME=""
-if [ -f "$DEST_FILE" ]; then
-  TOOL_COUNT="$(sed -n 's/.*"tool_count":\([0-9]*\).*/\1/p' "$DEST_FILE" | head -1)"
-  START_TIME="$(sed -n 's/.*"start_time":"\([^"]*\)".*/\1/p' "$DEST_FILE" | head -1)"
-fi
-TOOL_COUNT="${TOOL_COUNT:-0}"
-
-case "$HOOK_EVENT" in
-  PreToolUse)
-    TOOL_COUNT=$((TOOL_COUNT + 1))
-    ;;
-esac
-
-NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-START_TIME="${START_TIME:-$NOW}"
-
-# Track files touched by write tools
-case "$HOOK_EVENT" in
-  PreToolUse)
-    case "$TOOL_NAME" in
-      Write|Edit|NotebookEdit)
-        FILE_PATH="$(echo "$INPUT" | sed -n 's/.*"file_path" *: *"\([^"]*\)".*/\1/p' | head -1)"
-        if [ -n "$FILE_PATH" ]; then
-          FLIST="$DEST_DIR/$SESSION_ID.files"
-          if [ ! -f "$FLIST" ] || ! grep -qxF "$FILE_PATH" "$FLIST"; then
-            echo "$FILE_PATH" >> "$FLIST"
-          fi
-        fi
-        ;;
-    esac
-    ;;
-esac
-
-# Write enriched status file
-cat > "$DEST_FILE" <<STATUSEOF
-{"status":"$STATUS",${TOOL_FIELD}"session_id":"$SESSION_ID","timestamp":"$NOW","worktree":"$WT_NAME","tool_count":$TOOL_COUNT,"start_time":"$START_TIME"}
-STATUSEOF
-
-# Append timeline entry (only on status change)
-TIMELINE_FILE="$DEST_DIR/$SESSION_ID.timeline"
-LAST_TIMELINE_STATUS=""
-if [ -f "$TIMELINE_FILE" ]; then
-  LAST_TIMELINE_STATUS="$(tail -1 "$TIMELINE_FILE" | sed -n 's/.*"s":"\([^"]*\)".*/\1/p')"
-fi
-if [ "$STATUS" != "$LAST_TIMELINE_STATUS" ]; then
-  echo "{\"s\":\"$STATUS\",\"t\":\"$NOW\"}" >> "$TIMELINE_FILE"
-fi
-`
-}
-
-// Install creates the hook script and adds it to ~/.claude/settings.json.
-func Install() error {
-	hookPath := HookScriptPath()
-	if err := os.MkdirAll(filepath.Dir(hookPath), 0o755); err != nil {
-		return fmt.Errorf("failed to create hooks directory: %w", err)
-	}
-	if err := os.WriteFile(hookPath, []byte(HookScript()), 0o755); err != nil {
-		return fmt.Errorf("failed to write hook script: %w", err)
-	}
-
+// Install registers the willow `hook` subcommand for every required Claude
+// Code event in ~/.claude/settings.json and makes sure the status directory
+// exists. Returns changed=true when settings.json bytes differ before and
+// after — a no-op reinstall returns changed=false.
+func Install() (changed bool, err error) {
 	if err := os.MkdirAll(StatusDir(), 0o755); err != nil {
-		return fmt.Errorf("failed to create status directory: %w", err)
+		return false, fmt.Errorf("failed to create status directory: %w", err)
 	}
 
-	if err := addHookToSettings(hookPath); err != nil {
-		return fmt.Errorf("failed to update Claude settings: %w", err)
+	cmd, err := hookCommand()
+	if err != nil {
+		return false, err
 	}
 
-	return nil
+	before, _ := os.ReadFile(claudeSettingsPath())
+	if err := addHookToSettings(cmd); err != nil {
+		return false, fmt.Errorf("failed to update Claude settings: %w", err)
+	}
+	after, _ := os.ReadFile(claudeSettingsPath())
+
+	return !bytes.Equal(before, after), nil
 }
 
-// IsInstalled checks if the hook is already configured in ~/.claude/settings.json
-// for all required hook events.
+// UnmarkedLegacyHooks returns command strings in ~/.claude/settings.json that
+// look like willow-installed hooks from an older release (no "source":"willow"
+// marker). Reported by `ww doctor`; never auto-removed. If settings.json is
+// unreadable or malformed, returns nil — doctor will surface that elsewhere.
+func UnmarkedLegacyHooks() []string {
+	settings, err := readClaudeSettings()
+	if err != nil {
+		return nil
+	}
+	hooksMap, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	var found []string
+	seen := map[string]bool{}
+	for _, event := range hookEvents {
+		rules, _ := hooksMap[event].([]any)
+		for _, rule := range rules {
+			ruleMap, ok := rule.(map[string]any)
+			if !ok {
+				continue
+			}
+			if src, _ := ruleMap["source"].(string); src == "willow" {
+				continue
+			}
+			for _, cmd := range ruleCommands(ruleMap) {
+				if looksLikeLegacyWillowCommand(cmd) && !seen[cmd] {
+					seen[cmd] = true
+					found = append(found, cmd)
+				}
+			}
+		}
+	}
+	return found
+}
+
+func ruleCommands(ruleMap map[string]any) []string {
+	var out []string
+	if inner, ok := ruleMap["hooks"].([]any); ok {
+		for _, h := range inner {
+			if hMap, ok := h.(map[string]any); ok {
+				if cmd, ok := hMap["command"].(string); ok {
+					out = append(out, cmd)
+				}
+			}
+		}
+	}
+	if cmd, ok := ruleMap["command"].(string); ok {
+		out = append(out, cmd)
+	}
+	return out
+}
+
+// looksLikeLegacyWillowCommand recognizes hook commands willow wrote before
+// the "source":"willow" marker existed: the old shell script at
+// ~/.willow/hooks/claude-status-hook.sh, or a command ending in " hook" whose
+// path contains "willow".
+func looksLikeLegacyWillowCommand(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	if strings.HasSuffix(cmd, "/claude-status-hook.sh") {
+		return true
+	}
+	if !strings.HasSuffix(cmd, " hook") {
+		return false
+	}
+	return strings.Contains(strings.TrimSuffix(cmd, " hook"), "willow")
+}
+
+// IsInstalled reports whether every required hook event in
+// ~/.claude/settings.json points to the current willow binary.
 func IsInstalled() bool {
+	cmd, err := hookCommand()
+	if err != nil {
+		return false
+	}
+
 	settings, err := readClaudeSettings()
 	if err != nil {
 		return false
@@ -228,16 +150,15 @@ func IsInstalled() bool {
 		return false
 	}
 
-	hookPath := HookScriptPath()
 	for _, event := range hookEvents {
-		if !eventHasHook(hooksMap, event, hookPath) {
+		if !eventHasHook(hooksMap, event, cmd) {
 			return false
 		}
 	}
 	return true
 }
 
-func eventHasHook(hooksMap map[string]any, event, hookPath string) bool {
+func eventHasHook(hooksMap map[string]any, event, command string) bool {
 	rules, ok := hooksMap[event].([]any)
 	if !ok {
 		return false
@@ -247,18 +168,18 @@ func eventHasHook(hooksMap map[string]any, event, hookPath string) bool {
 		if !ok {
 			continue
 		}
-		// Check nested format: {"hooks": [{"type": "command", "command": "..."}]}
+		// Nested format: {"hooks": [{"type": "command", "command": "..."}]}
 		if innerHooks, ok := ruleMap["hooks"].([]any); ok {
 			for _, h := range innerHooks {
 				if hMap, ok := h.(map[string]any); ok {
-					if cmd, ok := hMap["command"].(string); ok && cmd == hookPath {
+					if cmd, ok := hMap["command"].(string); ok && cmd == command {
 						return true
 					}
 				}
 			}
 		}
-		// Check flat format: {"type": "command", "command": "..."}
-		if cmd, ok := ruleMap["command"].(string); ok && cmd == hookPath {
+		// Flat format: {"type": "command", "command": "..."}
+		if cmd, ok := ruleMap["command"].(string); ok && cmd == command {
 			return true
 		}
 	}
@@ -282,7 +203,7 @@ func readClaudeSettings() (map[string]any, error) {
 	return settings, nil
 }
 
-func addHookToSettings(hookPath string) error {
+func addHookToSettings(command string) error {
 	settings, err := readClaudeSettings()
 	if err != nil {
 		return err
@@ -294,25 +215,32 @@ func addHookToSettings(hookPath string) error {
 	}
 
 	willowRule := map[string]any{
+		// "source" marks the rule as willow-owned so future Install() runs
+		// can replace it without touching third-party rules, regardless of
+		// where the willow binary was installed.
+		"source": "willow",
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
-				"command": hookPath,
+				"command": command,
 			},
 		},
 	}
 
 	for _, event := range hookEvents {
-		if eventHasHook(hooksMap, event, hookPath) {
-			continue
+		existing, _ := hooksMap[event].([]any)
+		// Strip every prior willow-marked rule, then append the current one.
+		// Keeps the config idempotent across willow upgrades that change the
+		// binary path (e.g. Homebrew vs. /usr/local/bin). Unmarked legacy
+		// rules are left in place — `ww doctor` surfaces them for manual
+		// cleanup.
+		filtered := make([]any, 0, len(existing))
+		for _, rule := range existing {
+			if !isMarkedWillowRule(rule) {
+				filtered = append(filtered, rule)
+			}
 		}
-
-		existing, ok := hooksMap[event].([]any)
-		if !ok {
-			existing = []any{}
-		}
-		existing = append(existing, willowRule)
-		hooksMap[event] = existing
+		hooksMap[event] = append(filtered, willowRule)
 	}
 
 	settings["hooks"] = hooksMap
@@ -327,4 +255,17 @@ func addHookToSettings(hookPath string) error {
 		return err
 	}
 	return os.WriteFile(settingsPath, append(data, '\n'), 0o644)
+}
+
+// isMarkedWillowRule reports whether a hook rule carries the
+// "source":"willow" marker. This is the ONLY criterion the installer uses to
+// decide what to replace. Unmarked rules — even ones that look willow-owned —
+// are left untouched.
+func isMarkedWillowRule(rule any) bool {
+	ruleMap, ok := rule.(map[string]any)
+	if !ok {
+		return false
+	}
+	src, _ := ruleMap["source"].(string)
+	return src == "willow"
 }
