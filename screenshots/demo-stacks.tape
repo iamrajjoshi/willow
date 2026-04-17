@@ -11,10 +11,10 @@ Set TypingSpeed 50ms
 Hide
 Type "unset PROMPT_COMMAND; export PS1='$ '"
 Enter
-Type "source /Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/screenshots/seed-demo-sandbox.sh"
+Type "source ${WILLOW_BIN%/bin/willow}/screenshots/seed-demo-sandbox.sh"
 Enter
 Sleep 4s
-Type "alias willow=/Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/bin/willow"
+Type "alias willow=$WILLOW_BIN"
 Enter
 Type "cd /tmp/wwdemo/.willow/worktrees/willow/auth-refactor-tests"
 Enter

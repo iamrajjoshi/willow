@@ -2,12 +2,18 @@
 # Build a self-contained $HOME for VHS recording. Isolates willow state from
 # the recorder's real repos so the tapes show fictional branches/paths only.
 #
-# Usage: source this script (not execute) so $HOME stays exported to the tape.
+# Usage: export WILLOW_BIN to the willow binary you want to record against,
+# then source this script (not execute) so $HOME stays exported to the tape.
+#
+#   export WILLOW_BIN=/path/to/willow
 #   source /path/to/seed-demo-sandbox.sh
 set -euo pipefail
 
 DEMO_HOME="${DEMO_HOME:-/tmp/wwdemo}"
-WILLOW_BIN="${WILLOW_BIN:-/Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/bin/willow}"
+if [[ -z "${WILLOW_BIN:-}" ]]; then
+  echo "error: WILLOW_BIN is not set — export it to your willow binary path" >&2
+  return 1 2>/dev/null || exit 1
+fi
 
 rm -rf "$DEMO_HOME"
 mkdir -p "$DEMO_HOME" "$DEMO_HOME/bin"
