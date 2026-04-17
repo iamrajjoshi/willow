@@ -32,7 +32,7 @@ func (u *UI) Spin(label string, fn func() error) error {
 		return fn()
 	}
 
-	s := newSpinner(os.Stderr, label)
+	s := newSpinner(u, os.Stderr, label)
 	s.start()
 	err := fn()
 	s.stop()
@@ -40,6 +40,7 @@ func (u *UI) Spin(label string, fn func() error) error {
 }
 
 type spinner struct {
+	u      *UI
 	w      io.Writer
 	label  string
 	mu     sync.Mutex
@@ -47,8 +48,9 @@ type spinner struct {
 	done   chan struct{}
 }
 
-func newSpinner(w io.Writer, label string) *spinner {
+func newSpinner(u *UI, w io.Writer, label string) *spinner {
 	return &spinner{
+		u:      u,
 		w:      w,
 		label:  label,
 		stopCh: make(chan struct{}),
@@ -62,14 +64,13 @@ func (s *spinner) start() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		frame := 0
-		u := &UI{}
 		for {
 			select {
 			case <-s.stopCh:
 				return
 			case <-ticker.C:
 				s.mu.Lock()
-				fmt.Fprintf(s.w, "\r%s %s", u.Cyan(SpinnerFrames[frame%len(SpinnerFrames)]), s.label)
+				fmt.Fprintf(s.w, "\r%s %s", s.u.Cyan(SpinnerFrames[frame%len(SpinnerFrames)]), s.label)
 				s.mu.Unlock()
 				frame++
 			}
