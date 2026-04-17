@@ -323,6 +323,14 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 	}
 
 	repoGit := &git.Git{Dir: bareDir}
+	cfg := config.Load(bareDir)
+	if *cfg.Defaults.Fetch {
+		fmt.Fprintln(os.Stderr, "Fetching latest branches from origin...")
+		if _, err := repoGit.Run("fetch", "origin"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to fetch: %v\n", err)
+		}
+	}
+
 	remoteBranches, err := repoGit.RemoteBranches()
 	if err != nil {
 		return fmt.Errorf("failed to list remote branches: %w", err)
