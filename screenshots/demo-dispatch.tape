@@ -9,17 +9,20 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "alias willow=/Users/raj/code/willow/bin/willow"
+Type "unset PROMPT_COMMAND; export PS1='$ '"
 Enter
-# Shim `claude` so the tape doesn't actually launch the agent mid-recording.
+Type "source /Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/screenshots/seed-demo-sandbox.sh"
+Enter
+Sleep 4s
+Type "alias willow=/Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/bin/willow"
+Enter
 Type "claude() { echo; echo 'claude code launched with prompt: '$* ; }"
 Enter
-Type "cd ~/.willow/worktrees/willow/main"
+Type "cd /tmp/wwdemo/.willow/worktrees/willow/main"
 Enter
-Sleep 500ms
 Type "clear"
 Enter
-Sleep 300ms
+Sleep 500ms
 Show
 
 Type `willow dispatch "add retry logic to the fetcher" --no-fetch`

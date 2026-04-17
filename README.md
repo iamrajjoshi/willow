@@ -221,6 +221,8 @@ ww new feature-c -b feature-b         # third layer
 
 Stacked branches are shown as a tree in `ww ls` and the tmux picker. Parent relationships are tracked in `branches.json` per repo.
 
+![ww ls with stacks](screenshots/demo-stacks.gif)
+
 ### `ww stack status` (alias: `ww stack s`)
 
 Show CI, review, and merge status for every PR in a stack at a glance. Fetches all PR data in a single `gh pr list` call.
@@ -236,8 +238,6 @@ ww stack status --json             # JSON output
   └─ feature-b           #43  ✗ CI  ◯ Review  CONFLICTING  +50 -10
      └─ feature-c        (no PR)
 ```
-
-![ww stack status](screenshots/demo-stack-status.gif)
 
 | Flag | Description |
 |------|-------------|

@@ -9,17 +9,18 @@ Set Padding 20
 Set TypingSpeed 50ms
 
 Hide
-Type "alias willow=/Users/raj/code/willow/bin/willow"
+Type "unset PROMPT_COMMAND; export PS1='$ '"
 Enter
-Type "bash /Users/raj/code/willow/screenshots/seed-demo-data.sh"
+Type "source /Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/screenshots/seed-demo-sandbox.sh"
 Enter
-Sleep 500ms
-Type "cd ~/.willow/worktrees/willow/main"
+Sleep 4s
+Type "alias willow=/Users/raj.joshi/.willow/worktrees/willow/raj--chore--audit-cleanup/bin/willow"
 Enter
-Sleep 500ms
+Type "cd /tmp/wwdemo/.willow/worktrees/willow/main"
+Enter
 Type "clear"
 Enter
-Sleep 300ms
+Sleep 500ms
 Show
 
 Type "willow status"
