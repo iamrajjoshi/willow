@@ -104,7 +104,14 @@ case "$HOOK_EVENT" in
     STATUS="BUSY"
     ;;
   PreToolUse)
-    STATUS="BUSY"
+    case "$TOOL_NAME" in
+      ExitPlanMode|AskUserQuestion)
+        STATUS="WAIT"
+        ;;
+      *)
+        STATUS="BUSY"
+        ;;
+    esac
     if [ -n "$TOOL_NAME" ]; then
       TOOL_FIELD="\"tool\":\"$TOOL_NAME\","
     fi
