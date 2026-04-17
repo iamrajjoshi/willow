@@ -25,11 +25,6 @@ export function Hero() {
           }}
         />
         <ShaderGradientBg />
-        {/* Bottom fade to page bg (CSS fallback visible before shader loads) */}
-        <div
-          className="absolute inset-x-0 bottom-0 h-48"
-          style={{ background: "linear-gradient(to bottom, transparent, #0a0a0f)" }}
-        />
       </div>
 
       <motion.div
@@ -101,18 +96,6 @@ export function Hero() {
 
         <motion.div variants={fadeUp} className="mt-8">
           <InstallCommand />
-        </motion.div>
-
-        {/* Scroll indicator */}
-        <motion.div
-          variants={fadeUp}
-          className="mt-16"
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <div className="mx-auto h-10 w-6 rounded-full border-2 border-willow-text-dim">
-            <div className="mx-auto mt-2 h-2 w-1 rounded-full bg-willow-text-3" />
-          </div>
         </motion.div>
       </motion.div>
     </section>
