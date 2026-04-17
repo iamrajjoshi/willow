@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
@@ -93,7 +93,7 @@ func syncCmd() *cli.Command {
 			var branches []string
 			if targetBranch := cmd.StringArg("branch"); targetBranch != "" {
 				if !st.IsTracked(targetBranch) {
-					return errs.Userf("branch %q is not in the stack", targetBranch)
+					return errors.Userf("branch %q is not in the stack", targetBranch)
 				}
 				branches = st.SubtreeSort(targetBranch)
 			} else {

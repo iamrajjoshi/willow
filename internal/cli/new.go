@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
@@ -157,7 +157,7 @@ func newCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR")
 				prBranch, err := resolvePRRef(prRef, bareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
+					return errors.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -173,7 +173,7 @@ func newCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR branch")
 				prBranch, err := resolvePRRef(branch, bareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
+					return errors.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -205,7 +205,7 @@ func newCmd() *cli.Command {
 			}
 
 			if branch == "" {
-				return errs.Userf("branch name is required\n\nUsage: ww new <branch> [flags]")
+				return errors.Userf("branch name is required\n\nUsage: ww new <branch> [flags]")
 			}
 
 			if existing {
@@ -359,7 +359,7 @@ func finishWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g
 		for i, p := range cfg.Tmux.Panes {
 			if p.Command != "" {
 				if err := runHooks([]string{p.Command}, wtPath, u, hookOut); err != nil {
-					return errs.User(fmt.Errorf("pane %d command failed: %w", i, err))
+					return errors.User(fmt.Errorf("pane %d command failed: %w", i, err))
 				}
 			}
 		}
@@ -423,7 +423,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		return "", fmt.Errorf("failed to list remote branches: %w", err)
 	}
 	if len(remoteBranches) == 0 {
-		return "", errs.Userf("no remote branches found")
+		return "", errors.Userf("no remote branches found")
 	}
 
 	wts, err := worktree.List(repoGit)
@@ -444,7 +444,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		}
 	}
 	if len(available) == 0 {
-		return "", errs.Userf("all remote branches already have worktrees")
+		return "", errors.Userf("all remote branches already have worktrees")
 	}
 
 	selected, err := fzf.Run(available,

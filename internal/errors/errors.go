@@ -1,7 +1,7 @@
-package errs
+package errors
 
 import (
-	"errors"
+	stderrors "errors"
 	"fmt"
 )
 
@@ -32,5 +32,5 @@ func Userf(format string, args ...any) error {
 // IsUser reports whether err (or any error in its chain) is a user error.
 func IsUser(err error) bool {
 	var ue interface{ IsUserError() bool }
-	return errors.As(err, &ue)
+	return stderrors.As(err, &ue)
 }

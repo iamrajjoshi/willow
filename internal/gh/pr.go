@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 )
 
 type checkRun struct {
@@ -61,7 +61,7 @@ func (p *PRInfo) CIStatus() string {
 // BatchPRInfo fetches PR info for multiple branches in a single gh call.
 func BatchPRInfo(dir string, branches []string) (map[string]*PRInfo, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, errs.Userf("gh CLI required for stack status (install: https://cli.github.com)")
+		return nil, errors.Userf("gh CLI required for stack status (install: https://cli.github.com)")
 	}
 
 	cmd := exec.Command("gh", "pr", "list",

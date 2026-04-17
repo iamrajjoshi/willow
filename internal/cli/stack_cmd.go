@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -66,7 +66,7 @@ func stackStatusCmd() *cli.Command {
 
 			st := stack.Load(bareDir)
 			if st.IsEmpty() {
-				return errs.Userf("no stacked branches found")
+				return errors.Userf("no stacked branches found")
 			}
 
 			branches := st.TopoSort()
@@ -81,7 +81,7 @@ func stackStatusCmd() *cli.Command {
 			wtDir := filepath.Join(config.WorktreesDir(), repoName)
 			ghDir, err := findGHDir(wtDir)
 			if err != nil {
-				return errs.Userf("no worktree found to run gh in (need at least one worktree)")
+				return errors.Userf("no worktree found to run gh in (need at least one worktree)")
 			}
 
 			prMap, err := gh.BatchPRInfo(ghDir, branches)

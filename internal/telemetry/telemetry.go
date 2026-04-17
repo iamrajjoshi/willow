@@ -12,7 +12,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/getsentry/sentry-go/attribute"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/trace"
 )
 
@@ -83,7 +83,7 @@ func StartCommand(ctx context.Context, command string) (context.Context, func(er
 
 	return tx.Context(), func(err error) {
 		if err != nil {
-			if errs.IsUser(err) {
+			if errors.IsUser(err) {
 				tx.Status = sentry.SpanStatusInvalidArgument
 			} else {
 				tx.Status = sentry.SpanStatusInternalError
@@ -98,7 +98,7 @@ func StartCommand(ctx context.Context, command string) (context.Context, func(er
 		logger := sentry.NewLogger(tx.Context())
 		if err != nil {
 			errorType := "system"
-			if errs.IsUser(err) {
+			if errors.IsUser(err) {
 				errorType = "user"
 			}
 			logger.Warn().
