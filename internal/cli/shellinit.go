@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -349,7 +350,8 @@ func shellInitCmd() *cli.Command {
 				Usage: "Include terminal tab title integration (sets tab to repo/branch in willow worktrees)",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.shell-init")()
 			shell := detectShell()
 			tabTitle := cmd.Bool("tab-title")
 			switch shell {

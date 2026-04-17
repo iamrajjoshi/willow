@@ -6,6 +6,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/tmux"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -19,7 +20,8 @@ func refreshStatusCmd() *cli.Command {
 				Usage: "Print what would be removed without deleting",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.refresh-status")()
 			u := parseFlags(cmd).NewUI()
 			dryRun := cmd.Bool("dry-run")
 

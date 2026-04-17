@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -16,7 +17,8 @@ func hookCmd() *cli.Command {
 		Name:   "hook",
 		Usage:  "Claude Code status hook (internal, registered by cc-setup)",
 		Hidden: true,
-		Action: func(_ context.Context, _ *cli.Command) error {
+		Action: func(ctx context.Context, _ *cli.Command) error {
+			defer trace.Span(ctx, "cli.hook")()
 			return claude.HandleHook(os.Stdin)
 		},
 	}

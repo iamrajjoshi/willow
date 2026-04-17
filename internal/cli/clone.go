@@ -36,9 +36,10 @@ func cloneCmd() *cli.Command {
 				Usage: "Remove existing repo and re-clone from scratch",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
-			tr := trace.New(flags.Trace)
+			tr := trace.FromContext(ctx)
+			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
 
@@ -97,7 +98,7 @@ func cloneCmd() *cli.Command {
 			defer signal.Stop(sigCh)
 
 			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
-			done := tr.Start("git clone --bare")
+			done := tr.StartCtx(ctx, "git clone --bare")
 			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to clone repository: %w", err)
@@ -113,7 +114,7 @@ func cloneCmd() *cli.Command {
 			}
 
 			u.Info("Fetching latest from origin...")
-			done = tr.Start("git fetch origin")
+			done = tr.StartCtx(ctx, "git fetch origin")
 			if _, err := repoGit.Run("fetch", "origin"); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to fetch from origin: %w", err)
@@ -128,19 +129,17 @@ func cloneCmd() *cli.Command {
 
 			wtPath := filepath.Join(worktreesDir, defaultBranch)
 			u.Info(fmt.Sprintf("Creating worktree %s at %s...", u.Bold(defaultBranch), wtPath))
-			done = tr.Start("git worktree add")
+			done = tr.StartCtx(ctx, "git worktree add")
 			if _, err := repoGit.Run("worktree", "add", wtPath, defaultBranch); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to create initial worktree: %w", err)
 			}
 			done()
 
-			done = tr.Start("post-checkout hook")
+			done = tr.StartCtx(ctx, "post-checkout hook")
 			cfg := config.Load(bareDir)
 			runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u, false)
 			done()
-
-			tr.Total()
 
 			u.Success(fmt.Sprintf("Cloned %s", u.Bold(name)))
 			u.Info(fmt.Sprintf("  bare repo:  %s", u.Dim(bareDir)))

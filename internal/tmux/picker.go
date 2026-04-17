@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -37,13 +39,17 @@ type PickerItem struct {
 	StackPrefix string // tree-drawing prefix for stacked branches (e.g., "├─ ")
 }
 
-func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
+func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, error) {
+	defer trace.Span(ctx, "BuildPickerItems")()
+
 	var repoNames []string
 	if repoFilter != "" {
 		repoNames = []string{repoFilter}
 	} else {
+		done := trace.Span(ctx, "config.ListRepos")
 		var err error
 		repoNames, err = config.ListRepos()
+		done()
 		if err != nil {
 			return nil, fmt.Errorf("failed to list repos: %w", err)
 		}
@@ -58,7 +64,9 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 			continue
 		}
 		repoGit := &git.Git{Dir: bareDir}
+		done := trace.Span(ctx, "worktree.List/"+repoName)
 		wts, err := worktree.List(repoGit)
+		done()
 		if err != nil {
 			continue
 		}
@@ -70,8 +78,11 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				branches = append(branches, wt.Branch)
 			}
 		}
+		done = trace.Span(ctx, "MergedBranchSet/"+repoName)
 		mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch), branches)
+		done()
 
+		done = trace.Span(ctx, "per-wt-loop/"+repoName)
 		for _, wt := range wts {
 			if wt.IsBare {
 				continue
@@ -92,9 +103,12 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				Merged:     mergedSet[wt.Branch],
 			})
 		}
+		done()
 	}
 
+	done := trace.Span(ctx, "applyStackOrder")
 	items = applyStackOrder(items, repoNames)
+	done()
 
 	return items, nil
 }

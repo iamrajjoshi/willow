@@ -7,6 +7,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -14,7 +15,8 @@ func setupCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "cc-setup",
 		Usage: "Install Claude Code hooks for status tracking",
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.cc-setup")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 

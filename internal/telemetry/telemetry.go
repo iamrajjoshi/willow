@@ -13,6 +13,7 @@ import (
 	"github.com/getsentry/sentry-go/attribute"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/trace"
 )
 
 var enabled bool
@@ -50,8 +51,16 @@ func Init(version string) func() {
 		scope.SetUser(sentry.User{ID: machineID()})
 	})
 
+	// Bridge trace.Span → Sentry child spans. Only installed when telemetry
+	// is enabled, so opting out of telemetry also means no spans are sent.
+	trace.SetSpanHook(func(ctx context.Context, label string) func() {
+		span := sentry.StartSpan(ctx, "willow."+label)
+		return span.Finish
+	})
+
 	enabled = true
 	return func() {
+		trace.SetSpanHook(nil)
 		sentry.Flush(2 * time.Second)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -33,7 +34,8 @@ func swCmd() *cli.Command {
 				Usage:   "Target a willow-managed repo by name",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.sw")()
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 

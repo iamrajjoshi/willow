@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/log"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -41,7 +42,8 @@ func logCmd() *cli.Command {
 				Usage: "Output as JSON",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.log")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 

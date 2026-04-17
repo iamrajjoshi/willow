@@ -54,13 +54,14 @@ func rmCmd() *cli.Command {
 				Usage: "Run git worktree prune after removal",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
-			tr := trace.New(flags.Trace)
+			tr := trace.FromContext(ctx)
+			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
 
-			done := tr.Start("resolve repo")
+			done := tr.StartCtx(ctx, "resolve repo")
 			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
 				return err
@@ -73,14 +74,14 @@ func rmCmd() *cli.Command {
 			keepBranch := cmd.Bool("keep-branch")
 
 			if multiRepo {
-				done = tr.Start("collect worktrees")
+				done = tr.StartCtx(ctx, "collect worktrees")
 				allWts := collectAllWorktrees(repos, g.Verbose)
 				if len(allWts) == 0 {
 					return errs.Userf("no worktrees found")
 				}
 				done()
 
-				done = tr.Start("resolve targets")
+				done = tr.StartCtx(ctx, "resolve targets")
 				var targets []repoWorktree
 				if target == "" {
 					lines := buildCrossRepoWorktreeLines(allWts)
@@ -116,14 +117,14 @@ func rmCmd() *cli.Command {
 				for i := range targets {
 					repoGit := &git.Git{Dir: targets[i].Repo.BareDir, Verbose: g.Verbose}
 					cfg := config.Load(targets[i].Repo.BareDir)
-					if err := removeWorktree(tr, u, repoGit, &targets[i].Worktree, targets[i].Repo.BareDir, cfg, force, keepBranch, g.Verbose); err != nil {
+					if err := removeWorktree(ctx, tr, u, repoGit, &targets[i].Worktree, targets[i].Repo.BareDir, cfg, force, keepBranch, g.Verbose); err != nil {
 						return err
 					}
 				}
 			} else {
 				bareDir := repos[0].BareDir
 
-				done = tr.Start("list worktrees")
+				done = tr.StartCtx(ctx, "list worktrees")
 				repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 				worktrees, err := worktree.List(repoGit)
 				if err != nil {
@@ -133,7 +134,7 @@ func rmCmd() *cli.Command {
 
 				filtered := filterBareWorktrees(worktrees)
 
-				done = tr.Start("resolve targets")
+				done = tr.StartCtx(ctx, "resolve targets")
 				var targets []worktree.Worktree
 
 				if target == "" {
@@ -165,13 +166,13 @@ func rmCmd() *cli.Command {
 				}
 				done()
 
-				done = tr.Start("load config")
+				done = tr.StartCtx(ctx, "load config")
 				cfg := config.Load(bareDir)
 				done()
 
 				repoGit2 := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 				for _, wt := range targets {
-					if err := removeWorktree(tr, u, repoGit2, &wt, bareDir, cfg, force, keepBranch, g.Verbose); err != nil {
+					if err := removeWorktree(ctx, tr, u, repoGit2, &wt, bareDir, cfg, force, keepBranch, g.Verbose); err != nil {
 						return err
 					}
 				}
@@ -180,7 +181,7 @@ func rmCmd() *cli.Command {
 			if cmd.Bool("prune") {
 				for _, r := range repos {
 					repoGit := &git.Git{Dir: r.BareDir, Verbose: g.Verbose}
-					done = tr.Start("git worktree prune")
+					done = tr.StartCtx(ctx, "git worktree prune")
 					u.Info("Pruning stale worktrees...")
 					if _, err := repoGit.Run("worktree", "prune"); err != nil {
 						u.Warn(fmt.Sprintf("Prune failed: %v", err))
@@ -191,13 +192,12 @@ func rmCmd() *cli.Command {
 				}
 			}
 
-			tr.Total()
 			return nil
 		},
 	}
 }
 
-func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.Worktree, bareDir string, cfg *config.Config, force, keepBranch, verbose bool) error {
+func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.Worktree, bareDir string, cfg *config.Config, force, keepBranch, verbose bool) error {
 	wtGit := &git.Git{Dir: wt.Path, Verbose: verbose}
 
 	st := stack.Load(bareDir)
@@ -208,7 +208,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	}
 
 	if !force {
-		done := tr.Start("check dirty " + wt.Branch)
+		done := tr.StartCtx(ctx, "check dirty " + wt.Branch)
 		dirty, err := wtGit.IsDirty()
 		if err != nil {
 			return err
@@ -218,7 +218,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 		}
 		done()
 
-		done = tr.Start("check unpushed " + wt.Branch)
+		done = tr.StartCtx(ctx, "check unpushed " + wt.Branch)
 		unpushed, err := wtGit.HasUnpushedCommits()
 		if err != nil {
 			return err
@@ -230,7 +230,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	}
 
 	if len(cfg.Teardown) > 0 {
-		done := tr.Start("teardown hooks " + wt.Branch)
+		done := tr.StartCtx(ctx, "teardown hooks " + wt.Branch)
 		u.Info(fmt.Sprintf("Running teardown hooks for %s...", u.Bold(wt.Branch)))
 		if err := runHooks(cfg.Teardown, wt.Path, u, os.Stdout); err != nil {
 			return err
@@ -241,7 +241,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	// Read the actual admin dir from the worktree's .git file before moving
 	// anything. The computed path (bareDir/worktrees/<basename>) can be wrong
 	// when git appended a numeric suffix to avoid collisions.
-	done := tr.Start("remove worktree " + wt.Branch)
+	done := tr.StartCtx(ctx, "remove worktree " + wt.Branch)
 	adminDir, err := readGitAdminDir(wt.Path)
 	if err != nil {
 		adminDir = filepath.Join(bareDir, "worktrees", filepath.Base(wt.Path))
@@ -272,7 +272,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	}
 	done()
 
-	done = tr.Start("git branch -D " + wt.Branch)
+	done = tr.StartCtx(ctx, "git branch -D " + wt.Branch)
 	if !keepBranch {
 		if _, err := repoGit.Run("branch", "-D", wt.Branch); err != nil {
 			u.Warn(fmt.Sprintf("Failed to delete branch %s: %v", wt.Branch, err))
@@ -280,7 +280,7 @@ func removeWorktree(tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.W
 	}
 	done()
 
-	done = tr.Start("cleanup status " + wt.Branch)
+	done = tr.StartCtx(ctx, "cleanup status " + wt.Branch)
 	repoName := repoNameFromDir(bareDir)
 	wtDir := filepath.Base(wt.Path)
 	claude.RemoveStatusDir(repoName, wtDir)
