@@ -11,6 +11,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -24,7 +25,8 @@ func doctorCmd() *cli.Command {
 				Usage: "Remove unmarked legacy willow hooks from ~/.claude/settings.json after confirmation",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.doctor")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 

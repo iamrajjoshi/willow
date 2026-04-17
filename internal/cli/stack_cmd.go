@@ -13,6 +13,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
@@ -43,7 +44,8 @@ func stackStatusCmd() *cli.Command {
 				Usage: "Output as JSON",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.stack.status")()
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 			u := flags.NewUI()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -27,7 +28,8 @@ func gcCmd() *cli.Command {
 				Usage: "Show what would be cleaned up without removing anything",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.gc")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 			dryRun := cmd.Bool("dry-run")

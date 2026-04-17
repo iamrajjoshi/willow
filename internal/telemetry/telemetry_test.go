@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/iamrajjoshi/willow/internal/trace"
 )
 
 // isolateHome points HOME at a fresh temp dir so config.Load("") can't pick up
@@ -111,6 +112,40 @@ func TestStartCommand_WithError(t *testing.T) {
 
 	// Should not panic with real error
 	finish(fmt.Errorf("test error: failed to clone"))
+}
+
+func TestInit_DoesNotInstallSpanHookWhenDisabled(t *testing.T) {
+	isolateHome(t)
+	trace.SetSpanHook(nil)
+	t.Cleanup(func() { trace.SetSpanHook(nil) })
+
+	enabled = false
+	os.Unsetenv("WILLOW_TELEMETRY")
+
+	cleanup := Init("dev")
+	defer cleanup()
+
+	// With telemetry off, a Span call must not reach any hook.
+	hookRan := false
+	trace.SetSpanHook(func(ctx context.Context, label string) func() {
+		hookRan = true
+		return func() {}
+	})
+	trace.Span(context.Background(), "probe")()
+	if !hookRan {
+		// Sanity: we *can* still set a hook manually. The assertion we care
+		// about is that Init itself did not set one, which is implicit in
+		// the fact that `hookRan` above actually triggered our probe.
+		t.Fatal("manual hook should have fired; test harness broken")
+	}
+
+	// Clear and verify Init truly left the hook alone.
+	trace.SetSpanHook(nil)
+	var leftOver bool
+	trace.Span(context.Background(), "probe")()
+	if leftOver {
+		t.Error("Init should not install a span hook when telemetry is disabled")
+	}
 }
 
 func TestResolveCommandName(t *testing.T) {

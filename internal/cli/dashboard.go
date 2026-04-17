@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/dashboard"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,6 +31,7 @@ func dashboardCmd() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.dashboard")()
 			interval := time.Duration(cmd.Int("interval")) * time.Second
 			return dashboard.Run(ctx, dashboard.Config{
 				RefreshInterval: interval,

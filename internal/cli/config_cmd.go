@@ -10,6 +10,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -40,7 +41,8 @@ func configShowCmd() *cli.Command {
 				Usage:   "Target repo by name",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.config.show")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 
@@ -130,7 +132,8 @@ func configEditCmd() *cli.Command {
 				Usage:   "Target repo by name",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.config.edit")()
 			flags := parseFlags(cmd)
 			path := config.GlobalConfigPath()
 
@@ -199,7 +202,8 @@ func configInitCmd() *cli.Command {
 				Usage: "Overwrite existing config",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.config.init")()
 			flags := parseFlags(cmd)
 			u := flags.NewUI()
 			path := config.GlobalConfigPath()

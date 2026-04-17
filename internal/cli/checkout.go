@@ -52,9 +52,10 @@ func checkoutCmd() *cli.Command {
 				Usage: "GitHub PR number or URL",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
-			tr := trace.New(flags.Trace)
+			tr := trace.FromContext(ctx)
+			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
 			cdOnly := cmd.Bool("cd")
@@ -64,7 +65,7 @@ func checkoutCmd() *cli.Command {
 
 			branch := cmd.StringArg("branch")
 
-			done := tr.Start("resolve repos")
+			done := tr.StartCtx(ctx, "resolve repos")
 			repos, err := resolveRepos(g, cmd.String("repo"))
 			if err != nil {
 				return err
@@ -72,7 +73,7 @@ func checkoutCmd() *cli.Command {
 			done()
 
 			if prRef := cmd.String("pr"); prRef != "" {
-				done = tr.Start("resolve PR")
+				done = tr.StartCtx(ctx, "resolve PR")
 				prBranch, err := resolvePRRef(prRef, repos[0].BareDir)
 				if err != nil {
 					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
@@ -87,7 +88,7 @@ func checkoutCmd() *cli.Command {
 			}
 
 			if branch != "" && isPRURL(branch) {
-				done = tr.Start("resolve PR branch")
+				done = tr.StartCtx(ctx, "resolve PR branch")
 				prBranch, err := resolvePRRef(branch, repos[0].BareDir)
 				if err != nil {
 					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
@@ -105,7 +106,7 @@ func checkoutCmd() *cli.Command {
 				return errs.Userf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
 			}
 
-			done = tr.Start("find existing worktree")
+			done = tr.StartCtx(ctx, "find existing worktree")
 			allWts := collectAllWorktrees(repos, g.Verbose)
 			rwt, _ := findCrossRepoWorktree(allWts, branch)
 			done()
@@ -125,14 +126,14 @@ func checkoutCmd() *cli.Command {
 				return nil
 			}
 
-			done = tr.Start("resolve single repo")
+			done = tr.StartCtx(ctx, "resolve single repo")
 			if len(repos) > 1 {
 				return errs.Userf("multiple repos found — use --repo to specify which one")
 			}
 			repo := repos[0]
 			done()
 
-			done = tr.Start("load config")
+			done = tr.StartCtx(ctx, "load config")
 			cfg := config.Load(repo.BareDir)
 			done()
 
@@ -141,7 +142,7 @@ func checkoutCmd() *cli.Command {
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 
 			if shouldFetch {
-				done = tr.Start("git fetch")
+				done = tr.StartCtx(ctx, "git fetch")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Fetching from origin...\n")
 					repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin")
@@ -156,7 +157,7 @@ func checkoutCmd() *cli.Command {
 				dirName := strings.ReplaceAll(branch, "/", "-")
 				wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
-				done = tr.Start("git worktree add (existing)")
+				done = tr.StartCtx(ctx, "git worktree add (existing)")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Creating worktree for existing branch %s...\n", branch)
 					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, branch); err != nil {
@@ -170,14 +171,14 @@ func checkoutCmd() *cli.Command {
 				}
 				done()
 
-				return finishWorktree(tr, cfg, g, u, wtPath, repo.Name, branch, "", cdOnly)
+				return finishWorktree(ctx, tr, cfg, g, u, wtPath, repo.Name, branch, "", cdOnly)
 			}
 
 			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
 				branch = cfg.BranchPrefix + "/" + branch
 			}
 
-			done = tr.Start("resolve base branch")
+			done = tr.StartCtx(ctx, "resolve base branch")
 			baseBranch := cmd.String("base")
 			if baseBranch == "" {
 				baseBranch = cfg.BaseBranch
@@ -199,7 +200,7 @@ func checkoutCmd() *cli.Command {
 			dirName := strings.ReplaceAll(branch, "/", "-")
 			wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
-			done = tr.Start("git worktree add (new)")
+			done = tr.StartCtx(ctx, "git worktree add (new)")
 			if cdOnly {
 				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, gitRef)
 				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
@@ -213,7 +214,7 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			done = tr.Start("record stack parent")
+			done = tr.StartCtx(ctx, "record stack parent")
 			if err := stack.Update(repo.BareDir, func(s *stack.Stack) {
 				s.SetParent(branch, baseBranch)
 			}); err != nil {
@@ -221,7 +222,7 @@ func checkoutCmd() *cli.Command {
 			}
 			done()
 
-			return finishWorktree(tr, cfg, g, u, wtPath, repo.Name, branch, baseBranch, cdOnly)
+			return finishWorktree(ctx, tr, cfg, g, u, wtPath, repo.Name, branch, baseBranch, cdOnly)
 		},
 	}
 }

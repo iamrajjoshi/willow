@@ -116,9 +116,10 @@ func newCmd() *cli.Command {
 				Usage: "GitHub PR number or URL",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
-			tr := trace.New(flags.Trace)
+			tr := trace.FromContext(ctx)
+			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
 			cdOnly := cmd.Bool("cd")
@@ -129,7 +130,7 @@ func newCmd() *cli.Command {
 
 			var bareDir string
 			var err error
-			done := tr.Start("resolve repo")
+			done := tr.StartCtx(ctx, "resolve repo")
 			if repoFlag := cmd.String("repo"); repoFlag != "" {
 				bareDir, err = config.ResolveRepo(repoFlag)
 				if err != nil {
@@ -143,7 +144,7 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			done = tr.Start("load config")
+			done = tr.StartCtx(ctx, "load config")
 			cfg := config.Load(bareDir)
 			done()
 
@@ -153,7 +154,7 @@ func newCmd() *cli.Command {
 			branch := cmd.StringArg("branch")
 
 			if prRef := cmd.String("pr"); prRef != "" {
-				done = tr.Start("resolve PR")
+				done = tr.StartCtx(ctx, "resolve PR")
 				prBranch, err := resolvePRRef(prRef, bareDir)
 				if err != nil {
 					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
@@ -169,7 +170,7 @@ func newCmd() *cli.Command {
 			}
 
 			if branch != "" && isPRURL(branch) {
-				done = tr.Start("resolve PR branch")
+				done = tr.StartCtx(ctx, "resolve PR branch")
 				prBranch, err := resolvePRRef(branch, bareDir)
 				if err != nil {
 					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
@@ -192,7 +193,7 @@ func newCmd() *cli.Command {
 						u.Warn(fmt.Sprintf("Failed to fetch: %v", err))
 					}
 				}
-				done = tr.Start("pick existing branch")
+				done = tr.StartCtx(ctx, "pick existing branch")
 				branch, err = pickExistingBranch(repoGit)
 				if err != nil {
 					return err
@@ -210,7 +211,7 @@ func newCmd() *cli.Command {
 			if existing {
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
-					done = tr.Start("git fetch branch")
+					done = tr.StartCtx(ctx, "git fetch branch")
 					if cdOnly {
 						fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", branch)
 						if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", branch); err != nil {
@@ -228,7 +229,7 @@ func newCmd() *cli.Command {
 				dirName := strings.ReplaceAll(branch, "/", "-")
 				wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
-				done = tr.Start("git worktree add")
+				done = tr.StartCtx(ctx, "git worktree add")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Creating worktree for existing branch %s...\n", branch)
 					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, branch); err != nil {
@@ -242,14 +243,14 @@ func newCmd() *cli.Command {
 				}
 				done()
 
-				return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, "", cdOnly)
+				return finishWorktree(ctx, tr, cfg, g, u, wtPath, repoName, branch, "", cdOnly)
 			}
 
 			if cfg.BranchPrefix != "" && !strings.HasPrefix(branch, cfg.BranchPrefix+"/") {
 				branch = cfg.BranchPrefix + "/" + branch
 			}
 
-			done = tr.Start("resolve base branch")
+			done = tr.StartCtx(ctx, "resolve base branch")
 			baseBranch := cmd.String("base")
 			explicitBase := baseBranch != ""
 			if baseBranch == "" {
@@ -275,7 +276,7 @@ func newCmd() *cli.Command {
 
 			shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") && !localBase
 			if shouldFetch {
-				done = tr.Start("git fetch")
+				done = tr.StartCtx(ctx, "git fetch")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", baseBranch)
 					if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", baseBranch); err != nil {
@@ -293,7 +294,7 @@ func newCmd() *cli.Command {
 			dirName := strings.ReplaceAll(branch, "/", "-")
 			wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
-			done = tr.Start("git worktree add")
+			done = tr.StartCtx(ctx, "git worktree add")
 			if cdOnly {
 				fmt.Fprintf(os.Stderr, "Creating worktree %s from %s...\n", branch, gitRef)
 				if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", wtPath, "-b", branch, gitRef); err != nil {
@@ -307,7 +308,7 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			done = tr.Start("record stack parent")
+			done = tr.StartCtx(ctx, "record stack parent")
 			if err := stack.Update(bareDir, func(s *stack.Stack) {
 				s.SetParent(branch, baseBranch)
 			}); err != nil {
@@ -315,17 +316,17 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			return finishWorktree(tr, cfg, g, u, wtPath, repoName, branch, baseBranch, cdOnly)
+			return finishWorktree(ctx, tr, cfg, g, u, wtPath, repoName, branch, baseBranch, cdOnly)
 		},
 	}
 }
 
-func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, branch, baseBranch string, cdOnly bool) error {
-	done := tr.Start("post-checkout hook")
+func finishWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, branch, baseBranch string, cdOnly bool) error {
+	done := tr.StartCtx(ctx, "post-checkout hook")
 	runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u, cdOnly)
 	done()
 
-	done = tr.Start("auto setup remote")
+	done = tr.StartCtx(ctx, "auto setup remote")
 	if *cfg.Defaults.AutoSetupRemote {
 		wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
 		if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
@@ -339,7 +340,7 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 		hookOut = os.Stderr
 	}
 
-	done = tr.Start("setup hooks")
+	done = tr.StartCtx(ctx, "setup hooks")
 	if len(cfg.Setup) > 0 {
 		u.Info("Running setup hooks...")
 		if err := runHooks(cfg.Setup, wtPath, u, hookOut); err != nil {
@@ -348,7 +349,7 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 	}
 	done()
 
-	done = tr.Start("pane commands")
+	done = tr.StartCtx(ctx, "pane commands")
 	if !cdOnly {
 		for _, w := range cfg.Validate() {
 			u.Warn(w)
@@ -364,8 +365,6 @@ func finishWorktree(tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, 
 		}
 	}
 	done()
-
-	tr.Total()
 
 	meta := map[string]string{}
 	if baseBranch != "" {

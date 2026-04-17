@@ -17,6 +17,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -52,7 +53,8 @@ func tmuxPickCmd() *cli.Command {
 				Usage:   "Current tmux session name (passed by run-shell)",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.pick")()
 			repoFilter := cmd.String("repo")
 			sessionName := cmd.String("session")
 			self, err := os.Executable()
@@ -61,7 +63,7 @@ func tmuxPickCmd() *cli.Command {
 			}
 
 			for {
-				items, err := tmux.BuildPickerItems(repoFilter)
+				items, err := tmux.BuildPickerItems(ctx, repoFilter)
 				if err != nil {
 					return err
 				}
@@ -199,7 +201,8 @@ func tmuxSwCmd() *cli.Command {
 			},
 		},
 		Hidden: true,
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.sw")()
 			wtPath := cmd.StringArg("path")
 			if wtPath == "" {
 				return errs.Userf("worktree path is required")
@@ -711,7 +714,8 @@ func tmuxPreviewCmd() *cli.Command {
 		Name:   "preview",
 		Usage:  "Preview helper for fzf (shows tmux pane content)",
 		Hidden: true,
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.preview")()
 			line := strings.Join(cmd.Args().Slice(), " ")
 			if line == "" {
 				return nil
@@ -840,8 +844,9 @@ func tmuxListCmd() *cli.Command {
 				Usage:   "Current tmux session (moves matching worktree to top)",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			items, err := tmux.BuildPickerItems(cmd.String("repo"))
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.list")()
+			items, err := tmux.BuildPickerItems(ctx, cmd.String("repo"))
 			if err != nil {
 				return err
 			}
@@ -860,7 +865,8 @@ func tmuxStatusBarCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "status-bar",
 		Usage: "Tmux status-right widget showing worktree and agent counts",
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.status-bar")()
 			repos, err := config.ListRepos()
 			if err != nil {
 				return nil
@@ -869,7 +875,9 @@ func tmuxStatusBarCmd() *cli.Command {
 			totalWt := 0
 			activeAgents := 0
 			currentStatuses := make(map[string]claude.Status)
+			done := trace.Span(ctx, "tmux.ListSessions")
 			sessionSet := tmux.ListSessions()
+			done()
 
 			for _, repoName := range repos {
 				bareDir, err := config.ResolveRepo(repoName)
@@ -877,7 +885,9 @@ func tmuxStatusBarCmd() *cli.Command {
 					continue
 				}
 				repoGit := &git.Git{Dir: bareDir}
+				done := trace.Span(ctx, "worktree.List/"+repoName)
 				wts, err := worktree.List(repoGit)
+				done()
 				if err != nil {
 					continue
 				}
@@ -926,7 +936,8 @@ func tmuxInstallCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "install",
 		Usage: "Print tmux.conf lines to add for willow integration",
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.install")()
 			self, err := os.Executable()
 			if err != nil {
 				self = "willow"

@@ -40,13 +40,14 @@ func syncCmd() *cli.Command {
 				Usage: "Abort any in-progress rebases across stacked worktrees",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
-			tr := trace.New(flags.Trace)
+			tr := trace.FromContext(ctx)
+			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
 
-			done := tr.Start("resolve repo")
+			done := tr.StartCtx(ctx, "resolve repo")
 			var bareDir string
 			var err error
 			if repoFlag := cmd.String("repo"); repoFlag != "" {
@@ -64,7 +65,7 @@ func syncCmd() *cli.Command {
 
 			repoGit := &git.Git{Dir: bareDir, Verbose: g.Verbose}
 
-			done = tr.Start("load stack")
+			done = tr.StartCtx(ctx, "load stack")
 			st := stack.Load(bareDir)
 			done()
 			if st.IsEmpty() {
@@ -72,7 +73,7 @@ func syncCmd() *cli.Command {
 				return nil
 			}
 
-			done = tr.Start("list worktrees")
+			done = tr.StartCtx(ctx, "list worktrees")
 			wts, err := worktree.List(repoGit)
 			if err != nil {
 				return fmt.Errorf("failed to list worktrees: %w", err)
@@ -105,7 +106,7 @@ func syncCmd() *cli.Command {
 			}
 
 			if !cmd.Bool("no-fetch") {
-				done = tr.Start("git fetch")
+				done = tr.StartCtx(ctx, "git fetch")
 				u.Info("Fetching origin...")
 				if _, err := repoGit.Run("fetch", "origin"); err != nil {
 					u.Warn(fmt.Sprintf("fetch failed: %v (continuing anyway)", err))
@@ -192,8 +193,6 @@ func syncCmd() *cli.Command {
 				})
 				synced++
 			}
-
-			tr.Total()
 
 			fmt.Println()
 			if len(conflicted) > 0 {

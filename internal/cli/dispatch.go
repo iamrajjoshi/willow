@@ -11,6 +11,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errs"
 	"github.com/iamrajjoshi/willow/internal/log"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
@@ -49,7 +50,8 @@ func dispatchCmd() *cli.Command {
 				Usage: "Run Claude with --dangerously-skip-permissions",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.dispatch")()
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 			u := flags.NewUI()

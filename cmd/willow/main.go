@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/iamrajjoshi/willow/internal/cli"
 	"github.com/iamrajjoshi/willow/internal/telemetry"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
 )
 
@@ -31,6 +33,12 @@ func run() int {
 	cmdName := telemetry.ResolveCommandName(os.Args)
 	ctx, finish := telemetry.StartCommand(context.Background(), cmdName)
 
+	// urfave/cli hasn't parsed flags yet, so inspect argv/env directly. The
+	// tracer only controls stderr output — Sentry spans are wired through
+	// the hook registered by telemetry.Init and fire regardless of --trace.
+	tr := trace.New(traceStderrRequested(os.Args))
+	ctx = trace.WithTracer(ctx, tr)
+
 	err := root.Run(ctx, os.Args)
 	finish(err)
 
@@ -40,4 +48,16 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+func traceStderrRequested(args []string) bool {
+	if v := strings.ToLower(os.Getenv("WILLOW_TRACE")); v == "1" || v == "true" || v == "on" {
+		return true
+	}
+	for _, a := range args[1:] {
+		if a == "--trace" || a == "-trace" {
+			return true
+		}
+	}
+	return false
 }

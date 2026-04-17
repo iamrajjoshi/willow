@@ -14,6 +14,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -40,7 +41,8 @@ func lsCmd() *cli.Command {
 				Usage: "Print only worktree paths",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.ls")()
 			flags := parseFlags(cmd)
 			g := flags.NewGit()
 
@@ -49,15 +51,15 @@ func lsCmd() *cli.Command {
 				if err != nil {
 					return err
 				}
-				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
 			bareDir, err := g.BareRepoDir()
 			if err == nil && config.IsWillowRepo(bareDir) {
-				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 			if bareDir, ok := resolveRepoFromCwd(); ok {
-				return listWorktrees(flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
 			return printRepoList(flags)
@@ -65,8 +67,10 @@ func lsCmd() *cli.Command {
 	}
 }
 
-func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
+func listWorktrees(ctx context.Context, flags Flags, cmd *cli.Command, repoGit *git.Git) error {
+	done := trace.Span(ctx, "worktree.List")
 	worktrees, err := worktree.List(repoGit)
+	done()
 	if err != nil {
 		return fmt.Errorf("failed to list worktrees: %w", err)
 	}
@@ -87,7 +91,7 @@ func listWorktrees(flags Flags, cmd *cli.Command, repoGit *git.Git) error {
 	}
 
 	repoName := repoNameFromDir(repoGit.Dir)
-	printTable(flags, filtered, repoName, repoGit)
+	printTable(ctx, flags, filtered, repoName, repoGit)
 	return nil
 }
 
@@ -169,7 +173,7 @@ type lsRow struct {
 	wt          worktree.Worktree
 }
 
-func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, repoGit *git.Git) {
+func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree, repoName string, repoGit *git.Git) {
 	u := flags.NewUI()
 
 	if len(worktrees) == 0 {
@@ -190,7 +194,9 @@ func printTable(flags Flags, worktrees []worktree.Worktree, repoName string, rep
 			branches = append(branches, wt.Branch)
 		}
 	}
+	done := trace.Span(ctx, "MergedBranchSet")
 	mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch), branches)
+	done()
 
 	var rows []lsRow
 	stackedBranches := make(map[string]bool)
