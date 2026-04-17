@@ -49,6 +49,8 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 		}
 	}
 
+	sessionSet := ListSessions()
+
 	var items []PickerItem
 	for _, repoName := range repoNames {
 		bareDir, err := config.ResolveRepo(repoName)
@@ -75,8 +77,8 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				continue
 			}
 			wtDir := filepath.Base(wt.Path)
-			ws := claude.ReadStatus(repoName, wtDir)
 			sessions := claude.ReadAllSessions(repoName, wtDir)
+			ws := claude.AggregateStatus(sessions)
 			sessName := SessionNameForWorktree(repoName, wtDir)
 			items = append(items, PickerItem{
 				RepoName:   repoName,
@@ -84,8 +86,8 @@ func BuildPickerItems(repoFilter string) ([]PickerItem, error) {
 				WtDirName:  wtDir,
 				WtPath:     wt.Path,
 				Status:     ws.Status,
-				Unread:     ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
-				HasSession: SessionExists(sessName),
+				Unread:     ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+				HasSession: sessionSet[sessName],
 				Sessions:   sessions,
 				Merged:     mergedSet[wt.Branch],
 			})

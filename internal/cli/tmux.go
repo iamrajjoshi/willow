@@ -869,6 +869,7 @@ func tmuxStatusBarCmd() *cli.Command {
 			totalWt := 0
 			activeAgents := 0
 			currentStatuses := make(map[string]claude.Status)
+			sessionSet := tmux.ListSessions()
 
 			for _, repoName := range repos {
 				bareDir, err := config.ResolveRepo(repoName)
@@ -891,7 +892,7 @@ func tmuxStatusBarCmd() *cli.Command {
 
 					// Clean orphaned sessions whose tmux session no longer exists
 					sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !tmux.SessionExists(sessName) {
+					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !sessionSet[sessName] {
 						for _, ss := range sessions {
 							if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait {
 								claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
