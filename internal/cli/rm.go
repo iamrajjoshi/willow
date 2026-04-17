@@ -12,7 +12,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
@@ -77,7 +77,7 @@ func rmCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "collect worktrees")
 				allWts := collectAllWorktrees(repos, g.Verbose)
 				if len(allWts) == 0 {
-					return errs.Userf("no worktrees found")
+					return errors.Userf("no worktrees found")
 				}
 				done()
 
@@ -204,7 +204,7 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	if children := st.Children(wt.Branch); len(children) > 0 && !force {
 		u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
 		u.Warn("Children will be re-parented. Use --force to proceed.")
-		return errs.Userf("branch has stacked children (use --force)")
+		return errors.Userf("branch has stacked children (use --force)")
 	}
 
 	if !force {

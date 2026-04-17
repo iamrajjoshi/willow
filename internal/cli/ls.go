@@ -177,7 +177,9 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	u := flags.NewUI()
 
 	if len(worktrees) == 0 {
-		u.Info("No worktrees found.")
+		u.Info(u.Dim("  no worktrees yet"))
+		u.Info("")
+		u.Info("  create one with  " + u.Cyan("willow new <branch>"))
 		return
 	}
 

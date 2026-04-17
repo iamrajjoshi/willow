@@ -9,7 +9,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -76,7 +76,7 @@ func checkoutCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR")
 				prBranch, err := resolvePRRef(prRef, repos[0].BareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
+					return errors.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -91,7 +91,7 @@ func checkoutCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR branch")
 				prBranch, err := resolvePRRef(branch, repos[0].BareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
+					return errors.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -103,7 +103,7 @@ func checkoutCmd() *cli.Command {
 			}
 
 			if branch == "" {
-				return errs.Userf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
+				return errors.Userf("branch name or PR URL is required\n\nUsage: ww checkout <branch-or-pr-url>")
 			}
 
 			done = tr.StartCtx(ctx, "find existing worktree")
@@ -128,7 +128,7 @@ func checkoutCmd() *cli.Command {
 
 			done = tr.StartCtx(ctx, "resolve single repo")
 			if len(repos) > 1 {
-				return errs.Userf("multiple repos found — use --repo to specify which one")
+				return errors.Userf("multiple repos found — use --repo to specify which one")
 			}
 			repo := repos[0]
 			done()
@@ -147,8 +147,10 @@ func checkoutCmd() *cli.Command {
 					fmt.Fprintf(os.Stderr, "Fetching from origin...\n")
 					repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin")
 				} else {
-					u.Info("Fetching from origin...")
-					repoGit.Run("fetch", "origin")
+					_ = u.Spin("Fetching from origin", func() error {
+						_, err := repoGit.Run("fetch", "origin")
+						return err
+					})
 				}
 				done()
 			}

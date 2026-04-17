@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -58,7 +58,7 @@ func dispatchCmd() *cli.Command {
 
 			prompt := cmd.StringArg("prompt")
 			if prompt == "" {
-				return errs.Userf("prompt is required\n\nUsage: ww dispatch <prompt> [flags]")
+				return errors.Userf("prompt is required\n\nUsage: ww dispatch <prompt> [flags]")
 			}
 
 			var bareDir string
@@ -117,7 +117,7 @@ func dispatchCmd() *cli.Command {
 
 func dispatchForeground(u *ui.UI, wtPath, branch, prompt string, yolo bool) error {
 	if _, err := exec.LookPath("claude"); err != nil {
-		return errs.Userf("'claude' CLI not found — install Claude Code first")
+		return errors.Userf("'claude' CLI not found — install Claude Code first")
 	}
 
 	u.Success(fmt.Sprintf("Dispatched agent on %s (foreground)", u.Bold(branch)))

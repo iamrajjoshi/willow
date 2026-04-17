@@ -4,13 +4,13 @@ import (
 	"os"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
 
-var errNotWillowRepo = errs.Userf("not inside a willow-managed repo\n\nRun this command from a worktree under ~/.willow, or use 'ww ls' to see your repos.")
+var errNotWillowRepo = errors.Userf("not inside a willow-managed repo\n\nRun this command from a worktree under ~/.willow, or use 'ww ls' to see your repos.")
 
 func requireWillowRepo(g *git.Git) (string, error) {
 	bareDir, err := g.BareRepoDir()

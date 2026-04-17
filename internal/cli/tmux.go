@@ -11,7 +11,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
@@ -205,7 +205,7 @@ func tmuxSwCmd() *cli.Command {
 			defer trace.Span(ctx, "tmux.sw")()
 			wtPath := cmd.StringArg("path")
 			if wtPath == "" {
-				return errs.Userf("worktree path is required")
+				return errors.Userf("worktree path is required")
 			}
 
 			wtDir := filepath.Base(wtPath)
@@ -230,7 +230,7 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 
 func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
-		return errs.Userf("enter a branch name first")
+		return errors.Userf("enter a branch name first")
 	}
 
 	repo, err := resolveRepo(repoFilter, sessionName, items)
@@ -257,7 +257,7 @@ func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.Picke
 
 func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
-		return errs.Userf("enter a branch name first")
+		return errors.Userf("enter a branch name first")
 	}
 
 	repo, err := resolveRepo(repoFilter, sessionName, items)
@@ -283,7 +283,7 @@ func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tm
 		}
 	}
 	if len(branches) == 0 {
-		return errs.Userf("no worktrees to use as base")
+		return errors.Userf("no worktrees to use as base")
 	}
 
 	base, err := fzf.Run(branches,
@@ -339,7 +339,7 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		return fmt.Errorf("failed to list remote branches: %w", err)
 	}
 	if len(remoteBranches) == 0 {
-		return errs.Userf("no remote branches found")
+		return errors.Userf("no remote branches found")
 	}
 
 	wts, err := worktree.List(repoGit)
@@ -359,7 +359,7 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 		}
 	}
 	if len(available) == 0 {
-		return errs.Userf("all remote branches already have worktrees")
+		return errors.Userf("all remote branches already have worktrees")
 	}
 
 	branch, err := fzf.Run(available,
@@ -402,7 +402,7 @@ func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) e
 
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
-		return errs.Userf("gh CLI is required for PR picker")
+		return errors.Userf("gh CLI is required for PR picker")
 	}
 
 	cmd := exec.Command(ghPath, "pr", "list", "--json", "number,title,author,headRefName",
@@ -415,7 +415,7 @@ func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) e
 
 	raw := strings.TrimSpace(string(out))
 	if raw == "" {
-		return errs.Userf("no open PRs found")
+		return errors.Userf("no open PRs found")
 	}
 	lines := strings.Split(raw, "\n")
 
@@ -463,7 +463,7 @@ func extractBranchFromPRLine(line string) string {
 
 func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
-		return errs.Userf("type a prompt first")
+		return errors.Userf("type a prompt first")
 	}
 
 	repo, err := resolveRepo(repoFilter, sessionName, items)
@@ -539,7 +539,7 @@ func resolveRepo(repoFilter, sessionName string, items []tmux.PickerItem) (strin
 
 	repos, err := config.ListRepos()
 	if err != nil || len(repos) == 0 {
-		return "", errs.Userf("no repos found — run 'ww clone' first")
+		return "", errors.Userf("no repos found — run 'ww clone' first")
 	}
 
 	if len(repos) == 1 {
@@ -576,7 +576,7 @@ func resolveRepo(repoFilter, sessionName string, items []tmux.PickerItem) (strin
 
 	selected, err := fzf.Run(repos, fzf.WithHeader("Pick a repo"), fzf.WithReverse())
 	if err != nil || selected == "" {
-		return "", errs.Userf("no repo selected")
+		return "", errors.Userf("no repo selected")
 	}
 	return selected, nil
 }

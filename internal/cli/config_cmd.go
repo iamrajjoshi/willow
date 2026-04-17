@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
@@ -228,7 +228,7 @@ func configInitCmd() *cli.Command {
 			}
 
 			if _, err := os.Stat(path); err == nil && !cmd.Bool("force") {
-				return errs.Userf("config already exists at %s (use --force to overwrite)", path)
+				return errors.Userf("config already exists at %s (use --force to overwrite)", path)
 			}
 
 			cfg := config.DefaultConfig()

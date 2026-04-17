@@ -221,6 +221,8 @@ ww new feature-c -b feature-b         # third layer
 
 Stacked branches are shown as a tree in `ww ls` and the tmux picker. Parent relationships are tracked in `branches.json` per repo.
 
+![ww ls with stacks](screenshots/demo-stacks.gif)
+
 ### `ww stack status` (alias: `ww stack s`)
 
 Show CI, review, and merge status for every PR in a stack at a glance. Fetches all PR data in a single `gh pr list` call.
@@ -309,17 +311,15 @@ Rich view of Claude Code agent status. Shows per-session rows when multiple agen
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output |
-| `--cost` | Show estimated token cost per session |
 
 ### `ww dashboard` (alias: `dash`, `d`)
 
-Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, per-session activity, a timeline sparkline showing agent status transitions over the last 60 minutes, and estimated token cost. Press `c` to toggle the cost column.
+Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, per-session activity, and a timeline sparkline showing agent status transitions over the last 60 minutes.
 
 ```bash
 ww dashboard              # default 2s refresh
 ww dash -i 5              # 5s refresh interval
 ww dash --no-timeline     # hide the timeline column
-ww dash --no-cost         # hide cost column
 ```
 
 | Key | Action |
@@ -369,6 +369,8 @@ ww dispatch "Add retry logic" --name add-retries             # explicit branch n
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
 ```
+
+![ww dispatch](screenshots/demo-dispatch.gif)
 
 | Flag | Description |
 |------|-------------|
@@ -452,10 +454,6 @@ Config merges two tiers (local wins):
       { "command": "cd website" },
       { "command": "cd website" }
     ]
-  },
-  "cost": {
-    "inputRate": 3.0,   // $/M tokens (default: Sonnet 4)
-    "outputRate": 15.0  // $/M tokens (default: Sonnet 4)
   }
 }
 ```

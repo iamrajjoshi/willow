@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
@@ -157,7 +157,7 @@ func newCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR")
 				prBranch, err := resolvePRRef(prRef, bareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
+					return errors.User(fmt.Errorf("failed to resolve PR %s: %w", prRef, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -173,7 +173,7 @@ func newCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "resolve PR branch")
 				prBranch, err := resolvePRRef(branch, bareDir)
 				if err != nil {
-					return errs.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
+					return errors.User(fmt.Errorf("failed to resolve PR from URL %s: %w", branch, err))
 				}
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Resolved PR to branch %s\n", prBranch)
@@ -188,8 +188,10 @@ func newCmd() *cli.Command {
 			if existing && branch == "" {
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
-					u.Info("Fetching latest branches from origin...")
-					if _, err := repoGit.Run("fetch", "origin"); err != nil {
+					if err := u.Spin("Fetching latest branches from origin", func() error {
+						_, err := repoGit.Run("fetch", "origin")
+						return err
+					}); err != nil {
 						u.Warn(fmt.Sprintf("Failed to fetch: %v", err))
 					}
 				}
@@ -205,7 +207,7 @@ func newCmd() *cli.Command {
 			}
 
 			if branch == "" {
-				return errs.Userf("branch name is required\n\nUsage: ww new <branch> [flags]")
+				return errors.Userf("branch name is required\n\nUsage: ww new <branch> [flags]")
 			}
 
 			if existing {
@@ -218,8 +220,10 @@ func newCmd() *cli.Command {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
 						}
 					} else {
-						u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(branch)))
-						if _, err := repoGit.Run("fetch", "origin", branch); err != nil {
+						if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(branch)), func() error {
+							_, err := repoGit.Run("fetch", "origin", branch)
+							return err
+						}); err != nil {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
 						}
 					}
@@ -283,8 +287,10 @@ func newCmd() *cli.Command {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 					}
 				} else {
-					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
-					if _, err := repoGit.Run("fetch", "origin", baseBranch); err != nil {
+					if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(baseBranch)), func() error {
+						_, err := repoGit.Run("fetch", "origin", baseBranch)
+						return err
+					}); err != nil {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 					}
 				}
@@ -359,7 +365,7 @@ func finishWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g
 		for i, p := range cfg.Tmux.Panes {
 			if p.Command != "" {
 				if err := runHooks([]string{p.Command}, wtPath, u, hookOut); err != nil {
-					return errs.User(fmt.Errorf("pane %d command failed: %w", i, err))
+					return errors.User(fmt.Errorf("pane %d command failed: %w", i, err))
 				}
 			}
 		}
@@ -423,7 +429,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		return "", fmt.Errorf("failed to list remote branches: %w", err)
 	}
 	if len(remoteBranches) == 0 {
-		return "", errs.Userf("no remote branches found")
+		return "", errors.Userf("no remote branches found")
 	}
 
 	wts, err := worktree.List(repoGit)
@@ -444,7 +450,7 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		}
 	}
 	if len(available) == 0 {
-		return "", errs.Userf("all remote branches already have worktrees")
+		return "", errors.Userf("all remote branches already have worktrees")
 	}
 
 	selected, err := fzf.Run(available,

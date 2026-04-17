@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/errs"
+	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
@@ -45,7 +45,7 @@ func cloneCmd() *cli.Command {
 
 			url := cmd.StringArg("url")
 			if url == "" {
-				return errs.Userf("repository URL is required\n\nUsage: ww clone <repo-url> [name]")
+				return errors.Userf("repository URL is required\n\nUsage: ww clone <repo-url> [name]")
 			}
 
 			name := cmd.StringArg("name")
@@ -59,7 +59,7 @@ func cloneCmd() *cli.Command {
 
 			if _, err := os.Stat(bareDir); err == nil {
 				if !force {
-					return errs.Userf("repository %q already exists at %s\n\nRun with --force to remove it and re-clone", name, bareDir)
+					return errors.Userf("repository %q already exists at %s\n\nRun with --force to remove it and re-clone", name, bareDir)
 				}
 				u.Info(fmt.Sprintf("Removing existing repo %s...", u.Bold(name)))
 				if err := os.RemoveAll(bareDir); err != nil {
@@ -97,9 +97,11 @@ func cloneCmd() *cli.Command {
 			defer close(cleanupDone)
 			defer signal.Stop(sigCh)
 
-			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
 			done := tr.StartCtx(ctx, "git clone --bare")
-			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
+			if err := u.Spin(fmt.Sprintf("Cloning %s into %s", url, u.Bold(bareDir)), func() error {
+				_, err := g.Run("clone", "--bare", url, bareDir)
+				return err
+			}); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
@@ -113,9 +115,11 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to configure fetch refs: %w", err)
 			}
 
-			u.Info("Fetching latest from origin...")
 			done = tr.StartCtx(ctx, "git fetch origin")
-			if _, err := repoGit.Run("fetch", "origin"); err != nil {
+			if err := u.Spin("Fetching latest from origin", func() error {
+				_, err := repoGit.Run("fetch", "origin")
+				return err
+			}); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to fetch from origin: %w", err)
 			}
