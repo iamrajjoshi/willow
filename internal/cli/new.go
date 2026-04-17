@@ -188,8 +188,10 @@ func newCmd() *cli.Command {
 			if existing && branch == "" {
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
-					u.Info("Fetching latest branches from origin...")
-					if _, err := repoGit.Run("fetch", "origin"); err != nil {
+					if err := u.Spin("Fetching latest branches from origin", func() error {
+						_, err := repoGit.Run("fetch", "origin")
+						return err
+					}); err != nil {
 						u.Warn(fmt.Sprintf("Failed to fetch: %v", err))
 					}
 				}
@@ -218,8 +220,10 @@ func newCmd() *cli.Command {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
 						}
 					} else {
-						u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(branch)))
-						if _, err := repoGit.Run("fetch", "origin", branch); err != nil {
+						if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(branch)), func() error {
+							_, err := repoGit.Run("fetch", "origin", branch)
+							return err
+						}); err != nil {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
 						}
 					}
@@ -283,8 +287,10 @@ func newCmd() *cli.Command {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 					}
 				} else {
-					u.Info(fmt.Sprintf("Fetching %s from origin...", u.Bold(baseBranch)))
-					if _, err := repoGit.Run("fetch", "origin", baseBranch); err != nil {
+					if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(baseBranch)), func() error {
+						_, err := repoGit.Run("fetch", "origin", baseBranch)
+						return err
+					}); err != nil {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 					}
 				}

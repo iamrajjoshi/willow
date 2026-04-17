@@ -97,9 +97,11 @@ func cloneCmd() *cli.Command {
 			defer close(cleanupDone)
 			defer signal.Stop(sigCh)
 
-			u.Info(fmt.Sprintf("Cloning %s into %s...", url, u.Bold(bareDir)))
 			done := tr.StartCtx(ctx, "git clone --bare")
-			if _, err := g.Run("clone", "--bare", url, bareDir); err != nil {
+			if err := u.Spin(fmt.Sprintf("Cloning %s into %s", url, u.Bold(bareDir)), func() error {
+				_, err := g.Run("clone", "--bare", url, bareDir)
+				return err
+			}); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
@@ -113,9 +115,11 @@ func cloneCmd() *cli.Command {
 				return fmt.Errorf("failed to configure fetch refs: %w", err)
 			}
 
-			u.Info("Fetching latest from origin...")
 			done = tr.StartCtx(ctx, "git fetch origin")
-			if _, err := repoGit.Run("fetch", "origin"); err != nil {
+			if err := u.Spin("Fetching latest from origin", func() error {
+				_, err := repoGit.Run("fetch", "origin")
+				return err
+			}); err != nil {
 				cleanup()
 				return fmt.Errorf("failed to fetch from origin: %w", err)
 			}

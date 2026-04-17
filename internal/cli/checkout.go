@@ -147,8 +147,10 @@ func checkoutCmd() *cli.Command {
 					fmt.Fprintf(os.Stderr, "Fetching from origin...\n")
 					repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin")
 				} else {
-					u.Info("Fetching from origin...")
-					repoGit.Run("fetch", "origin")
+					_ = u.Spin("Fetching from origin", func() error {
+						_, err := repoGit.Run("fetch", "origin")
+						return err
+					})
 				}
 				done()
 			}
