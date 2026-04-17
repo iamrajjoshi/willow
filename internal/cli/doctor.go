@@ -139,8 +139,14 @@ func checkClaudeHooks(u claudeHooksUI, fix bool) {
 		return
 	}
 
-	for _, cmd := range legacy {
-		u.Warn(fmt.Sprintf("legacy willow hook in ~/.claude/settings.json: %q", cmd))
+	// Collapse duplicate commands across events for display; one warn per unique command.
+	seen := map[string]bool{}
+	for _, h := range legacy {
+		if seen[h.Command] {
+			continue
+		}
+		seen[h.Command] = true
+		u.Warn(fmt.Sprintf("legacy willow hook in ~/.claude/settings.json: %q", h.Command))
 	}
 
 	if !fix {
@@ -148,7 +154,7 @@ func checkClaudeHooks(u claudeHooksUI, fix bool) {
 		return
 	}
 
-	if !u.Confirm(fmt.Sprintf("Remove %d legacy willow hook(s) from ~/.claude/settings.json?", len(legacy))) {
+	if !u.Confirm(fmt.Sprintf("Remove %d legacy willow hook rule(s) across %d event(s)?", len(legacy), len(seen))) {
 		u.Info("  skipped")
 		return
 	}

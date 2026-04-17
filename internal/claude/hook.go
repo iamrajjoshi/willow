@@ -63,12 +63,21 @@ func Install() (changed bool, err error) {
 	return !bytes.Equal(before, after), nil
 }
 
-// UnmarkedLegacyHooks returns command strings in ~/.claude/settings.json that
-// look like willow-installed hooks from an older release (no "source":"willow"
-// marker). Reported by `ww doctor`; removed only via `ww doctor --fix`. If
-// settings.json is unreadable or malformed, returns nil — doctor will surface
-// that elsewhere.
-func UnmarkedLegacyHooks() []string {
+// LegacyHook describes one unmarked willow-looking hook rule found in
+// ~/.claude/settings.json. The same command often appears under multiple
+// events, and each occurrence is returned separately so counts stay
+// consistent between reporting and removal.
+type LegacyHook struct {
+	Event   string
+	Command string
+}
+
+// UnmarkedLegacyHooks returns every unmarked hook rule in
+// ~/.claude/settings.json that looks like a willow-installed hook from an
+// older release. Reported by `ww doctor`; removed only via `ww doctor --fix`.
+// If settings.json is unreadable or malformed, returns nil — doctor will
+// surface that elsewhere.
+func UnmarkedLegacyHooks() []LegacyHook {
 	settings, err := readClaudeSettings()
 	if err != nil {
 		return nil
@@ -78,8 +87,7 @@ func UnmarkedLegacyHooks() []string {
 		return nil
 	}
 
-	var found []string
-	seen := map[string]bool{}
+	var found []LegacyHook
 	for _, event := range hookEvents {
 		rules, _ := hooksMap[event].([]any)
 		for _, rule := range rules {
@@ -91,9 +99,8 @@ func UnmarkedLegacyHooks() []string {
 				continue
 			}
 			for _, cmd := range ruleCommands(ruleMap) {
-				if looksLikeLegacyWillowCommand(cmd) && !seen[cmd] {
-					seen[cmd] = true
-					found = append(found, cmd)
+				if looksLikeLegacyWillowCommand(cmd) {
+					found = append(found, LegacyHook{Event: event, Command: cmd})
 				}
 			}
 		}

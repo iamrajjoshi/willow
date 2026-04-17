@@ -251,8 +251,11 @@ func TestUnmarkedLegacyHooks(t *testing.T) {
 		t.Fatalf("legacy count = %d, want 2: %v", len(legacy), legacy)
 	}
 	found := map[string]bool{}
-	for _, cmd := range legacy {
-		found[cmd] = true
+	for _, h := range legacy {
+		found[h.Command] = true
+		if h.Event != "Stop" {
+			t.Errorf("unexpected event %q for %q", h.Event, h.Command)
+		}
 	}
 	if !found["/Users/x/.willow/hooks/claude-status-hook.sh"] {
 		t.Errorf("legacy shell hook not reported: %v", legacy)
