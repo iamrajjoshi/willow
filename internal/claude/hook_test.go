@@ -49,6 +49,19 @@ func TestInstall_WritesSettings(t *testing.T) {
 	}
 }
 
+// TestHookCommandFor_PreservesSymlinks guards against regressing to
+// filepath.EvalSymlinks. On Homebrew, the stable launcher at
+// /opt/homebrew/bin/willow is a symlink into a versioned Cellar path that
+// vanishes on `brew upgrade`, so hook registration must use the launcher path
+// verbatim instead of resolving through it.
+func TestHookCommandFor_PreservesSymlinks(t *testing.T) {
+	launcher := "/opt/homebrew/bin/willow"
+	got := hookCommandFor(launcher)
+	if got != launcher+" hook" {
+		t.Errorf("hookCommandFor(%q) = %q, want %q", launcher, got, launcher+" hook")
+	}
+}
+
 func TestIsInstalled_FalseWithNoSettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
