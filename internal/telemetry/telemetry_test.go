@@ -9,6 +9,13 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
+// isolateHome points HOME at a fresh temp dir so config.Load("") can't pick up
+// the developer's real ~/.config/willow/config.json during tests.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+}
+
 func TestIsEnabled_EnvVar(t *testing.T) {
 	tests := []struct {
 		value   string
@@ -27,6 +34,7 @@ func TestIsEnabled_EnvVar(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("WILLOW_TELEMETRY=%q", tt.value), func(t *testing.T) {
+			isolateHome(t)
 			os.Setenv("WILLOW_TELEMETRY", tt.value)
 			defer os.Unsetenv("WILLOW_TELEMETRY")
 
@@ -39,6 +47,7 @@ func TestIsEnabled_EnvVar(t *testing.T) {
 }
 
 func TestInit_DisabledByEnvVar(t *testing.T) {
+	isolateHome(t)
 	enabled = false
 	os.Setenv("WILLOW_TELEMETRY", "off")
 	defer os.Unsetenv("WILLOW_TELEMETRY")
@@ -52,6 +61,7 @@ func TestInit_DisabledByEnvVar(t *testing.T) {
 }
 
 func TestInit_DisabledByDefault(t *testing.T) {
+	isolateHome(t)
 	enabled = false
 	os.Unsetenv("WILLOW_TELEMETRY")
 
