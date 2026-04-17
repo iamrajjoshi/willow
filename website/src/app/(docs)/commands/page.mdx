@@ -347,9 +347,8 @@ ww dispatch "Refactor payments" --repo myrepo                # target specific r
 
 **How it works:**
 1. Creates a new worktree (reuses `ww new` internally)
-2. Writes the prompt to `.willow-prompt` in the worktree
-3. Launches `claude "<prompt>"` (interactive session with prompt pre-loaded)
-4. Logs a `dispatch` event (visible in `ww log`)
+2. Launches `claude "<prompt>"` (interactive session with prompt pre-loaded)
+3. Logs a `dispatch` event (visible in `ww log`)
 
 The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to it anytime with `ww sw`.
 

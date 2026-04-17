@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -104,11 +103,6 @@ func dispatchCmd() *cli.Command {
 			wtPath := strings.TrimSpace(string(out))
 			if wtPath == "" {
 				return fmt.Errorf("no path returned from willow new")
-			}
-
-			promptFile := filepath.Join(wtPath, ".willow-prompt")
-			if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err != nil {
-				return fmt.Errorf("failed to write prompt file: %w", err)
 			}
 
 			meta := map[string]string{"prompt": truncatePrompt(prompt)}

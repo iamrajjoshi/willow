@@ -475,10 +475,6 @@ func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.
 		return fmt.Errorf("no path returned from willow new")
 	}
 
-	if err := os.WriteFile(filepath.Join(wtPath, ".willow-prompt"), []byte(query), 0o644); err != nil {
-		return fmt.Errorf("failed to write prompt file: %w", err)
-	}
-
 	meta := map[string]string{"prompt": truncatePrompt(query)}
 	_ = log.Append(log.Event{Action: "dispatch", Repo: repo, Branch: branch, Metadata: meta})
 
@@ -486,12 +482,21 @@ func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.
 	repoName := filepath.Base(filepath.Dir(wtPath))
 
 	sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+
+	promptFile := filepath.Join(config.WillowHome(), "prompts", repoName, wtDir+".prompt")
+	if err := os.MkdirAll(filepath.Dir(promptFile), 0o755); err != nil {
+		return fmt.Errorf("failed to create prompts dir: %w", err)
+	}
+	if err := os.WriteFile(promptFile, []byte(query), 0o644); err != nil {
+		return fmt.Errorf("failed to write prompt file: %w", err)
+	}
+
 	cfg := loadRepoConfig(repoName)
 	if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
 		return fmt.Errorf("failed to create tmux session: %w", err)
 	}
 
-	claudeCmd := `claude "$(cat .willow-prompt)"`
+	claudeCmd := fmt.Sprintf(`claude "$(cat %s)"; rm -f %s`, shellQuote(promptFile), shellQuote(promptFile))
 	if err := tmux.SendKeys(sessName, claudeCmd, "Enter"); err != nil {
 		return fmt.Errorf("failed to send claude command: %w", err)
 	}
