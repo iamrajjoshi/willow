@@ -25,30 +25,40 @@ export function Sidebar() {
         {currentPage?.title ?? "On this page"}
       </h4>
       <ul className="space-y-0.5">
-        {headings.map((heading) => (
-          <li key={heading.id}>
-            <a
-              href={`#${heading.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById(heading.id)?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
-                history.pushState(null, "", `#${heading.id}`);
-              }}
-              className={cn(
-                "block py-0.5 text-[13px] leading-snug transition-colors duration-150",
-                heading.level === 3 ? "pl-6" : "pl-3",
-                activeId === heading.id
-                  ? "text-willow-accent"
-                  : "text-willow-text-dim hover:text-willow-text-2",
-              )}
+        {headings.map((heading, i) => {
+          const isSection = heading.level === 2;
+          return (
+            <li
+              key={heading.id}
+              className={cn(isSection && i > 0 && "mt-4")}
             >
-              {heading.text}
-            </a>
-          </li>
-        ))}
+              <a
+                href={`#${heading.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById(heading.id)?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                  history.pushState(null, "", `#${heading.id}`);
+                }}
+                className={cn(
+                  "block py-0.5 leading-snug transition-colors duration-150",
+                  isSection
+                    ? "pl-3 text-[11px] font-semibold uppercase tracking-wider"
+                    : "pl-6 text-[13px]",
+                  activeId === heading.id
+                    ? "text-willow-accent"
+                    : isSection
+                      ? "text-willow-text-2 hover:text-willow-text-1"
+                      : "text-willow-text-dim hover:text-willow-text-2",
+                )}
+              >
+                {heading.text}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

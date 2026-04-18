@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Poppins, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,7 +8,7 @@ const inter = Inter({
   display: "swap",
 });
 
-const poppins = Poppins({
+const interHeading = Inter({
   subsets: ["latin"],
   weight: ["600", "700", "800"],
   variable: "--font-heading",
@@ -45,7 +45,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${poppins.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${interHeading.variable} ${jetbrainsMono.variable}`}
     >
       <body className="font-sans">{children}</body>
     </html>
