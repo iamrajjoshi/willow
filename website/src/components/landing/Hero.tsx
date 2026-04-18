@@ -45,9 +45,9 @@ export function Hero() {
 
         <motion.h1
           variants={fadeUp}
-          className="font-heading text-6xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl"
+          className="font-heading text-6xl font-extrabold leading-[1.1] tracking-tight sm:text-7xl lg:text-8xl"
         >
-          <span className="bg-gradient-to-r from-willow-accent to-willow-accent-deep bg-clip-text text-transparent">
+          <span className="block bg-gradient-to-r from-willow-accent to-willow-accent-deep bg-clip-text py-2 text-transparent">
             willow
           </span>
         </motion.h1>
@@ -67,9 +67,10 @@ export function Hero() {
           variants={fadeUp}
           className="mx-auto mt-6 max-w-xl text-lg text-willow-text-2"
         >
-          A git worktree manager built for AI agent workflows. Spin up isolated
-          worktrees, switch between them with fzf, and see agent status in real
-          time.
+          A git worktree manager built for AI agent workflows.
+          <br />
+          Spin up isolated worktrees, switch between them with fzf, and see
+          agent status in real time.
         </motion.p>
 
         <motion.div
