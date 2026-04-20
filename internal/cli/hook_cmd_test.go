@@ -70,3 +70,48 @@ func TestHookCmd_EndToEnd(t *testing.T) {
 		t.Errorf("status file does not mark DONE: %s", data)
 	}
 }
+
+func TestHookCmd_WritesStatusUnderConfiguredBaseDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, "custom willow"))
+
+	repo, wt := "myrepo", "feat-x"
+	wtPath := filepath.Join(home, "custom willow", "worktrees", repo, wt)
+	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	prev, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(prev) })
+	if err := os.Chdir(wtPath); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	payload, _ := json.Marshal(claude.HookInput{
+		SessionID:     "s1",
+		HookEventName: "Stop",
+	})
+	r, w, _ := os.Pipe()
+	if _, err := w.Write(payload); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	w.Close()
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin })
+
+	origErr := os.Stderr
+	os.Stderr, _ = os.Open(os.DevNull)
+	t.Cleanup(func() { os.Stderr = origErr })
+
+	cmd := hookCmd()
+	if err := cmd.Action(context.Background(), cmd); err != nil {
+		t.Fatalf("Action: %v", err)
+	}
+
+	statusFile := filepath.Join(home, "custom willow", "status", repo, wt, "s1.json")
+	if _, err := os.Stat(statusFile); err != nil {
+		t.Fatalf("status file missing at configured base dir: %v", err)
+	}
+}

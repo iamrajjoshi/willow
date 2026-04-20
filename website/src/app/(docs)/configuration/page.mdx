@@ -6,19 +6,30 @@ import { Callout } from "@/components/ui/Callout"
 
 ## Config file locations
 
-Config merges two tiers (local wins):
+Willow resolves its base directory with this precedence:
+
+1. `WILLOW_BASE_DIR`
+2. global config `baseDir`
+3. default `~/.willow`
+
+Other config merges two tiers (local wins):
 
 | Priority | Path | Scope |
 |----------|------|-------|
-| 1 (highest) | `~/.willow/repos/<repo>.git/willow.json` | Per-repo, local only |
+| 1 (highest) | `<willow-base>/repos/<repo>.git/willow.json` | Per-repo, local only |
 | 2 | `~/.config/willow/config.json` | Global defaults |
 
-The local config lives inside the bare repo directory, so it's private to your machine. Global config provides machine-wide defaults for all repos.
+The local config lives inside the bare repo directory, so it's private to your machine. Global config provides machine-wide defaults for all repos. `baseDir` is global-only so willow can resolve `<willow-base>` before it tries to load repo-local config.
+
+<Callout type="tip">
+`<willow-base>` defaults to `~/.willow`. Move an existing setup with `ww migrate-base &lt;path&gt;`.
+</Callout>
 
 ## Config schema
 
 ```jsonc
 {
+  "baseDir": "~/code/willow",
   "baseBranch": "main",
   "branchPrefix": "alice",
   "postCheckoutHook": ".husky/post-checkout",
@@ -45,6 +56,7 @@ The local config lives inside the bare repo directory, so it's private to your m
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `baseDir` | `string` | Global-only willow base directory. Also overridable with `WILLOW_BASE_DIR` |
 | `baseBranch` | `string` | Default branch to fork new worktrees from |
 | `branchPrefix` | `string` | Prefix for new branch names (e.g. `alice` → `alice/feature-auth`) |
 | `postCheckoutHook` | `string` | Script to run after creating a worktree |
@@ -61,7 +73,7 @@ The local config lives inside the bare repo directory, so it's private to your m
 ## Directory structure
 
 ```
-~/.willow/
+<willow-base>/
 ├── repos/                       # Bare clones
 │   └── myrepo.git/
 │       └── willow.json          # Per-repo config
@@ -76,20 +88,20 @@ The local config lives inside the bare repo directory, so it's private to your m
         └── auth-refactor.json
 ```
 
-### `~/.willow/repos/`
+### `<willow-base>/repos/`
 
 Contains bare git clones. Each repo is cloned once with `ww clone` and shared across all worktrees. Per-repo config (`willow.json`) lives here.
 
-### `~/.willow/worktrees/`
+### `<willow-base>/worktrees/`
 
-Each worktree is a fully isolated directory with its own working copy. Grouped by repo name — `~/.willow/worktrees/<repo>/<branch>/`.
+Each worktree is a fully isolated directory with its own working copy. Grouped by repo name — `<willow-base>/worktrees/<repo>/<branch>/`.
 
-### `~/.willow/status/`
+### `<willow-base>/status/`
 
 Created by `ww cc-setup`. Contains JSON files with Claude Code agent status for each worktree.
 
 ```jsonc
-// ~/.willow/status/myrepo/auth-refactor.json
+// <willow-base>/status/myrepo/auth-refactor.json
 {
   "status": "BUSY",
   "timestamp": "2024-01-15T10:30:00Z",

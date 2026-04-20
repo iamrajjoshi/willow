@@ -43,7 +43,11 @@ func doctorCmd() *cli.Command {
 	}
 }
 
-func checkGitVersion(u interface{ Success(string); Warn(string); Red(string) string }) {
+func checkGitVersion(u interface {
+	Success(string)
+	Warn(string)
+	Red(string) string
+}) {
 	out, err := exec.Command("git", "--version").Output()
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "%s git not found\n", u.Red("\u2717"))
@@ -174,23 +178,25 @@ func checkWillowDirs(u interface {
 }) {
 	dirs := []struct {
 		path string
-		name string
 	}{
-		{config.WillowHome(), "~/.willow"},
-		{config.ReposDir(), "~/.willow/repos"},
-		{config.WorktreesDir(), "~/.willow/worktrees"},
+		{config.WillowHome()},
+		{config.ReposDir()},
+		{config.WorktreesDir()},
 	}
 
 	for _, d := range dirs {
 		if _, err := os.Stat(d.path); err != nil {
-			fmt.Fprintf(os.Stdout, "%s %s missing (run: ww clone)\n", u.Red("\u2717"), d.name)
+			fmt.Fprintf(os.Stdout, "%s %s missing (run: ww clone)\n", u.Red("\u2717"), d.path)
 			continue
 		}
-		u.Success(fmt.Sprintf("%s exists", d.name))
+		u.Success(fmt.Sprintf("%s exists", d.path))
 	}
 }
 
-func checkStaleSessions(u interface{ Success(string); Warn(string) }) {
+func checkStaleSessions(u interface {
+	Success(string)
+	Warn(string)
+}) {
 	sessions, err := claude.ScanAllSessions()
 	if err != nil {
 		u.Warn(fmt.Sprintf("could not scan sessions: %v", err))
@@ -211,7 +217,10 @@ func checkStaleSessions(u interface{ Success(string); Warn(string) }) {
 	u.Success("no stale session files")
 }
 
-func checkConfig(u interface{ Success(string); Warn(string) }) {
+func checkConfig(u interface {
+	Success(string)
+	Warn(string)
+}) {
 	cfg := config.Load("")
 	warnings := cfg.Validate()
 	if len(warnings) == 0 {

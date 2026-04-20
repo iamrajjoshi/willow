@@ -1,10 +1,10 @@
 export const metadata = { title: "Commands" }
 
-import { Callout } from "@/components/ui/Callout"
-
 # Commands
 
 All examples use the `ww` alias. `willow` and `ww` are interchangeable.
+
+`<willow-base>` defaults to `~/.willow`. You can change it with `WILLOW_BASE_DIR`, the global `baseDir` config, or `ww migrate-base <path>`.
 
 ## Setup
 
@@ -24,7 +24,7 @@ ww clone git@github.com:org/repo.git --force    # re-clone from scratch
 
 **What happens under the hood:**
 
-1. `git clone --bare <url> ~/.willow/repos/<name>.git`
+1. `git clone --bare <url> <willow-base>/repos/<name>.git`
 2. Configure remote fetch refs
 3. `git fetch origin`
 4. Create an initial worktree on the default branch
@@ -115,11 +115,11 @@ ww checkout auth-refactor                # auto-cd via shell integration (tmux-a
 Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
 
 ```
-🤖 BUSY   auth-refactor        ~/.willow/worktrees/repo/auth-refactor
-✅ DONE   api-cleanup          ~/.willow/worktrees/repo/api-cleanup
-⏳ WAIT   payments             ~/.willow/worktrees/repo/payments
-🟡 IDLE   main                 ~/.willow/worktrees/repo/main
-   --     old-feature          ~/.willow/worktrees/repo/old-feature
+🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
+✅ DONE   api-cleanup          <willow-base>/worktrees/repo/api-cleanup
+⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
+🟡 IDLE   main                 <willow-base>/worktrees/repo/main
+   --     old-feature          <willow-base>/worktrees/repo/old-feature
 ```
 
 Active agents sorted first, offline sorted last. Pass a name to skip the picker: `ww sw auth-refactor`.
@@ -155,10 +155,10 @@ List worktrees with status.
 
 ```
   BRANCH               STATUS  PATH                                        AGE
-  main                 IDLE    ~/.willow/worktrees/myrepo/main             3d
-  auth-refactor        BUSY    ~/.willow/worktrees/myrepo/auth-refactor    2h
-  payments             WAIT    ~/.willow/worktrees/myrepo/payments         1d
-  old-feature          --      ~/.willow/worktrees/myrepo/old-feature      5m
+  main                 IDLE    <willow-base>/worktrees/myrepo/main         3d
+  auth-refactor        BUSY    <willow-base>/worktrees/myrepo/auth-refactor 2h
+  payments             WAIT    <willow-base>/worktrees/myrepo/payments     1d
+  old-feature          --      <willow-base>/worktrees/myrepo/old-feature  5m
 ```
 
 When run outside a willow repo, lists all repos and their worktree counts.
@@ -184,10 +184,10 @@ When `--base` points to a local branch (another worktree), willow forks from it 
 
 ```
   BRANCH                    STATUS  PATH                                           AGE
-  ├─ feature-a              BUSY    ~/.willow/worktrees/repo/feature-a             2h
-  │  └─ feature-b           DONE    ~/.willow/worktrees/repo/feature-b             1h
-  │     └─ feature-c        --      ~/.willow/worktrees/repo/feature-c             30m
-  standalone                --      ~/.willow/worktrees/repo/standalone             1d
+  ├─ feature-a              BUSY    <willow-base>/worktrees/repo/feature-a         2h
+  │  └─ feature-b           DONE    <willow-base>/worktrees/repo/feature-b         1h
+  │     └─ feature-c        --      <willow-base>/worktrees/repo/feature-c         30m
+  standalone                --      <willow-base>/worktrees/repo/standalone        1d
 ```
 
 Removing a stacked branch re-parents its children to the removed branch's parent. Use `--force` if the branch has children.
@@ -299,7 +299,7 @@ The timeline requires `ww cc-setup` to be re-run to install the updated hook tha
 
 ### `ww log`
 
-Show activity log of worktree events. Events are recorded automatically when you create, remove, or sync worktrees. Stored as monthly JSONL files under `~/.willow/log/`.
+Show activity log of worktree events. Events are recorded automatically when you create, remove, or sync worktrees. Stored as monthly JSONL files under `<willow-base>/log/`.
 
 ```bash
 ww log                          # last 20 events
@@ -331,7 +331,7 @@ ww log --json                   # raw JSON output
 Clean up leftover trash from removed worktrees and, optionally, prune worktrees whose branches have been merged into the base branch.
 
 ```bash
-ww gc                    # empty ~/.willow/trash/ and list merged worktrees
+ww gc                    # empty <willow-base>/trash/ and list merged worktrees
 ww gc --prune            # also interactively remove merged worktrees
 ww gc --dry-run          # preview without touching anything
 ww gc --prune --dry-run  # list what --prune would remove
@@ -354,7 +354,7 @@ Desktop notifications fire directly from Claude Code's hook system after you run
 
 **Custom notification command:** Set `notify.command` in config to run your own script instead of the built-in dispatch. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
 
-**Concurrency:** When multiple sessions run in the same worktree, an advisory `flock` on `~/.willow/notify-states.lock` prevents duplicate notifications.
+**Concurrency:** When multiple sessions run in the same worktree, an advisory `flock` on `<willow-base>/notify-states.lock` prevents duplicate notifications.
 
 ### `ww dispatch <prompt>`
 
@@ -386,10 +386,10 @@ The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to
 
 Hook installation for Claude Code status tracking. Safe to re-run: each invocation overwrites willow's entries in `~/.claude/settings.json` with the current binary path, so upgrades and relocations stay in sync. Third-party hook rules are left untouched.
 
-1. Creates the status directory: `~/.willow/status/`
+1. Creates the status directory: `<willow-base>/status/`
 2. Registers the hidden `willow hook` subcommand for every event willow tracks. The absolute binary path is resolved via `os.Executable()` at install time.
 
-The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`). Each invocation writes per-session status to `~/.willow/status/<repo>/<worktree>/<session_id>.json`, appends to the session timeline, and dispatches desktop notifications on status transitions. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
+The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`). Each invocation writes per-session status to `<willow-base>/status/<repo>/<worktree>/<session_id>.json`, appends to the session timeline, and dispatches desktop notifications on status transitions. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
 
 The hook also tracks enriched session data:
 - **`tool_count`** — number of tool invocations in the session
@@ -414,7 +414,7 @@ Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed 
 
 ### `ww config`
 
-View, edit, and initialize willow configuration. Merges global (`~/.config/willow/config.json`) and local (per-repo `willow.json`) configs, showing the effective value and source for each field.
+View, edit, and initialize willow configuration. Merges global (`~/.config/willow/config.json`) and local (per-repo `willow.json`) configs, showing the effective value and source for each field. `baseDir` is global-only and resolved before repo-local config is loaded.
 
 ```bash
 ww config show               # show merged config with source annotations
@@ -453,6 +453,23 @@ Editor resolution: `$VISUAL` > `$EDITOR` > `vi`.
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `--force` | Overwrite existing config | `false` |
 
+### `ww migrate-base <path>`
+
+Move willow's base directory to a new path, repair Git worktree metadata, and persist the new global `baseDir`.
+
+```bash
+ww migrate-base ~/code/evergreen/worktrees/willow
+ww migrate-base ~/code/evergreen/worktrees/willow --dry-run
+ww migrate-base ~/code/evergreen/worktrees/willow --yes
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Show the planned move without changing anything | `false` |
+| `-y, --yes` | Skip confirmation | `false` |
+
+The command rejects overlapping paths, non-empty destinations, active Claude session files, and running from inside the current willow base.
+
 ### `ww doctor`
 
 Check your willow setup for common issues. Runs a series of checks and prints a checklist:
@@ -467,9 +484,9 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 ✔ gh CLI installed
 ✔ tmux installed
 ✔ Claude Code hooks installed
-✔ ~/.willow exists
-✔ ~/.willow/repos exists
-✔ ~/.willow/worktrees exists
+✔ <willow-base> exists
+✔ <willow-base>/repos exists
+✔ <willow-base>/worktrees exists
 ✔ no stale session files
 ✔ config valid
 ```
@@ -480,7 +497,7 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 | gh CLI | Optional — warns if missing |
 | tmux | Optional — warns if missing |
 | Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks; flags unmarked legacy entries from older releases |
-| Willow directories | `~/.willow`, `repos/`, `worktrees/` |
+| Willow directories | `<willow-base>`, `repos/`, `worktrees/` |
 | Stale sessions | Session files older than 30 minutes |
 | Config validity | Validates merged config for common issues |
 

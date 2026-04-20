@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// setupWorktreeHome creates a fake ~/.willow with a worktree at
+// setupWorktreeHome creates a fake willow base dir with a worktree at
 // <home>/.willow/worktrees/<repo>/<wt> and chdirs into it. Returns the
 // (repo, wt) pair for assertions.
 func setupWorktreeHome(t *testing.T) (repo, wt string) {
@@ -228,7 +228,7 @@ func TestHandleHook_OutsideWorktreeIsNoop(t *testing.T) {
 
 	prevCwd, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(prevCwd) })
-	os.Chdir(home) // not under ~/.willow/worktrees
+	os.Chdir(home) // not under willow's managed worktrees
 
 	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "Stop"})
 	if err := HandleHook(bytes.NewReader(raw)); err != nil {
@@ -272,5 +272,30 @@ func TestHandleHook_PreservesStartTime(t *testing.T) {
 
 	if !first.Equal(second) {
 		t.Errorf("start_time changed: %v → %v", first, second)
+	}
+}
+
+func TestResolveWorktree_UsesConfiguredBaseDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, "custom willow"))
+
+	wtPath := filepath.Join(home, "custom willow", "worktrees", "configrepo", "branch-x")
+	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+		t.Fatalf("mkdir worktree: %v", err)
+	}
+
+	prevCwd, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(prevCwd) })
+	if err := os.Chdir(wtPath); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	repo, wt, ok := resolveWorktree()
+	if !ok {
+		t.Fatal("resolveWorktree() = not ok, want ok")
+	}
+	if repo != "configrepo" || wt != "branch-x" {
+		t.Fatalf("resolveWorktree() = (%q, %q), want (%q, %q)", repo, wt, "configrepo", "branch-x")
 	}
 }

@@ -53,26 +53,26 @@ export const COMMANDS = [
     name: "ww new",
     description: "Create a worktree",
     command: "$ ww new feature/auth --no-fetch",
-    output: `✨ Created worktree at ~/.willow/worktrees/myrepo/feature/auth
+    output: `✨ Created worktree at <willow-base>/worktrees/myrepo/feature/auth
    Branch: feature/auth (from main)`,
   },
   {
     name: "ww sw",
     description: "Switch worktrees",
     command: "$ ww sw",
-    output: `🤖 BUSY   auth-refactor     ~/.willow/worktrees/myrepo/auth-refactor
-✅ DONE   api-cleanup       ~/.willow/worktrees/myrepo/api-cleanup
-⏳ WAIT   payments          ~/.willow/worktrees/myrepo/payments
-🟡 IDLE   main              ~/.willow/worktrees/myrepo/main`,
+    output: `🤖 BUSY   auth-refactor     <willow-base>/worktrees/myrepo/auth-refactor
+✅ DONE   api-cleanup       <willow-base>/worktrees/myrepo/api-cleanup
+⏳ WAIT   payments          <willow-base>/worktrees/myrepo/payments
+🟡 IDLE   main              <willow-base>/worktrees/myrepo/main`,
   },
   {
     name: "ww ls",
     description: "List worktrees",
     command: "$ ww ls",
     output: `  BRANCH               STATUS  PATH                                        AGE
-  main                 IDLE    ~/.willow/worktrees/myrepo/main             3d
-  auth-refactor        BUSY    ~/.willow/worktrees/myrepo/auth-refactor   2h
-  payments             WAIT    ~/.willow/worktrees/myrepo/payments        1d`,
+  main                 IDLE    <willow-base>/worktrees/myrepo/main         3d
+  auth-refactor        BUSY    <willow-base>/worktrees/myrepo/auth-refactor 2h
+  payments             WAIT    <willow-base>/worktrees/myrepo/payments     1d`,
   },
   {
     name: "ww status",

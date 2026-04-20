@@ -1,7 +1,7 @@
 import { TerminalWindow } from "./TerminalWindow";
 
 const TREE_LINES = [
-  { structure: "~/.willow/", dir: "", file: "", annotation: "" },
+  { structure: "<willow-base>/", dir: "", file: "", annotation: "" },
   {
     structure: "├── ",
     dir: "repos/",
@@ -65,7 +65,7 @@ const BADGE_STYLES = {
 
 export function DirectoryTree() {
   return (
-    <TerminalWindow title="~/.willow/">
+    <TerminalWindow title="<willow-base>/">
       <div className="p-5 font-mono text-sm leading-[1.8]">
         {TREE_LINES.map((line, i) => (
           <div key={i} className="flex items-center whitespace-nowrap">

@@ -2,11 +2,14 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 )
 
@@ -65,6 +68,37 @@ func setupTestEnv(t *testing.T) string {
 func runApp(args ...string) error {
 	app := NewApp()
 	return app.Run(context.Background(), append([]string{"willow"}, args...))
+}
+
+func writeGlobalConfigFile(t *testing.T, contents string) {
+	t.Helper()
+
+	path := config.GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir global config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+}
+
+func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status claude.Status) {
+	t.Helper()
+
+	dir := filepath.Join(claude.StatusDir(), repo, wt)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	data, err := json.Marshal(claude.SessionStatus{
+		Status:    status,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		t.Fatalf("marshal session status: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, sessionID+".json"), data, 0o644); err != nil {
+		t.Fatalf("write session file: %v", err)
+	}
 }
 
 func TestClone_CreatesDirectoryStructure(t *testing.T) {
@@ -917,5 +951,253 @@ func TestLs_WithRepoArg(t *testing.T) {
 
 	if err := runApp("ls", "lsarg"); err != nil {
 		t.Fatalf("ls lsarg failed: %v", err)
+	}
+}
+
+func TestClone_UsesCustomBaseDirFromEnv(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	baseDir := filepath.Join(home, "custom-willow-base")
+	t.Setenv("WILLOW_BASE_DIR", baseDir)
+
+	if err := runApp("clone", origin, "envrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	bareDir := filepath.Join(baseDir, "repos", "envrepo.git")
+	if _, err := os.Stat(bareDir); os.IsNotExist(err) {
+		t.Fatalf("bare repo not created at %s", bareDir)
+	}
+
+	worktreeDir := filepath.Join(baseDir, "worktrees", "envrepo")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read custom worktrees dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(entries))
+	}
+}
+
+func TestNewAndCheckout_UseCustomBaseDirFromGlobalConfig(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	baseDir := filepath.Join(home, "custom global willow")
+	writeGlobalConfigFile(t, `{"baseDir":"~/custom global willow"}`)
+
+	if err := runApp("clone", origin, "customrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(baseDir, "worktrees", "customrepo")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read custom worktrees dir: %v", err)
+	}
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := runApp("new", "custom-new", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeDir, "custom-new")); os.IsNotExist(err) {
+		t.Fatalf("new worktree missing under custom base")
+	}
+
+	if err := runApp("checkout", "custom-checkout", "--no-fetch"); err != nil {
+		t.Fatalf("checkout failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeDir, "custom-checkout")); os.IsNotExist(err) {
+		t.Fatalf("checkout worktree missing under custom base")
+	}
+}
+
+func TestMigrateBase_DryRunDoesNotChangeState(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "dryrunrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	sourceBase := filepath.Join(home, ".willow")
+	destBase := filepath.Join(home, "migrated", "willow")
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := runApp("migrate-base", destBase, "--dry-run"); err != nil {
+		t.Fatalf("migrate-base --dry-run failed: %v", err)
+	}
+
+	if _, err := os.Stat(sourceBase); os.IsNotExist(err) {
+		t.Fatalf("source base should still exist after dry-run")
+	}
+	if _, err := os.Stat(destBase); !os.IsNotExist(err) {
+		t.Fatalf("destination should not exist after dry-run")
+	}
+}
+
+func TestMigrateBase_AllowsHookOnlyWillowBase(t *testing.T) {
+	setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	statusDir := filepath.Join(home, ".willow", "status")
+	if err := os.MkdirAll(statusDir, 0o755); err != nil {
+		t.Fatalf("mkdir status dir: %v", err)
+	}
+
+	destBase := filepath.Join(home, "hook-only-willow")
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := runApp("migrate-base", destBase, "--yes"); err != nil {
+		t.Fatalf("migrate-base failed for hook-only base: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(destBase, "status")); err != nil {
+		t.Fatalf("status dir missing after migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".willow")); !os.IsNotExist(err) {
+		t.Fatalf("old base should be removed")
+	}
+}
+
+func TestMigrateBase_MovesRepoAndRepairsWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "moverepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	oldWorktreeDir := filepath.Join(home, ".willow", "worktrees", "moverepo")
+	entries, err := os.ReadDir(oldWorktreeDir)
+	if err != nil {
+		t.Fatalf("read old worktree dir: %v", err)
+	}
+	mainDir := filepath.Join(oldWorktreeDir, entries[0].Name())
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := runApp("new", "feature-migrate", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	destBase := filepath.Join(home, "moved-willow")
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+
+	if err := runApp("migrate-base", destBase, "--yes"); err != nil {
+		t.Fatalf("migrate-base failed: %v", err)
+	}
+
+	if got := config.WillowHome(); got != destBase {
+		t.Fatalf("WillowHome() = %q, want %q", got, destBase)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".willow")); !os.IsNotExist(err) {
+		t.Fatalf("old base should be removed")
+	}
+
+	newBareDir := filepath.Join(destBase, "repos", "moverepo.git")
+	newWorktree := filepath.Join(destBase, "worktrees", "moverepo", "feature-migrate")
+	if _, err := os.Stat(newBareDir); os.IsNotExist(err) {
+		t.Fatalf("new bare repo missing at %s", newBareDir)
+	}
+	if _, err := os.Stat(newWorktree); os.IsNotExist(err) {
+		t.Fatalf("new worktree missing at %s", newWorktree)
+	}
+	if _, err := os.Stat(filepath.Join(newBareDir, "branches.json")); os.IsNotExist(err) {
+		t.Fatalf("branches.json should move with the bare repo")
+	}
+
+	repoGit := &git.Git{Dir: newBareDir}
+	if _, err := repoGit.Run("worktree", "list", "--porcelain"); err != nil {
+		t.Fatalf("git worktree list failed after migration: %v", err)
+	}
+
+	wtGit := &git.Git{Dir: newWorktree}
+	top, err := wtGit.Run("rev-parse", "--show-toplevel")
+	if err != nil {
+		t.Fatalf("git rev-parse failed after migration: %v", err)
+	}
+	if comparablePath(top) != comparablePath(newWorktree) {
+		t.Fatalf("rev-parse top-level = %q, want %q", top, newWorktree)
+	}
+}
+
+func TestMigrateBase_RejectsNonEmptyDestination(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "rejectdest"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	destBase := filepath.Join(home, "occupied")
+	if err := os.MkdirAll(destBase, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destBase, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write dest file: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := runApp("migrate-base", destBase, "--yes"); err == nil {
+		t.Fatal("expected migrate-base to reject a non-empty destination")
+	}
+}
+
+func TestMigrateBase_RejectsCwdInsideOldBase(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "insidecwd"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "insidecwd")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read worktrees dir: %v", err)
+	}
+	if err := os.Chdir(filepath.Join(worktreeDir, entries[0].Name())); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	destBase := filepath.Join(home, "new-base")
+	if err := runApp("migrate-base", destBase, "--yes"); err == nil {
+		t.Fatal("expected migrate-base to reject running from inside the old base")
+	}
+}
+
+func TestMigrateBase_RejectsActiveSessions(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "sessionrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "sessionrepo")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read worktrees dir: %v", err)
+	}
+	writeActiveSessionFile(t, "sessionrepo", entries[0].Name(), "s1", claude.StatusDone)
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	destBase := filepath.Join(home, "blocked-base")
+	if err := runApp("migrate-base", destBase, "--yes"); err == nil {
+		t.Fatal("expected migrate-base to reject active Claude session files")
 	}
 }
