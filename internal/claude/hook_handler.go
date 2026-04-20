@@ -148,7 +148,8 @@ func isWriteTool(name string) bool {
 	return name == "Write" || name == "Edit" || name == "NotebookEdit"
 }
 
-// resolveWorktree returns (repo, worktreeDir) if cwd is under ~/.willow/worktrees.
+// resolveWorktree returns (repo, worktreeDir) if cwd is under willow's
+// configured worktrees directory.
 func resolveWorktree() (string, string, bool) {
 	cwd, err := os.Getwd()
 	if err != nil {

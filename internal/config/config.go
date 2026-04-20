@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	BaseDir          string       `json:"baseDir,omitempty"`
 	BaseBranch       string       `json:"baseBranch,omitempty"`
 	BranchPrefix     string       `json:"branchPrefix,omitempty"`
 	PostCheckoutHook string       `json:"postCheckoutHook,omitempty"`
@@ -57,10 +58,51 @@ func DefaultConfig() *Config {
 	}
 }
 
-// WillowHome returns ~/.willow
-func WillowHome() string {
+// NormalizeBaseDir expands a leading "~", makes the path absolute, and cleans it.
+// Relative paths are anchored to $HOME so the resolved willow base does not vary
+// with the process working directory.
+func NormalizeBaseDir(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	home, _ := os.UserHomeDir()
+	switch {
+	case path == "~":
+		path = home
+	case strings.HasPrefix(path, "~/"):
+		path = filepath.Join(home, path[2:])
+	}
+
+	if !filepath.IsAbs(path) {
+		if home != "" {
+			path = filepath.Join(home, path)
+		} else if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+	}
+
+	return filepath.Clean(path)
+}
+
+// DefaultWillowHome returns the built-in default willow base directory.
+func DefaultWillowHome() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".willow")
+}
+
+// WillowHome returns the effective willow base directory.
+func WillowHome() string {
+	if env := NormalizeBaseDir(os.Getenv("WILLOW_BASE_DIR")); env != "" {
+		return env
+	}
+	if global, err := LoadFile(GlobalConfigPath()); err == nil {
+		if baseDir := NormalizeBaseDir(global.BaseDir); baseDir != "" {
+			return baseDir
+		}
+	}
+	return DefaultWillowHome()
 }
 
 func ReposDir() string {
@@ -84,7 +126,7 @@ func LocalConfigPath(bareDir string) string {
 	return filepath.Join(bareDir, "willow.json")
 }
 
-// IsWillowRepo checks if bareDir lives under ~/.willow/repos/.
+// IsWillowRepo checks if bareDir lives under the active willow repos directory.
 // Both paths are resolved through EvalSymlinks to handle macOS /var → /private/var.
 func IsWillowRepo(bareDir string) bool {
 	reposDir := ReposDir()
@@ -97,7 +139,7 @@ func IsWillowRepo(bareDir string) bool {
 	return strings.HasPrefix(bareDir, reposDir+string(filepath.Separator))
 }
 
-// ListRepos scans ~/.willow/repos/ for *.git dirs and returns repo names (without .git suffix).
+// ListRepos scans the active willow repos dir for *.git dirs and returns repo names (without .git suffix).
 func ListRepos() ([]string, error) {
 	entries, err := os.ReadDir(ReposDir())
 	if err != nil {
@@ -115,7 +157,7 @@ func ListRepos() ([]string, error) {
 	return repos, nil
 }
 
-// ResolveRepo returns the bare dir path for a named repo under ~/.willow/repos/.
+// ResolveRepo returns the bare dir path for a named repo under the active willow repos dir.
 func ResolveRepo(name string) (string, error) {
 	dir := filepath.Join(ReposDir(), name+".git")
 	info, err := os.Stat(dir)
@@ -125,8 +167,8 @@ func ResolveRepo(name string) (string, error) {
 	return dir, nil
 }
 
-// ResolveRepoFromDir checks if dir is at or under ~/.willow/worktrees/<name>/
-// and returns the corresponding bare repo path (~/.willow/repos/<name>.git).
+// ResolveRepoFromDir checks if dir is at or under willow's worktrees/<name>/
+// and returns the corresponding bare repo path (repos/<name>.git).
 // This allows commands to work from the worktrees/<name>/ directory itself,
 // not just from inside a specific worktree.
 func ResolveRepoFromDir(dir string) (string, bool) {
@@ -167,10 +209,11 @@ func Load(bareDir string) *Config {
 
 	if bareDir != "" {
 		if local, err := LoadFile(LocalConfigPath(bareDir)); err == nil {
-			merge(cfg, local)
+			mergeLocal(cfg, local)
 		}
 	}
 
+	cfg.BaseDir = WillowHome()
 	return cfg
 }
 
@@ -191,6 +234,9 @@ func LoadFile(path string) (*Config, error) {
 
 // merge overlays non-zero fields from overlay onto base (mutates base).
 func merge(base, overlay *Config) {
+	if overlay.BaseDir != "" {
+		base.BaseDir = NormalizeBaseDir(overlay.BaseDir)
+	}
 	if overlay.BaseBranch != "" {
 		base.BaseBranch = overlay.BaseBranch
 	}
@@ -245,6 +291,14 @@ func merge(base, overlay *Config) {
 	if overlay.Notify.Command != "" {
 		base.Notify.Command = overlay.Notify.Command
 	}
+}
+
+// mergeLocal overlays repo-local settings onto base. Some fields, like BaseDir,
+// are global-only because willow must resolve them before it can locate a repo.
+func mergeLocal(base, overlay *Config) {
+	overlayCopy := *overlay
+	overlayCopy.BaseDir = ""
+	merge(base, &overlayCopy)
 }
 
 // Validate checks for common config issues and returns warnings.

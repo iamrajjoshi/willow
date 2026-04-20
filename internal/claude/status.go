@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/iamrajjoshi/willow/internal/config"
 )
 
 type Status string
@@ -38,12 +40,11 @@ type SessionStatus struct {
 }
 
 func StatusDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".willow", "status")
+	return filepath.Join(config.WillowHome(), "status")
 }
 
 // ReadAllSessions reads all session status files from the directory-based layout:
-// ~/.willow/status/<repo>/<worktree>/*.json
+// <willow-base>/status/<repo>/<worktree>/*.json
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -178,7 +179,7 @@ func RemoveSessionFile(repoName, worktreeDir, sessionID string) error {
 	return os.Remove(path)
 }
 
-// ScanAllSessions walks ~/.willow/status/ and returns all parsed sessions.
+// ScanAllSessions walks the willow status directory and returns all parsed sessions.
 func ScanAllSessions() ([]SessionFileInfo, error) {
 	statusDir := StatusDir()
 	var results []SessionFileInfo

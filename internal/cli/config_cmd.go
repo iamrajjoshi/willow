@@ -85,6 +85,7 @@ func configShowCmd() *cli.Command {
 				local = &config.Config{}
 			}
 
+			printField("baseDir", merged.BaseDir, baseDirSource(global.BaseDir))
 			printField("baseBranch", merged.BaseBranch, fieldSource(local.BaseBranch, global.BaseBranch, def.BaseBranch))
 			printField("branchPrefix", merged.BranchPrefix, fieldSource(local.BranchPrefix, global.BranchPrefix, def.BranchPrefix))
 			printField("postCheckoutHook", merged.PostCheckoutHook, fieldSource(local.PostCheckoutHook, global.PostCheckoutHook, def.PostCheckoutHook))
@@ -247,6 +248,16 @@ func configInitCmd() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func baseDirSource(globalVal string) string {
+	if os.Getenv("WILLOW_BASE_DIR") != "" {
+		return "env"
+	}
+	if globalVal != "" {
+		return "global"
+	}
+	return "default"
 }
 
 func printField(name string, value any, source string) {

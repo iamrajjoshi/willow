@@ -2,17 +2,19 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
 )
 
-const bashTabTitle = `
+const bashTabTitleTemplate = `
 # Set terminal tab title to willow worktree name
 __willow_tab_title() {
-  local wt_dir="$HOME/.willow/worktrees"
+  local wt_dir="$WILLOW_WORKTREES_DIR"
   local resolved_wt_dir resolved_pwd
   resolved_wt_dir="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || return
   resolved_pwd="$(pwd -P)"
@@ -29,11 +31,12 @@ __willow_tab_title() {
 PROMPT_COMMAND="__willow_tab_title;${PROMPT_COMMAND:-}"
 `
 
-const bashInitScript = `# Willow shell integration
+const bashInitTemplate = `# Willow shell integration
 # Add to your .bashrc:
 #   eval "$(willow shell-init)"
 
 export WILLOW=1
+export WILLOW_WORKTREES_DIR=%q
 
 ww() {
   if [ "$1" = "sw" ]; then
@@ -71,7 +74,7 @@ ww() {
     command willow "$@"
     local ret=$?
     if [ $ret -eq 0 ] && ! [ -d "$cwd" ]; then
-      cd "${cwd%/*}" 2>/dev/null || cd ~/.willow/worktrees 2>/dev/null || true
+      cd "${cwd%%/*}" 2>/dev/null || cd "$WILLOW_WORKTREES_DIR" 2>/dev/null || true
     fi
     return $ret
   fi
@@ -90,7 +93,7 @@ wwc() {
   cd "$dir" || return
 }
 
-www() { cd ~/.willow/worktrees || return; }
+www() { cd "$WILLOW_WORKTREES_DIR" || return; }
 
 # Tab completion
 __willow_init_completion() {
@@ -124,10 +127,10 @@ complete -o bashdefault -o default -o nospace -F __willow_bash_autocomplete will
 complete -o bashdefault -o default -o nospace -F __willow_bash_autocomplete ww
 `
 
-const zshTabTitle = `
+const zshTabTitleTemplate = `
 # Set terminal tab title to willow worktree name
 __willow_tab_title() {
-  local wt_dir="$HOME/.willow/worktrees"
+  local wt_dir="$WILLOW_WORKTREES_DIR"
   local resolved_wt_dir resolved_pwd
   resolved_wt_dir="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || return
   resolved_pwd="$(pwd -P)"
@@ -144,11 +147,12 @@ __willow_tab_title() {
 precmd_functions+=(__willow_tab_title)
 `
 
-const zshInitScript = `# Willow shell integration
+const zshInitTemplate = `# Willow shell integration
 # Add to your .zshrc:
 #   eval "$(willow shell-init)"
 
 export WILLOW=1
+export WILLOW_WORKTREES_DIR=%q
 
 ww() {
   if [ "$1" = "sw" ]; then
@@ -186,7 +190,7 @@ ww() {
     command willow "$@"
     local ret=$?
     if [ $ret -eq 0 ] && ! [ -d "$cwd" ]; then
-      cd "${cwd%/*}" 2>/dev/null || cd ~/.willow/worktrees 2>/dev/null || true
+      cd "${cwd%%/*}" 2>/dev/null || cd "$WILLOW_WORKTREES_DIR" 2>/dev/null || true
     fi
     return $ret
   fi
@@ -205,7 +209,7 @@ wwc() {
   cd "$dir" || return
 }
 
-www() { cd ~/.willow/worktrees || return; }
+www() { cd "$WILLOW_WORKTREES_DIR" || return; }
 
 # Tab completion
 _willow() {
@@ -233,10 +237,10 @@ if [ "$funcstack[1]" = "_willow" ]; then
 fi
 `
 
-const fishTabTitle = `
+const fishTabTitleTemplate = `
 # Set terminal tab title to willow worktree name
 function __willow_tab_title --on-variable PWD
-  set -l wt_dir "$HOME/.willow/worktrees"
+  set -l wt_dir "$WILLOW_WORKTREES_DIR"
   set -l resolved_wt_dir (cd "$wt_dir" 2>/dev/null; and pwd -P)
   set -l resolved_pwd (pwd -P)
   if string match -q "$resolved_wt_dir/*" "$resolved_pwd"
@@ -248,11 +252,12 @@ function __willow_tab_title --on-variable PWD
 end
 `
 
-const fishInitScript = `# Willow shell integration
+const fishInitTemplate = `# Willow shell integration
 # Add to your config.fish:
 #   willow shell-init | source
 
 set -gx WILLOW 1
+set -gx WILLOW_WORKTREES_DIR %q
 
 function ww
   if test (count $argv) -gt 0; and test "$argv[1]" = "sw"
@@ -291,7 +296,7 @@ function ww
     set -l ret $status
     if test $ret -eq 0; and not test -d "$cwd"
       cd (string replace -r '/[^/]+$' '' "$cwd") 2>/dev/null
-        or cd ~/.willow/worktrees 2>/dev/null
+        or cd "$WILLOW_WORKTREES_DIR" 2>/dev/null
         or true
     end
     return $ret
@@ -312,7 +317,7 @@ function wwc
 end
 
 function www
-  cd ~/.willow/worktrees; or return
+  cd "$WILLOW_WORKTREES_DIR"; or return
 end
 
 # Tab completion
@@ -329,6 +334,30 @@ end
 complete -c willow -f -a '(__fish_willow_complete)'
 complete -c ww -w willow
 `
+
+func renderBashInitScript() string {
+	return fmt.Sprintf(bashInitTemplate, config.WorktreesDir())
+}
+
+func renderBashTabTitle() string {
+	return bashTabTitleTemplate
+}
+
+func renderZshInitScript() string {
+	return fmt.Sprintf(zshInitTemplate, config.WorktreesDir())
+}
+
+func renderZshTabTitle() string {
+	return zshTabTitleTemplate
+}
+
+func renderFishInitScript() string {
+	return fmt.Sprintf(fishInitTemplate, config.WorktreesDir())
+}
+
+func renderFishTabTitle() string {
+	return fishTabTitleTemplate
+}
 
 func detectShell() string {
 	shell := filepath.Base(os.Getenv("SHELL"))
@@ -356,19 +385,19 @@ func shellInitCmd() *cli.Command {
 			tabTitle := cmd.Bool("tab-title")
 			switch shell {
 			case "zsh":
-				os.Stdout.WriteString(zshInitScript)
+				os.Stdout.WriteString(renderZshInitScript())
 				if tabTitle {
-					os.Stdout.WriteString(zshTabTitle)
+					os.Stdout.WriteString(renderZshTabTitle())
 				}
 			case "fish":
-				os.Stdout.WriteString(fishInitScript)
+				os.Stdout.WriteString(renderFishInitScript())
 				if tabTitle {
-					os.Stdout.WriteString(fishTabTitle)
+					os.Stdout.WriteString(renderFishTabTitle())
 				}
 			default:
-				os.Stdout.WriteString(bashInitScript)
+				os.Stdout.WriteString(renderBashInitScript())
 				if tabTitle {
-					os.Stdout.WriteString(bashTabTitle)
+					os.Stdout.WriteString(renderBashTabTitle())
 				}
 			}
 			return nil

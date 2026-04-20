@@ -6,6 +6,8 @@ import { Callout } from "@/components/ui/Callout"
 
 Willow is a git worktree manager built for AI agent workflows. It gives every task its own isolated directory via git worktrees, then adds fzf-based switching and live agent status tracking on top.
 
+`<willow-base>` defaults to `~/.willow`. You can change it with `WILLOW_BASE_DIR`, the global `baseDir` config, or `ww migrate-base <path>`.
+
 ## Install
 
 ### Homebrew
@@ -49,7 +51,7 @@ This gives you the `ww` alias and helper commands:
 | `ww <cmd>` | Alias for `willow` |
 | `ww sw` | fzf worktree switcher (cd's into selection) |
 | `wwn <branch>` | Create worktree + cd into it |
-| `www` | cd to `~/.willow/worktrees/` |
+| `www` | cd to `<willow-base>/worktrees/` |
 
 ### Terminal tab titles (optional)
 
@@ -99,7 +101,7 @@ The skill is non-invocable by design (`user_invocable: false`) — Claude auto-t
 ww cc-setup
 ```
 
-Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
+Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 

@@ -10,7 +10,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var errNotWillowRepo = errors.Userf("not inside a willow-managed repo\n\nRun this command from a worktree under ~/.willow, or use 'ww ls' to see your repos.")
+var errNotWillowRepo = errors.Userf("not inside a willow-managed repo\n\nRun this command from a willow-managed worktree, or use 'ww ls' to see your repos.")
 
 func requireWillowRepo(g *git.Git) (string, error) {
 	bareDir, err := g.BareRepoDir()
@@ -96,6 +96,7 @@ func NewApp() *cli.Command {
 			hookCmd(),
 			shellInitCmd(),
 			gcCmd(),
+			migrateBaseCmd(),
 			doctorCmd(),
 			configCmd(),
 			stackCmd(),

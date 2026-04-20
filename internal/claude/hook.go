@@ -198,9 +198,9 @@ func RemoveLegacyWillowHooks() (removed []string, changed bool, err error) {
 }
 
 // looksLikeLegacyWillowCommand recognizes hook commands willow wrote before
-// the "source":"willow" marker existed: the old shell script at
-// ~/.willow/hooks/claude-status-hook.sh, or a command ending in " hook" whose
-// path contains "willow".
+// the "source":"willow" marker existed: the old shell script at the default
+// ~/.willow/hooks/claude-status-hook.sh path, or a command ending in " hook"
+// whose path contains "willow".
 func looksLikeLegacyWillowCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	if strings.HasSuffix(cmd, "/claude-status-hook.sh") {

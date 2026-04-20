@@ -35,7 +35,7 @@
 Running multiple Claude Code sessions on the same repo means constant context-switching, stashing, and branch juggling. Willow fixes this by giving every task its own isolated directory via git worktrees, then adding fzf-based switching and live agent status tracking on top.
 
 ```
-~/.willow/
+<willow-base>/
 ├── repos/
 │   └── myrepo.git/              # bare clone (shared git database)
 ├── worktrees/
@@ -50,6 +50,8 @@ Running multiple Claude Code sessions on the same repo means constant context-sw
         └── payments/
             └── <session_id>.json   # {"status": "WAIT", ...}
 ```
+
+`<willow-base>` defaults to `~/.willow`. You can override it with `WILLOW_BASE_DIR` or the global `baseDir` config, and move an existing setup with `ww migrate-base <path>`.
 
 ## Install
 
@@ -93,7 +95,7 @@ This gives you:
 | `ww checkout <branch>` | Smart checkout + cd (switch or create, tmux-aware) |
 | `wwn <branch>` | Shorthand for `ww new` |
 | `wwc <branch>` | Shorthand for `ww checkout` |
-| `www` | cd to `~/.willow/worktrees/` |
+| `www` | cd to `<willow-base>/worktrees/` |
 
 **Optional:** Set terminal tab title to the current worktree name:
 
@@ -124,7 +126,7 @@ git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
 ww cc-setup
 ```
 
-Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `~/.willow/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
+Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -267,11 +269,11 @@ ww sync --abort            # abort any in-progress rebases
 Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
 
 ```
-🤖 BUSY   auth-refactor        ~/.willow/worktrees/repo/auth-refactor
-✅ DONE   api-cleanup          ~/.willow/worktrees/repo/api-cleanup
-⏳ WAIT   payments             ~/.willow/worktrees/repo/payments
-🟡 IDLE   main                 ~/.willow/worktrees/repo/main
-   --     old-feature          ~/.willow/worktrees/repo/old-feature
+🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
+✅ DONE   api-cleanup          <willow-base>/worktrees/repo/api-cleanup
+⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
+🟡 IDLE   main                 <willow-base>/worktrees/repo/main
+   --     old-feature          <willow-base>/worktrees/repo/old-feature
 ```
 
 ### `ww rm [branch] [flags]`
@@ -406,6 +408,18 @@ ww config init               # create default global config
 ww config init --local       # create default local config
 ```
 
+The global `baseDir` setting controls `<willow-base>` for the whole machine. It is global-only, resolved before repo-local config, and can be overridden at runtime with `WILLOW_BASE_DIR`.
+
+### `ww migrate-base <path>`
+
+Move willow's base directory to a new path, repair Git worktree metadata, and persist the new global `baseDir`.
+
+```bash
+ww migrate-base ~/code/evergreen/worktrees/willow
+ww migrate-base ~/code/evergreen/worktrees/willow --dry-run
+ww migrate-base ~/code/evergreen/worktrees/willow --yes
+```
+
 ### `ww shell-init [flags]`
 
 Print shell integration script.
@@ -435,10 +449,11 @@ Config merges two tiers (local wins):
 | Priority | Path | Scope |
 |----------|------|-------|
 | 1 | `~/.config/willow/config.json` | Global defaults |
-| 2 | `~/.willow/repos/<repo>.git/willow.json` | Per-repo |
+| 2 | `<willow-base>/repos/<repo>.git/willow.json` | Per-repo |
 
 ```jsonc
 {
+  "baseDir": "~/code/willow",
   "baseBranch": "main",
   "branchPrefix": "alice",
   "postCheckoutHook": ".husky/post-checkout",

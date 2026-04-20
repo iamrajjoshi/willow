@@ -10,6 +10,9 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
+	if cfg.BaseDir != "" {
+		t.Errorf("BaseDir = %q, want empty", cfg.BaseDir)
+	}
 	if cfg.BaseBranch != "" {
 		t.Errorf("BaseBranch = %q, want empty", cfg.BaseBranch)
 	}
@@ -253,14 +256,103 @@ func TestLoad_EmptyBareDir(t *testing.T) {
 	}
 }
 
-func TestWillowHome(t *testing.T) {
+func TestNormalizeBaseDir_ExpandsTildeAndCleans(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+
+	got := NormalizeBaseDir("~/code/../willow")
+	want := filepath.Join(home, "willow")
+	if got != want {
+		t.Errorf("NormalizeBaseDir() = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizeBaseDir_RelativePathUsesHome(t *testing.T) {
+	cwd := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	got := NormalizeBaseDir("tmp/willow")
+	want := filepath.Join(home, "tmp", "willow")
+	if got != want {
+		t.Errorf("NormalizeBaseDir() = %q, want %q", got, want)
+	}
+}
+
+func TestWillowHome_Default(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", "")
 
 	got := WillowHome()
 	want := filepath.Join(home, ".willow")
 	if got != want {
 		t.Errorf("WillowHome() = %q, want %q", got, want)
+	}
+}
+
+func TestWillowHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, "custom", "base"))
+
+	got := WillowHome()
+	want := filepath.Join(home, "custom", "base")
+	if got != want {
+		t.Errorf("WillowHome() = %q, want %q", got, want)
+	}
+}
+
+func TestWillowHome_UsesGlobalConfigBaseDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", "")
+
+	globalPath := GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(globalPath), 0o755); err != nil {
+		t.Fatalf("mkdir global config dir: %v", err)
+	}
+	if err := os.WriteFile(globalPath, []byte(`{"baseDir":"~/code/willow-home"}`), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
+	got := WillowHome()
+	want := filepath.Join(home, "code", "willow-home")
+	if got != want {
+		t.Errorf("WillowHome() = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_LocalBaseDirDoesNotOverrideGlobal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", "")
+
+	globalPath := GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(globalPath), 0o755); err != nil {
+		t.Fatalf("mkdir global config dir: %v", err)
+	}
+	if err := os.WriteFile(globalPath, []byte(`{"baseDir":"~/global-willow"}`), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
+	bareDir := filepath.Join(home, ".willow", "repos", "myrepo.git")
+	if err := os.MkdirAll(bareDir, 0o755); err != nil {
+		t.Fatalf("mkdir bare dir: %v", err)
+	}
+	if err := os.WriteFile(LocalConfigPath(bareDir), []byte(`{"baseDir":"~/local-willow"}`), 0o644); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+
+	cfg := Load(bareDir)
+	want := filepath.Join(home, "global-willow")
+	if cfg.BaseDir != want {
+		t.Errorf("cfg.BaseDir = %q, want %q", cfg.BaseDir, want)
 	}
 }
 

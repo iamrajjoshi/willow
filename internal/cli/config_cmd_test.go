@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -30,11 +31,11 @@ func TestConfigCmd_Structure(t *testing.T) {
 
 func TestFieldSource_String(t *testing.T) {
 	tests := []struct {
-		name     string
-		local    string
-		global   string
-		def      string
-		wantSrc  string
+		name    string
+		local   string
+		global  string
+		def     string
+		wantSrc string
 	}{
 		{"local set", "val", "", "", "local"},
 		{"global set", "", "val", "", "global"},
@@ -129,6 +130,32 @@ func TestFieldSourceSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBaseDirSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	t.Run("env wins", func(t *testing.T) {
+		t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, "env-base"))
+		if got := baseDirSource(filepath.Join(home, "global-base")); got != "env" {
+			t.Errorf("baseDirSource() = %q, want %q", got, "env")
+		}
+	})
+
+	t.Run("global when env unset", func(t *testing.T) {
+		t.Setenv("WILLOW_BASE_DIR", "")
+		if got := baseDirSource(filepath.Join(home, "global-base")); got != "global" {
+			t.Errorf("baseDirSource() = %q, want %q", got, "global")
+		}
+	})
+
+	t.Run("default when unset", func(t *testing.T) {
+		t.Setenv("WILLOW_BASE_DIR", "")
+		if got := baseDirSource(""); got != "default" {
+			t.Errorf("baseDirSource() = %q, want %q", got, "default")
+		}
+	})
 }
 
 func TestFormatValue(t *testing.T) {
