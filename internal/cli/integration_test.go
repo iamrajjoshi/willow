@@ -161,6 +161,139 @@ func installTestCLIPath(t *testing.T, ghScript string) (string, string) {
 	return binDir, logPath
 }
 
+func installFakeGH(t *testing.T) (string, string) {
+	t.Helper()
+
+	stateDir := t.TempDir()
+	binDir, logPath := installTestCLIPath(t, "")
+	ghScript := fmt.Sprintf(`#!/bin/sh
+set -eu
+
+STATE_DIR=%q
+LOG_FILE=%q
+COUNTER_FILE="$STATE_DIR/counter"
+
+log() {
+  printf '%%s\n' "$1" >> "$LOG_FILE"
+}
+
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+  shift 2
+  head=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --head)
+        head="$2"
+        shift 2
+        ;;
+      --state|--json|--limit|-q)
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  log "list|$PWD|$head"
+  file="$STATE_DIR/$head.json"
+  if [ -f "$file" ]; then
+    cat "$file"
+  else
+    printf '[]\n'
+  fi
+  exit 0
+fi
+
+if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  shift 2
+  base=""
+  head=""
+  draft=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base)
+        base="$2"
+        shift 2
+        ;;
+      --head)
+        head="$2"
+        shift 2
+        ;;
+      --draft)
+        draft=true
+        shift
+        ;;
+      --fill)
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  log "create|$PWD|$base|$head|$draft"
+  next=1
+  if [ -f "$COUNTER_FILE" ]; then
+    next=$(( $(cat "$COUNTER_FILE") + 1 ))
+  fi
+  printf '%%s' "$next" > "$COUNTER_FILE"
+
+  url="https://github.com/test/repo/pull/$next"
+  head_oid=$(git rev-parse "$head" 2>/dev/null || printf '')
+  cat > "$STATE_DIR/$head.json" <<EOF
+[{"number":$next,"title":"PR for $head","headRefName":"$head","headRefOid":"$head_oid","state":"OPEN","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"$url","statusCheckRollup":[]}]
+EOF
+  printf '%%s\n' "$url"
+  exit 0
+fi
+
+printf 'unsupported gh invocation: %%s\n' "$*" >&2
+exit 1
+`, stateDir, logPath)
+	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(ghScript), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	return stateDir, logPath
+}
+
+func writeFakePROutput(t *testing.T, stateDir, branch, data string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(stateDir, branch+".json"), []byte(data), 0o644); err != nil {
+		t.Fatalf("write fake PR: %v", err)
+	}
+}
+
+func writeFakeOpenPR(t *testing.T, stateDir, branch, headOID string, number int) string {
+	t.Helper()
+
+	url := fmt.Sprintf("https://github.com/test/repo/pull/%d", number)
+	data := fmt.Sprintf(`[{"number":%d,"title":"Existing PR for %s","headRefName":"%s","headRefOid":"%s","state":"OPEN","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"%s","statusCheckRollup":[]}]`,
+		number, branch, branch, headOID, url)
+	writeFakePROutput(t, stateDir, branch, data)
+	return url
+}
+
+func readLogLines(t *testing.T, path string) []string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read log %s: %v", path, err)
+	}
+
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
+}
+
 func captureStdout(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
 
@@ -225,6 +358,13 @@ exit 1
 
 	_, logPath := installTestCLIPath(t, script)
 	return logPath
+}
+
+func canonicalPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return filepath.Clean(path)
 }
 
 func TestClone_CreatesDirectoryStructure(t *testing.T) {
@@ -1012,6 +1152,343 @@ func TestNew_StackedBranch(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "feature-a") || !strings.Contains(content, "feature-b") {
 		t.Errorf("branches.json missing expected entries: %s", content)
+	}
+}
+
+func TestPRCreate_UnstackedBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	baseBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, baseBranch)
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-pr", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-pr")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+	os.Chdir(featureDir)
+
+	if err := runApp("pr", "create"); err != nil {
+		t.Fatalf("pr create failed: %v", err)
+	}
+
+	lines := readLogLines(t, logPath)
+	featureDir = canonicalPath(featureDir)
+	want := []string{
+		fmt.Sprintf("list|%s|feature-pr", featureDir),
+		fmt.Sprintf("create|%s|%s|feature-pr|false", featureDir, baseBranch),
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("gh log = %v, want %v", lines, want)
+	}
+}
+
+func TestPRCreate_StackedBranchUsesParentBase(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-a failed: %v", err)
+	}
+	featureADir := filepath.Join(worktreeDir, "feature-a")
+	commitFile(t, featureADir, "feature-a.txt", "a\n", "add feature a")
+	configureGitUser(t, featureADir)
+	if _, err := (&git.Git{Dir: featureADir}).Run("push", "-u", "origin", "feature-a"); err != nil {
+		t.Fatalf("push feature-a: %v", err)
+	}
+
+	os.Chdir(featureADir)
+	if err := runApp("new", "feature-b", "-b", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-b failed: %v", err)
+	}
+
+	featureBDir := filepath.Join(worktreeDir, "feature-b")
+	commitFile(t, featureBDir, "feature-b.txt", "b\n", "add feature b")
+	os.Chdir(featureBDir)
+
+	if err := runApp("pr", "create"); err != nil {
+		t.Fatalf("pr create failed: %v", err)
+	}
+
+	lines := readLogLines(t, logPath)
+	featureBDir = canonicalPath(featureBDir)
+	want := []string{
+		fmt.Sprintf("list|%s|feature-b", featureBDir),
+		fmt.Sprintf("create|%s|feature-a|feature-b|false", featureBDir),
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("gh log = %v, want %v", lines, want)
+	}
+}
+
+func TestPRCreate_StackCreatesAncestorsInOrder(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	baseBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, baseBranch)
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-a failed: %v", err)
+	}
+	featureADir := filepath.Join(worktreeDir, "feature-a")
+	commitFile(t, featureADir, "feature-a.txt", "a\n", "add feature a")
+
+	os.Chdir(featureADir)
+	if err := runApp("new", "feature-b", "-b", "feature-a", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-b failed: %v", err)
+	}
+
+	featureBDir := filepath.Join(worktreeDir, "feature-b")
+	commitFile(t, featureBDir, "feature-b.txt", "b\n", "add feature b")
+	os.Chdir(featureBDir)
+
+	if err := runApp("pr", "create", "--stack"); err != nil {
+		t.Fatalf("pr create --stack failed: %v", err)
+	}
+
+	lines := readLogLines(t, logPath)
+	featureADir = canonicalPath(featureADir)
+	featureBDir = canonicalPath(featureBDir)
+	want := []string{
+		fmt.Sprintf("list|%s|feature-a", featureADir),
+		fmt.Sprintf("create|%s|%s|feature-a|false", featureBDir, baseBranch),
+		fmt.Sprintf("list|%s|feature-b", featureBDir),
+		fmt.Sprintf("create|%s|feature-a|feature-b|false", featureBDir),
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("gh log = %v, want %v", lines, want)
+	}
+}
+
+func TestPRCreate_ExistingPROpensNoNewPR(t *testing.T) {
+	origin := setupTestEnv(t)
+	stateDir, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-existing", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-existing")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+	configureGitUser(t, featureDir)
+	if _, err := (&git.Git{Dir: featureDir}).Run("push", "-u", "origin", "feature-existing"); err != nil {
+		t.Fatalf("push feature-existing: %v", err)
+	}
+
+	headOID, err := (&git.Git{Dir: featureDir}).Run("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+
+	writeFakeOpenPR(t, stateDir, "feature-existing", strings.TrimSpace(headOID), 42)
+	os.Chdir(featureDir)
+
+	if err := runApp("pr", "create"); err != nil {
+		t.Fatalf("pr create failed: %v", err)
+	}
+
+	lines := readLogLines(t, logPath)
+	featureDir = canonicalPath(featureDir)
+	want := []string{
+		fmt.Sprintf("list|%s|feature-existing", featureDir),
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("gh log = %v, want %v", lines, want)
+	}
+}
+
+func TestPRCreate_IgnoresExistingPRWithMismatchedHeadOID(t *testing.T) {
+	origin := setupTestEnv(t)
+	stateDir, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-collision", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-collision")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+	configureGitUser(t, featureDir)
+	if _, err := (&git.Git{Dir: featureDir}).Run("push", "-u", "origin", "feature-collision"); err != nil {
+		t.Fatalf("push feature-collision: %v", err)
+	}
+
+	writeFakePROutput(t, stateDir, "feature-collision", `[{"number":41,"title":"Fork PR","headRefName":"feature-collision","headRefOid":"sha-other","state":"OPEN","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"https://github.com/test/repo/pull/41","statusCheckRollup":[]}]`)
+	os.Chdir(featureDir)
+
+	if err := runApp("pr", "create"); err != nil {
+		t.Fatalf("pr create failed: %v", err)
+	}
+
+	lines := readLogLines(t, logPath)
+	featureDir = canonicalPath(featureDir)
+	if len(lines) != 2 {
+		t.Fatalf("expected list + create log lines, got %v", lines)
+	}
+	if lines[0] != fmt.Sprintf("list|%s|feature-collision", featureDir) {
+		t.Fatalf("first log line = %q, want branch lookup", lines[0])
+	}
+	if lines[1] != fmt.Sprintf("create|%s|%s|feature-collision|false", featureDir, entries[0].Name()) {
+		t.Fatalf("second log line = %q, want PR creation", lines[1])
+	}
+}
+
+func TestPRCreate_DirtyWorktreeFails(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, _ = installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-dirty", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-dirty")
+	if err := os.WriteFile(filepath.Join(featureDir, "dirty.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatalf("write dirty file: %v", err)
+	}
+	os.Chdir(featureDir)
+
+	err := runApp("pr", "create")
+	if err == nil {
+		t.Fatal("expected dirty worktree error")
+	}
+	if !strings.Contains(err.Error(), `worktree "feature-dirty" has uncommitted changes`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPRCreate_RemoteAheadFails(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, logPath := installFakeGH(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-behind", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-behind")
+	commitFile(t, featureDir, "feature.txt", "one\n", "add first commit")
+	configureGitUser(t, featureDir)
+	featureGit := &git.Git{Dir: featureDir}
+	if _, err := featureGit.Run("push", "-u", "origin", "feature-behind"); err != nil {
+		t.Fatalf("initial push: %v", err)
+	}
+
+	commitFile(t, featureDir, "feature.txt", "two\n", "add second commit")
+	if _, err := featureGit.Run("push", "origin", "feature-behind"); err != nil {
+		t.Fatalf("second push: %v", err)
+	}
+	if _, err := featureGit.Run("reset", "--hard", "HEAD~1"); err != nil {
+		t.Fatalf("reset feature-behind: %v", err)
+	}
+	os.Chdir(featureDir)
+
+	err := runApp("pr", "create")
+	if err == nil {
+		t.Fatal("expected remote-ahead error")
+	}
+	if !strings.Contains(err.Error(), `branch "feature-behind" is behind origin/feature-behind`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if lines := readLogLines(t, logPath); len(lines) != 0 {
+		t.Fatalf("expected no gh calls when remote is ahead, got %v", lines)
+	}
+}
+
+func TestPRCreate_MissingGHShowsFriendlyError(t *testing.T) {
+	origin := setupTestEnv(t)
+	_, _ = installTestCLIPath(t, "")
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-no-gh", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-no-gh")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+	os.Chdir(featureDir)
+
+	err := runApp("pr", "create")
+	if err == nil {
+		t.Fatal("expected missing gh error")
+	}
+	if !strings.Contains(err.Error(), "gh CLI required for PR creation") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

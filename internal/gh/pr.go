@@ -3,7 +3,9 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/errors"
 )
@@ -47,6 +49,7 @@ type PRInfo struct {
 }
 
 const prJSONFields = "number,title,headRefName,headRefOid,baseRefName,state,mergedAt,reviewDecision,mergeable,additions,deletions,url,statusCheckRollup"
+const openPRLookupLimit = 20
 
 // CIStatus returns the aggregate CI status: "pass", "fail", "pending", or "none".
 func (p *PRInfo) CIStatus() string {
@@ -76,6 +79,24 @@ func EnsureCLI(feature string) error {
 	return nil
 }
 
+func prLookupArgs(branch string) []string {
+	return []string{
+		"pr", "list",
+		"--head", branch,
+		"--state", "open",
+		"--json", prJSONFields,
+		"--limit", fmt.Sprintf("%d", openPRLookupLimit),
+	}
+}
+
+func prCreateArgs(base, head string, draft bool) []string {
+	args := []string{"pr", "create", "--fill", "--base", base, "--head", head}
+	if draft {
+		args = append(args, "--draft")
+	}
+	return args
+}
+
 func parsePRListOutput(out []byte) ([]*PRInfo, error) {
 	var prs []ghPR
 	if err := json.Unmarshal(out, &prs); err != nil {
@@ -101,6 +122,77 @@ func parsePRListOutput(out []byte) ([]*PRInfo, error) {
 		})
 	}
 	return infos, nil
+}
+
+func selectMatchingPR(prs []*PRInfo, headOID string) *PRInfo {
+	if len(prs) == 0 {
+		return nil
+	}
+	if headOID == "" {
+		if len(prs) == 1 {
+			return prs[0]
+		}
+		return nil
+	}
+
+	for _, pr := range prs {
+		if pr.HeadRefOID == headOID {
+			return pr
+		}
+	}
+	return nil
+}
+
+func FindOpenPR(dir, branch, headOID string) (*PRInfo, error) {
+	if err := EnsureCLI("PR creation"); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("gh", prLookupArgs(branch)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GH_PROMPT_DISABLED=1",
+		"GH_NO_UPDATE_NOTIFIER=1",
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return nil, fmt.Errorf("gh pr list failed: %s", msg)
+		}
+		return nil, fmt.Errorf("gh pr list failed: %w", err)
+	}
+
+	prs, err := parsePRListOutput(out)
+	if err != nil {
+		return nil, err
+	}
+	return selectMatchingPR(prs, headOID), nil
+}
+
+func CreatePR(dir, base, head string, draft bool) (string, error) {
+	if err := EnsureCLI("PR creation"); err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("gh", prCreateArgs(base, head, draft)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GH_PROMPT_DISABLED=1",
+		"GH_NO_UPDATE_NOTIFIER=1",
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return "", fmt.Errorf("gh pr create failed: %s", msg)
+		}
+		return "", fmt.Errorf("gh pr create failed: %w", err)
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
 
 // BatchPRInfo fetches PR info for multiple branches in a single gh call.

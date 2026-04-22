@@ -2,6 +2,7 @@ package gh
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -149,6 +150,49 @@ func TestGHPRJSONParsing(t *testing.T) {
 	}
 }
 
+func TestPRLookupArgs(t *testing.T) {
+	got := prLookupArgs("feature-x")
+	want := []string{
+		"pr", "list",
+		"--head", "feature-x",
+		"--state", "open",
+		"--json", prJSONFields,
+		"--limit", "20",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("prLookupArgs() = %v, want %v", got, want)
+	}
+}
+
+func TestPRCreateArgs(t *testing.T) {
+	tests := []struct {
+		name  string
+		draft bool
+		want  []string
+	}{
+		{
+			name:  "ready for review",
+			draft: false,
+			want:  []string{"pr", "create", "--fill", "--base", "main", "--head", "feature-x"},
+		},
+		{
+			name:  "draft",
+			draft: true,
+			want:  []string{"pr", "create", "--fill", "--base", "main", "--head", "feature-x", "--draft"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := prCreateArgs("main", "feature-x", tt.draft)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("prCreateArgs() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParsePRListOutput(t *testing.T) {
 	raw := `[
 		{
@@ -187,5 +231,25 @@ func TestParsePRListOutput(t *testing.T) {
 	}
 	if len(pr.Checks) != 1 || pr.Checks[0].Name != "test" {
 		t.Errorf("Checks = %+v, want one test check", pr.Checks)
+	}
+}
+
+func TestSelectMatchingPR(t *testing.T) {
+	prs := []*PRInfo{
+		{Number: 41, Branch: "feature-x", HeadRefOID: "sha-other"},
+		{Number: 42, Branch: "feature-x", HeadRefOID: "sha-match"},
+	}
+
+	if got := selectMatchingPR(prs, "sha-match"); got == nil || got.Number != 42 {
+		t.Fatalf("selectMatchingPR() = %+v, want PR #42", got)
+	}
+	if got := selectMatchingPR(prs, "sha-missing"); got != nil {
+		t.Fatalf("selectMatchingPR() = %+v, want nil", got)
+	}
+	if got := selectMatchingPR([]*PRInfo{{Number: 99}}, ""); got == nil || got.Number != 99 {
+		t.Fatalf("selectMatchingPR() with single fallback = %+v, want PR #99", got)
+	}
+	if got := selectMatchingPR(prs, ""); got != nil {
+		t.Fatalf("selectMatchingPR() with ambiguous empty head = %+v, want nil", got)
 	}
 }

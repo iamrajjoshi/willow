@@ -71,7 +71,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 
 - [git](https://git-scm.com/)
 - [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
-- [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, and GitHub-aware merged worktree detection
+- [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, `ww pr create`, and GitHub-aware merged worktree detection
 
 ## Setup
 
@@ -263,6 +263,23 @@ ww sync --abort            # abort any in-progress rebases
 | `-r, --repo` | Target repo by name |
 | `--no-fetch` | Skip fetching from remote |
 | `--abort` | Abort in-progress rebases |
+
+### `ww pr create`
+
+Create a GitHub PR for the current worktree. Willow derives the PR base from the stack parent when the branch is stacked, or from the repo's default base branch otherwise. It pushes the branch if needed, skips creation if an open PR already exists, and can publish the current branch's ancestor stack in order.
+
+```bash
+ww pr create                  # create PR for the current branch
+ww pr create --draft          # open a draft PR
+ww pr create --stack          # create missing PRs from root → current branch
+```
+
+| Flag | Description |
+|------|-------------|
+| `--draft` | Create draft pull requests |
+| `--stack` | Create missing PRs for the current branch's ancestor stack |
+
+Requires the [GitHub CLI](https://cli.github.com/) (`gh`) and must be run from inside a willow-managed worktree with a clean working tree.
 
 ### `ww sw`
 
