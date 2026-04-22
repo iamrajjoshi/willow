@@ -280,6 +280,8 @@ Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by
 
 Remove a worktree. Without arguments, opens fzf picker with multi-select (TAB to toggle, Ctrl-A to select all).
 
+From the tmux picker, `Ctrl-D` removes the selected worktree and `Ctrl-X` bulk-removes safe merged worktrees currently shown in the picker, skipping the active tmux session plus any merged worktrees with local changes, unpushed commits, or stacked children.
+
 ```bash
 ww rm auth-refactor              # direct removal
 ww rm                            # fzf picker
