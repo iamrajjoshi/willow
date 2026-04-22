@@ -90,25 +90,34 @@ func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
 func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
 
 	repoName := "myrepo"
 	wtName := "old-sessions"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(StatusDir(), repoName, wtName)
 	os.MkdirAll(sessDir, 0o755)
 
-	// Write a session file with a timestamp older than 30 minutes
+	// Old session files should still be readable until an explicit liveness
+	// cleanup path removes them.
 	old := SessionStatus{Status: StatusDone, SessionID: "old-sess", Timestamp: time.Now().UTC().Add(-2 * time.Hour)}
 	data, _ := json.Marshal(old)
 	os.WriteFile(filepath.Join(sessDir, old.SessionID+".json"), data, 0o644)
+	os.WriteFile(filepath.Join(sessDir, old.SessionID+".files"), []byte("/tmp/file\n"), 0o644)
+	os.WriteFile(TimelinePath(repoName, wtName, old.SessionID), []byte("{}\n"), 0o644)
 
 	got := ReadAllSessions(repoName, wtName)
 	if len(got) != 1 {
-		t.Fatalf("ReadAllSessions returned %d sessions, want 1 (should preserve old files)", len(got))
+		t.Fatalf("ReadAllSessions returned %d sessions, want 1", len(got))
 	}
 
-	// Verify file still exists on disk
-	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.json")); os.IsNotExist(err) {
-		t.Error("ReadAllSessions deleted old session file, but should only read")
+	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.json")); err != nil {
+		t.Fatalf("old session json should still exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.files")); err != nil {
+		t.Fatalf("old session files sidecar should still exist: %v", err)
+	}
+	if _, err := os.Stat(TimelinePath(repoName, wtName, "old-sess")); err != nil {
+		t.Fatalf("old session timeline should still exist: %v", err)
 	}
 }
 
@@ -150,6 +159,15 @@ func TestTimeSince(t *testing.T) {
 
 	if got := TimeSince(time.Now().Add(-48 * time.Hour)); got != "2d ago" {
 		t.Errorf("TimeSince(48h) = %q, want '2d ago'", got)
+	}
+}
+
+func TestShortSessionID(t *testing.T) {
+	if got := ShortSessionID("1234567890"); got != "12345678" {
+		t.Errorf("ShortSessionID(long) = %q, want %q", got, "12345678")
+	}
+	if got := ShortSessionID("short"); got != "short" {
+		t.Errorf("ShortSessionID(short) = %q, want %q", got, "short")
 	}
 }
 

@@ -20,7 +20,8 @@ const (
 	StatusIdle    Status = "IDLE"
 	StatusOffline Status = "--"
 
-	staleTimeout = 2 * time.Minute
+	staleTimeout   = 2 * time.Minute
+	shortSessionID = 8
 )
 
 type WorktreeStatus struct {
@@ -44,7 +45,8 @@ func StatusDir() string {
 }
 
 // ReadAllSessions reads all session status files from the directory-based layout:
-// <willow-base>/status/<repo>/<worktree>/*.json
+// <willow-base>/status/<repo>/<worktree>/*.json. Corrupt session files are
+// cleaned up as they're encountered.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -57,6 +59,7 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
+		sessionID := strings.TrimSuffix(e.Name(), ".json")
 		path := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -64,7 +67,11 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 		}
 		var ss SessionStatus
 		if err := json.Unmarshal(data, &ss); err != nil {
+			_ = removeSessionArtifacts(repoName, worktreeDir, sessionID)
 			continue
+		}
+		if ss.SessionID == "" {
+			ss.SessionID = sessionID
 		}
 		sessions = append(sessions, &ss)
 	}
@@ -165,6 +172,13 @@ func TimeSince(t time.Time) string {
 	}
 }
 
+func ShortSessionID(sessionID string) string {
+	if len(sessionID) <= shortSessionID {
+		return sessionID
+	}
+	return sessionID[:shortSessionID]
+}
+
 // SessionFileInfo holds a parsed session with its repo/worktree metadata.
 type SessionFileInfo struct {
 	RepoName    string
@@ -172,11 +186,27 @@ type SessionFileInfo struct {
 	Session     SessionStatus
 }
 
-// RemoveSessionFile removes a single session file and its companion timeline.
+// RemoveSessionFile removes a single session file and its companion artifacts.
 func RemoveSessionFile(repoName, worktreeDir, sessionID string) error {
-	path := filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".json")
-	os.Remove(TimelinePath(repoName, worktreeDir, sessionID))
-	return os.Remove(path)
+	return removeSessionArtifacts(repoName, worktreeDir, sessionID)
+}
+
+func removeSessionArtifacts(repoName, worktreeDir, sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+
+	var firstErr error
+	for _, path := range []string{
+		filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".json"),
+		filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".files"),
+		TimelinePath(repoName, worktreeDir, sessionID),
+	} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // ScanAllSessions walks the willow status directory and returns all parsed sessions.
