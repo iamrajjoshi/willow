@@ -219,6 +219,24 @@ func TestStatusOrder_Ordering(t *testing.T) {
 	}
 }
 
+func TestWorktreeUrgencyOrder_Ordering(t *testing.T) {
+	if WorktreeUrgencyOrder(StatusWait, false) >= WorktreeUrgencyOrder(StatusDone, true) {
+		t.Error("WAIT should have higher urgency than unread DONE")
+	}
+	if WorktreeUrgencyOrder(StatusDone, true) >= WorktreeUrgencyOrder(StatusBusy, false) {
+		t.Error("unread DONE should have higher urgency than BUSY")
+	}
+	if WorktreeUrgencyOrder(StatusBusy, false) >= WorktreeUrgencyOrder(StatusDone, false) {
+		t.Error("BUSY should have higher urgency than read DONE")
+	}
+	if WorktreeUrgencyOrder(StatusDone, false) >= WorktreeUrgencyOrder(StatusIdle, false) {
+		t.Error("read DONE should have higher urgency than IDLE")
+	}
+	if WorktreeUrgencyOrder(StatusIdle, false) >= WorktreeUrgencyOrder(StatusOffline, false) {
+		t.Error("IDLE should have higher urgency than OFFLINE")
+	}
+}
+
 func TestReadStatus_WaitAggregation(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

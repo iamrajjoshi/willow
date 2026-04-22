@@ -148,3 +148,44 @@ func TestGHPRJSONParsing(t *testing.T) {
 		t.Errorf("PR2 Checks count = %d, want 0", len(pr2.Checks))
 	}
 }
+
+func TestParsePRListOutput(t *testing.T) {
+	raw := `[
+		{
+			"number": 42,
+			"title": "Add feature X",
+			"headRefName": "feature-x",
+			"state": "OPEN",
+			"reviewDecision": "APPROVED",
+			"mergeable": "MERGEABLE",
+			"additions": 100,
+			"deletions": 20,
+			"url": "https://github.com/org/repo/pull/42",
+			"statusCheckRollup": [
+				{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
+			]
+		}
+	]`
+
+	prs, err := parsePRListOutput([]byte(raw))
+	if err != nil {
+		t.Fatalf("parsePRListOutput() error = %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 PR, got %d", len(prs))
+	}
+
+	pr := prs[0]
+	if pr.Number != 42 {
+		t.Errorf("Number = %d, want 42", pr.Number)
+	}
+	if pr.Branch != "feature-x" {
+		t.Errorf("Branch = %q, want feature-x", pr.Branch)
+	}
+	if pr.URL != "https://github.com/org/repo/pull/42" {
+		t.Errorf("URL = %q, want pull URL", pr.URL)
+	}
+	if len(pr.Checks) != 1 || pr.Checks[0].Name != "test" {
+		t.Errorf("Checks = %+v, want one test check", pr.Checks)
+	}
+}

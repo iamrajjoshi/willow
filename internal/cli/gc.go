@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -77,31 +78,38 @@ func gcCmd() *cli.Command {
 
 				cfg := config.Load(bareDir)
 				repoGit := &git.Git{Dir: bareDir}
-				merged, err := repoGit.MergedBranches(repoGit.ResolveBaseBranch(cfg.BaseBranch))
-				if err != nil {
-					u.Warn(fmt.Sprintf("Skipping repo %s: failed to get merged branches: %v", repoName, err))
-					continue
-				}
-				if len(merged) == 0 {
-					continue
-				}
-
 				wts, err := worktree.List(repoGit)
 				if err != nil {
 					u.Warn(fmt.Sprintf("Skipping repo %s: failed to list worktrees: %v", repoName, err))
 					continue
 				}
 
-				wtBranches := make(map[string]bool)
+				baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
+				branches := make([]string, 0, len(wts))
+				branchHeads := make(map[string]string, len(wts))
+				repoDir := ""
 				for _, wt := range wts {
-					if !wt.IsBare {
-						wtBranches[wt.Branch] = true
+					if wt.IsBare || wt.Branch == "" {
+						continue
 					}
+					if repoDir == "" {
+						repoDir = wt.Path
+					}
+					branches = append(branches, wt.Branch)
+					branchHeads[wt.Branch] = wt.Head
 				}
 
-				for _, branch := range merged {
-					if wtBranches[branch] {
-						candidates = append(candidates, mergedWorktree{repoName: repoName, branch: branch})
+				mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
+				for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+					mergedSet[branch] = true
+				}
+				if len(mergedSet) == 0 {
+					continue
+				}
+
+				for _, wt := range wts {
+					if !wt.IsBare && mergedSet[wt.Branch] {
+						candidates = append(candidates, mergedWorktree{repoName: repoName, branch: wt.Branch})
 					}
 				}
 			}

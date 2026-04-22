@@ -11,6 +11,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -37,6 +38,12 @@ type PickerItem struct {
 	Sessions    []*claude.SessionStatus
 	Merged      bool
 	StackPrefix string // tree-drawing prefix for stacked branches (e.g., "├─ ")
+}
+
+type pickerGroup struct {
+	items    []PickerItem
+	merged   bool
+	priority int
 }
 
 func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, error) {
@@ -72,14 +79,24 @@ func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, err
 		}
 
 		cfg := config.Load(bareDir)
+		baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
 		branches := make([]string, 0, len(wts))
+		branchHeads := make(map[string]string, len(wts))
+		repoDir := ""
 		for _, wt := range wts {
 			if !wt.IsBare && wt.Branch != "" {
+				if repoDir == "" {
+					repoDir = wt.Path
+				}
 				branches = append(branches, wt.Branch)
+				branchHeads[wt.Branch] = wt.Head
 			}
 		}
 		done = trace.Span(ctx, "MergedBranchSet/"+repoName)
-		mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch), branches)
+		mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
+		for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+			mergedSet[branch] = true
+		}
 		done()
 
 		done = trace.Span(ctx, "per-wt-loop/"+repoName)
@@ -106,66 +123,127 @@ func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, err
 		done()
 	}
 
-	done := trace.Span(ctx, "applyStackOrder")
-	items = applyStackOrder(items, repoNames)
+	done := trace.Span(ctx, "sortPickerItems")
+	items = sortPickerItems(items, repoNames, defaultPickerStackLoader)
 	done()
 
 	return items, nil
 }
 
-func applyStackOrder(items []PickerItem, repoNames []string) []PickerItem {
-	branchSet := make(map[string]bool)
+type pickerStackLoader func(repoName string) *stack.Stack
+
+func defaultPickerStackLoader(repoName string) *stack.Stack {
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return nil
+	}
+	return stack.Load(bareDir)
+}
+
+func sortPickerItems(items []PickerItem, repoNames []string, loadStack pickerStackLoader) []PickerItem {
+	groups := buildPickerGroups(items, repoNames, loadStack)
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].merged != groups[j].merged {
+			return !groups[i].merged
+		}
+		return groups[i].priority < groups[j].priority
+	})
+
+	var result []PickerItem
+	for _, group := range groups {
+		result = append(result, group.items...)
+	}
+	return result
+}
+
+func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerStackLoader) []pickerGroup {
+	if loadStack == nil {
+		loadStack = func(string) *stack.Stack { return nil }
+	}
+
+	repoBranchSets := make(map[string]map[string]bool)
 	for _, item := range items {
+		branchSet := repoBranchSets[item.RepoName]
+		if branchSet == nil {
+			branchSet = make(map[string]bool)
+			repoBranchSets[item.RepoName] = branchSet
+		}
 		branchSet[item.Branch] = true
 	}
 
 	itemMap := make(map[string]*PickerItem)
 	for i := range items {
-		key := items[i].RepoName + "/" + items[i].Branch
+		key := pickerItemKey(items[i].RepoName, items[i].Branch)
 		itemMap[key] = &items[i]
 	}
 
-	stackedKeys := make(map[string]bool)
-	var stackedItems []PickerItem
+	groupedKeys := make(map[string]bool)
+	var groups []pickerGroup
 
 	for _, repoName := range repoNames {
-		bareDir, err := config.ResolveRepo(repoName)
-		if err != nil {
+		branchSet := repoBranchSets[repoName]
+		if len(branchSet) == 0 {
 			continue
 		}
-		st := stack.Load(bareDir)
-		if st.IsEmpty() {
+		st := loadStack(repoName)
+		if st == nil || st.IsEmpty() {
 			continue
 		}
 
 		treeLines := st.TreeLines(branchSet)
+		prefixByBranch := make(map[string]string, len(treeLines))
 		for _, tl := range treeLines {
-			key := repoName + "/" + tl.Branch
-			if item, ok := itemMap[key]; ok {
-				item.StackPrefix = tl.Prefix
-				stackedKeys[key] = true
-				stackedItems = append(stackedItems, *item)
+			prefixByBranch[tl.Branch] = tl.Prefix
+		}
+
+		for _, root := range st.Roots() {
+			var groupItems []PickerItem
+			for _, branch := range st.SubtreeSort(root) {
+				key := pickerItemKey(repoName, branch)
+				item, ok := itemMap[key]
+				if !ok {
+					continue
+				}
+				item.StackPrefix = prefixByBranch[branch]
+				groupedKeys[key] = true
+				groupItems = append(groupItems, *item)
+			}
+			if len(groupItems) > 0 {
+				groups = append(groups, newPickerGroup(groupItems))
 			}
 		}
 	}
 
-	var nonStacked []PickerItem
 	for _, item := range items {
-		key := item.RepoName + "/" + item.Branch
-		if !stackedKeys[key] {
-			nonStacked = append(nonStacked, item)
+		key := pickerItemKey(item.RepoName, item.Branch)
+		if !groupedKeys[key] {
+			groups = append(groups, newPickerGroup([]PickerItem{item}))
 		}
 	}
 
-	sort.SliceStable(nonStacked, func(i, j int) bool {
-		if nonStacked[i].Merged != nonStacked[j].Merged {
-			return !nonStacked[i].Merged
-		}
-		return claude.StatusOrder(nonStacked[i].Status) < claude.StatusOrder(nonStacked[j].Status)
-	})
+	return groups
+}
 
-	result := append(stackedItems, nonStacked...)
-	return result
+func newPickerGroup(items []PickerItem) pickerGroup {
+	group := pickerGroup{
+		items:    items,
+		merged:   true,
+		priority: claude.WorktreeUrgencyOrder(claude.StatusOffline, false),
+	}
+	for _, item := range items {
+		if !item.Merged {
+			group.merged = false
+		}
+		priority := claude.WorktreeUrgencyOrder(item.Status, item.Unread)
+		if priority < group.priority {
+			group.priority = priority
+		}
+	}
+	return group
+}
+
+func pickerItemKey(repoName, branch string) string {
+	return repoName + "/" + branch
 }
 
 // FormatPickerLines produces ANSI-colored lines for the fzf picker.

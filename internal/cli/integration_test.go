@@ -3,7 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +15,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/tmux"
+	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
 // setupTestEnv creates a fake HOME with an "origin" git repo to clone from.
@@ -100,6 +104,127 @@ func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status cla
 	if err := os.WriteFile(filepath.Join(dir, sessionID+".json"), data, 0o644); err != nil {
 		t.Fatalf("write session file: %v", err)
 	}
+}
+
+func configureGitUser(t *testing.T, dir string) {
+	t.Helper()
+
+	g := &git.Git{Dir: dir}
+	if _, err := g.Run("config", "user.email", "test@test.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := g.Run("config", "user.name", "Test"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+}
+
+func commitFile(t *testing.T, dir, name, contents, message string) {
+	t.Helper()
+
+	configureGitUser(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+
+	g := &git.Git{Dir: dir}
+	if _, err := g.Run("add", name); err != nil {
+		t.Fatalf("git add %s: %v", name, err)
+	}
+	if _, err := g.Run("commit", "-m", message); err != nil {
+		t.Fatalf("git commit %s: %v", message, err)
+	}
+}
+
+func installTestCLIPath(t *testing.T, ghScript string) (string, string) {
+	t.Helper()
+
+	binDir := t.TempDir()
+	for _, binary := range []string{"git", "cat"} {
+		path, err := exec.LookPath(binary)
+		if err != nil {
+			t.Fatalf("find %s: %v", binary, err)
+		}
+		if err := os.Symlink(path, filepath.Join(binDir, binary)); err != nil {
+			t.Fatalf("symlink %s: %v", binary, err)
+		}
+	}
+
+	logPath := filepath.Join(binDir, "gh.log")
+	if ghScript != "" {
+		ghPath := filepath.Join(binDir, "gh")
+		if err := os.WriteFile(ghPath, []byte(ghScript), 0o755); err != nil {
+			t.Fatalf("write gh stub: %v", err)
+		}
+	}
+
+	t.Setenv("PATH", binDir)
+	return binDir, logPath
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdout: %v", err)
+	}
+
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = origStdout })
+
+	runErr := fn()
+	_ = w.Close()
+	os.Stdout = origStdout
+
+	out, readErr := io.ReadAll(r)
+	if readErr != nil {
+		t.Fatalf("read stdout: %v", readErr)
+	}
+	return string(out), runErr
+}
+
+func installMergedStatusGH(t *testing.T, baseBranch, branch, headOID string) string {
+	t.Helper()
+
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+  shift 2
+  search=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --search)
+        search="$2"
+        shift 2
+        ;;
+      --state|--json|--limit|-q|--head)
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  case "$search" in
+    *"head:%s"*)
+      printf '[{"number":42,"title":"Merged PR","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"MERGED","mergedAt":"2026-04-21T18:08:47Z","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"https://github.com/test/repo/pull/42","statusCheckRollup":[]}]\n'
+      ;;
+    *)
+      printf '[]\n'
+      ;;
+  esac
+  exit 0
+fi
+
+printf 'unsupported gh invocation: %%s\n' "$*" >&2
+exit 1
+`, branch, branch, headOID, baseBranch)
+
+	_, logPath := installTestCLIPath(t, script)
+	return logPath
 }
 
 func TestClone_CreatesDirectoryStructure(t *testing.T) {
@@ -1037,6 +1162,70 @@ func TestGc_CleansTrash(t *testing.T) {
 	trashEntries, err := os.ReadDir(trashDir)
 	if err == nil && len(trashEntries) > 0 {
 		t.Errorf("trash dir should be empty after gc, has %d entries", len(trashEntries))
+	}
+}
+
+func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "mergedrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "mergedrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	baseBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, baseBranch)
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-merged", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-merged")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+
+	bareDir := filepath.Join(home, ".willow", "repos", "mergedrepo.git")
+	repoGit := &git.Git{Dir: bareDir}
+	gitMerged := repoGit.MergedBranchSet(baseBranch, []string{"feature-merged"})
+	if gitMerged["feature-merged"] {
+		t.Fatalf("feature-merged should not be git-merged in this regression setup, got %v", gitMerged)
+	}
+
+	headOID, err := (&git.Git{Dir: featureDir}).Run("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	installMergedStatusGH(t, baseBranch, "feature-merged", strings.TrimSpace(headOID))
+
+	lsOut, err := captureStdout(t, func() error {
+		return runApp("ls", "mergedrepo")
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+	if !strings.Contains(lsOut, "feature-merged") || !strings.Contains(lsOut, "[merged]") {
+		t.Fatalf("expected ls output to include merged feature worktree, got:\n%s", lsOut)
+	}
+
+	gcOut, err := captureStdout(t, func() error {
+		return runApp("gc")
+	})
+	if err != nil {
+		t.Fatalf("gc failed: %v", err)
+	}
+	if !strings.Contains(gcOut, "feature-merged (repo: mergedrepo)") {
+		t.Fatalf("expected gc output to include merged feature worktree, got:\n%s", gcOut)
+	}
+
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		t.Fatalf("list worktrees: %v", err)
+	}
+	mergedSet := mergedBranchSetForRepo("mergedrepo", bareDir, filterBareWorktrees(wts))
+	if !mergedSet["feature-merged"] {
+		t.Fatalf("expected sw merged helper to include feature-merged, got %v", mergedSet)
 	}
 }
 

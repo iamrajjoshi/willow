@@ -71,7 +71,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 
 - [git](https://git-scm.com/)
 - [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
-- [gh](https://cli.github.com/) — optional, required for `ww new --pr` and `ww stack status`
+- [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, and GitHub-aware merged worktree detection
 
 ## Setup
 
@@ -192,7 +192,7 @@ ww new feature/auth                    # auto-cd via shell integration (tmux-awa
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker.
+Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker. When `gh` is installed, willow also marks branches whose latest PR was merged on GitHub via squash/rebase, even if the branch tip is not an ancestor of the base branch.
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
@@ -266,12 +266,12 @@ ww sync --abort            # abort any in-progress rebases
 
 ### `ww sw`
 
-Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
+Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
 
 ```
-🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
-✅ DONE   api-cleanup          <willow-base>/worktrees/repo/api-cleanup
 ⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
+✅ DONE●  api-cleanup          <willow-base>/worktrees/repo/api-cleanup
+🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
 🟡 IDLE   main                 <willow-base>/worktrees/repo/main
    --     old-feature          <willow-base>/worktrees/repo/old-feature
 ```
@@ -297,7 +297,7 @@ ww rm auth-refactor --prune      # also run git worktree prune
 
 ### `ww ls [repo]`
 
-List worktrees with status.
+List worktrees with status. Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom.
 
 ![ww ls](screenshots/demo-ls.gif)
 

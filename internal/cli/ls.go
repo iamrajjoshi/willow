@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -167,10 +169,18 @@ func completeRepos(ctx context.Context, cmd *cli.Command) {
 }
 
 type lsRow struct {
-	branch      string
-	prefix      string // tree-drawing prefix
-	merged      bool
-	wt          worktree.Worktree
+	branch string
+	prefix string // tree-drawing prefix
+	merged bool
+	status claude.Status
+	unread bool
+	wt     worktree.Worktree
+}
+
+type lsRowGroup struct {
+	rows     []lsRow
+	merged   bool
+	priority int
 }
 
 func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree, repoName string, repoGit *git.Git) {
@@ -184,49 +194,41 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	}
 
 	cfg := config.Load(repoGit.Dir)
+	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
 
 	st := stack.Load(repoGit.Dir)
-	branchSet := make(map[string]bool)
-	wtMap := make(map[string]worktree.Worktree)
 	branches := make([]string, 0, len(worktrees))
+	branchHeads := make(map[string]string, len(worktrees))
+	repoDir := ""
 	for _, wt := range worktrees {
-		branchSet[wt.Branch] = true
-		wtMap[wt.Branch] = wt
+		if repoDir == "" {
+			repoDir = wt.Path
+		}
 		if wt.Branch != "" {
 			branches = append(branches, wt.Branch)
+			branchHeads[wt.Branch] = wt.Head
 		}
 	}
 	done := trace.Span(ctx, "MergedBranchSet")
-	mergedSet := repoGit.MergedBranchSet(repoGit.ResolveBaseBranch(cfg.BaseBranch), branches)
+	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
+	for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+		mergedSet[branch] = true
+	}
 	done()
 
 	var rows []lsRow
-	stackedBranches := make(map[string]bool)
-
-	if !st.IsEmpty() {
-		treeLines := st.TreeLines(branchSet)
-		for _, tl := range treeLines {
-			if wt, ok := wtMap[tl.Branch]; ok {
-				stackedBranches[tl.Branch] = true
-				rows = append(rows, lsRow{
-					branch: tl.Branch,
-					prefix: tl.Prefix,
-					merged: mergedSet[tl.Branch],
-					wt:     wt,
-				})
-			}
-		}
-	}
-
 	for _, wt := range worktrees {
-		if !stackedBranches[wt.Branch] {
-			rows = append(rows, lsRow{
-				branch: wt.Branch,
-				merged: mergedSet[wt.Branch],
-				wt:     wt,
-			})
-		}
+		wtDir := filepath.Base(wt.Path)
+		ws := claude.ReadStatus(repoName, wtDir)
+		rows = append(rows, lsRow{
+			branch: wt.Branch,
+			merged: mergedSet[wt.Branch],
+			status: ws.Status,
+			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
+			wt:     wt,
+		})
 	}
+	rows = sortLSRows(rows, st)
 
 	branchW := len("BRANCH")
 	statusW := len("STATUS")
@@ -254,10 +256,8 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 
 	for _, row := range rows {
 		age := worktreeAge(row.wt.Path)
-		wtDir := filepath.Base(row.wt.Path)
-		ws := claude.ReadStatus(repoName, wtDir)
-		statusLabel := claude.StatusLabel(ws.Status)
-		if ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir) {
+		statusLabel := claude.StatusLabel(row.status)
+		if row.unread {
 			statusLabel += "\u25CF" // ●
 		}
 		branchPlain := row.prefix + row.branch
@@ -277,6 +277,79 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		line := fmt.Sprintf("  %s  %-*s  %s  %s", branchCol, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
 	}
+}
+
+func sortLSRows(rows []lsRow, st *stack.Stack) []lsRow {
+	rowMap := make(map[string]*lsRow, len(rows))
+	branchSet := make(map[string]bool, len(rows))
+	for i := range rows {
+		rowMap[rows[i].branch] = &rows[i]
+		branchSet[rows[i].branch] = true
+	}
+
+	groupedBranches := make(map[string]bool)
+	var groups []lsRowGroup
+
+	if st != nil && !st.IsEmpty() {
+		treeLines := st.TreeLines(branchSet)
+		prefixByBranch := make(map[string]string, len(treeLines))
+		for _, tl := range treeLines {
+			prefixByBranch[tl.Branch] = tl.Prefix
+		}
+
+		for _, root := range st.Roots() {
+			var groupRows []lsRow
+			for _, branch := range st.SubtreeSort(root) {
+				row, ok := rowMap[branch]
+				if !ok {
+					continue
+				}
+				row.prefix = prefixByBranch[branch]
+				groupedBranches[branch] = true
+				groupRows = append(groupRows, *row)
+			}
+			if len(groupRows) > 0 {
+				groups = append(groups, newLSRowGroup(groupRows))
+			}
+		}
+	}
+
+	for _, row := range rows {
+		if !groupedBranches[row.branch] {
+			groups = append(groups, newLSRowGroup([]lsRow{row}))
+		}
+	}
+
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].merged != groups[j].merged {
+			return !groups[i].merged
+		}
+		return groups[i].priority < groups[j].priority
+	})
+
+	var sorted []lsRow
+	for _, group := range groups {
+		sorted = append(sorted, group.rows...)
+	}
+	return sorted
+}
+
+func newLSRowGroup(rows []lsRow) lsRowGroup {
+	group := lsRowGroup{
+		rows:     rows,
+		merged:   true,
+		priority: claude.WorktreeUrgencyOrder(claude.StatusOffline, false),
+	}
+	for _, row := range rows {
+		if !row.merged {
+			group.merged = false
+		}
+		priority := claude.WorktreeUrgencyOrder(row.status, row.unread)
+		if priority < group.priority {
+			group.priority = priority
+		}
+	}
+	return group
 }
 
 func worktreeAge(path string) string {
