@@ -246,6 +246,41 @@ func TestMergedWorktreeSet_MissingBranchEntriesRefreshIndividually(t *testing.T)
 	}
 }
 
+func TestCachedMergedWorktreeSet_UsesStalePositiveCacheWithoutRefreshing(t *testing.T) {
+	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
+	calls := 0
+
+	prepareMergedWorktreeTestEnv(t, now, func(_ string, branches []string) ([]*PRInfo, error) {
+		calls++
+		t.Fatalf("cached lookup unexpectedly refreshed branches %v", branches)
+		return nil, nil
+	})
+
+	cachePath := mergedWorktreeCachePath("/fake/repo", "master")
+	err := saveMergedWorktreeCache(cachePath, mergedWorktreeCache{Entries: map[string]mergedWorktreeCacheEntry{
+		"feature": {
+			CheckedAt:   now.Add(-2 * mergedWorktreeCacheTTL),
+			Found:       true,
+			Number:      101,
+			State:       "MERGED",
+			BaseRefName: "master",
+			HeadRefOID:  "abc123",
+			MergedAt:    "2026-04-21T18:08:47Z",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("save cache: %v", err)
+	}
+
+	got := CachedMergedWorktreeSet("/fake/repo", "master", map[string]string{"feature": "abc123"})
+	if !got["feature"] {
+		t.Fatalf("expected cached merged branch, got %v", got)
+	}
+	if calls != 0 {
+		t.Fatalf("search calls = %d, want 0", calls)
+	}
+}
+
 func prepareMergedWorktreeTestEnv(t *testing.T, now time.Time, search func(dir string, branches []string) ([]*PRInfo, error)) {
 	t.Helper()
 

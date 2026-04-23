@@ -46,7 +46,15 @@ type pickerGroup struct {
 	priority int
 }
 
+type PickerBuildOptions struct {
+	RefreshGitHubMerged bool
+}
+
 func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, error) {
+	return BuildPickerItemsWithOptions(ctx, repoFilter, PickerBuildOptions{RefreshGitHubMerged: true})
+}
+
+func BuildPickerItemsWithOptions(ctx context.Context, repoFilter string, opts PickerBuildOptions) ([]PickerItem, error) {
 	defer trace.Span(ctx, "BuildPickerItems")()
 
 	var repoNames []string
@@ -92,9 +100,18 @@ func BuildPickerItems(ctx context.Context, repoFilter string) ([]PickerItem, err
 				branchHeads[wt.Branch] = wt.Head
 			}
 		}
-		done = trace.Span(ctx, "MergedBranchSet/"+repoName)
+		done = trace.Span(ctx, "git.MergedBranchSet/"+repoName)
 		mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-		for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+		done()
+
+		done = trace.Span(ctx, "gh.MergedWorktreeSet/"+repoName)
+		var githubMerged map[string]bool
+		if opts.RefreshGitHubMerged {
+			githubMerged = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads)
+		} else {
+			githubMerged = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads)
+		}
+		for branch := range githubMerged {
 			mergedSet[branch] = true
 		}
 		done()

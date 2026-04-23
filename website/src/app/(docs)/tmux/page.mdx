@@ -57,16 +57,16 @@ Press `Ctrl-E` to open a secondary picker showing all remote branches that don't
 
 ### Merged worktree indicator
 
-Worktrees whose branches have been merged into the base branch show a dim `[merged]` tag. When `gh` is available, this also covers branches whose latest PR was merged on GitHub via squash/rebase. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up one at a time with `Ctrl-D`, bulk-delete the safe subset currently shown with `Ctrl-X` (the active tmux session and any merged worktrees with local changes, unpushed commits, or stacked children are skipped), or use `ww gc --prune`.
+Worktrees whose branches have been merged into the base branch show a dim `[merged]` tag. When `gh` is available, this also covers branches whose latest PR was merged on GitHub via squash/rebase. The picker uses cached GitHub merge results on open so slow PR lookups don't block rendering. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up one at a time with `Ctrl-D`, bulk-delete the safe subset currently shown with `Ctrl-X` (the active tmux session and any merged worktrees with local changes, unpushed commits, or stacked children are skipped), or use `ww gc --prune`.
 
 ### Features
 
-- **Auto-refresh** — the list reloads every 2 seconds with fresh agent status
+- **Fast startup** — opens from local git/status files and cached GitHub merge results
 - **Auto-navigate** — opens with the cursor on your current session
 - **Urgency sort** — current session first, then `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline
 - **Status colors** — BUSY (green), WAIT (red), DONE (blue), IDLE (yellow)
 - **Unread indicator** — `●` marks completed sessions you haven't viewed
-- **Merged indicator** — `[merged]` marks worktrees whose branches are merged, including GitHub-merged PRs when `gh` is available
+- **Merged indicator** — `[merged]` marks worktrees whose branches are merged, including cached GitHub-merged PRs when `gh` is available
 - **Stack-aware ordering** — stacked branches stay grouped together and inherit the most urgent item in the tree
 - **Multi-Claude sub-rows** — when a worktree has multiple active Claude sessions, each is shown as an indented sub-row with its own status and tool info
 - **Embedded fzf** — fzf is compiled into the willow binary, no external `fzf` dependency needed
@@ -172,7 +172,7 @@ ww tmux pick -r myrepo    # filter to one repo
 
 ### `ww tmux list`
 
-Print formatted picker lines. Used by fzf's reload binding for auto-refresh.
+Print formatted picker lines for diagnostics and picker integrations.
 
 ### `ww tmux status-bar`
 
