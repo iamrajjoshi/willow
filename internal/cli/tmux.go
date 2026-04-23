@@ -65,7 +65,7 @@ func tmuxPickCmd() *cli.Command {
 			}
 
 			for {
-				items, err := tmux.BuildPickerItems(ctx, repoFilter)
+				items, err := tmux.BuildPickerItemsWithOptions(ctx, repoFilter, tmux.PickerBuildOptions{})
 				if err != nil {
 					return err
 				}
@@ -85,17 +85,7 @@ func tmuxPickCmd() *cli.Command {
 					lines = tmux.FormatPickerLines(items)
 				}
 
-				previewCmd := fmt.Sprintf("%s tmux preview -- {}", self)
-				reloadCmd := fmt.Sprintf("%s tmux list", self)
-				if repoFilter != "" {
-					reloadCmd += fmt.Sprintf(" --repo %s", repoFilter)
-				}
-				if curSess != "" {
-					reloadCmd += fmt.Sprintf(" --session %s", curSess)
-				}
-
-				startBind := fmt.Sprintf("start:reload-sync(%s)", reloadCmd)
-
+				previewCmd := fmt.Sprintf("%s tmux preview -- {}", shellQuote(self))
 				opts := []fzf.Option{
 					fzf.WithAnsi(),
 					fzf.WithReverse(),
@@ -105,7 +95,6 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithHeader("Enter: Switch | Ctrl-N: New | Ctrl-B: Stacked | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-G: Dispatch | Ctrl-S: Sync | Ctrl-D: Delete | Ctrl-X: Prune merged"),
 					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-s", "ctrl-d", "ctrl-x"),
 					fzf.WithPrintQuery(),
-					fzf.WithBind(startBind),
 				}
 
 				cfg := config.Load("")
@@ -1177,10 +1166,17 @@ func tmuxListCmd() *cli.Command {
 				Aliases: []string{"s"},
 				Usage:   "Current tmux session (moves matching worktree to top)",
 			},
+			&cli.BoolFlag{
+				Name:   "refresh-github-merged",
+				Usage:  "Refresh GitHub-backed merged status instead of using cached results",
+				Hidden: true,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			defer trace.Span(ctx, "tmux.list")()
-			items, err := tmux.BuildPickerItems(ctx, cmd.String("repo"))
+			items, err := tmux.BuildPickerItemsWithOptions(ctx, cmd.String("repo"), tmux.PickerBuildOptions{
+				RefreshGitHubMerged: cmd.Bool("refresh-github-merged"),
+			})
 			if err != nil {
 				return err
 			}

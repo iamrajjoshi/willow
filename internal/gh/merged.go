@@ -100,6 +100,28 @@ func MergedWorktreeSet(dir, base string, branchHeads map[string]string) map[stri
 	return set
 }
 
+// CachedMergedWorktreeSet returns merged branches from the on-disk GitHub
+// lookup cache only. It never shells out to gh, so interactive pickers can use
+// it without putting network-backed PR lookups on their initial render path.
+func CachedMergedWorktreeSet(dir, base string, branchHeads map[string]string) map[string]bool {
+	set := make(map[string]bool)
+	if dir == "" || len(branchHeads) == 0 {
+		return set
+	}
+
+	cache := loadMergedWorktreeCache(mergedWorktreeCachePath(dir, base))
+	for branch, head := range branchHeads {
+		if branch == "" || branch == base || branch == detachedBranchName || head == "" {
+			continue
+		}
+		entry, ok := cache.Entries[branch]
+		if ok && entry.isMerged(base, head) {
+			set[branch] = true
+		}
+	}
+	return set
+}
+
 func (e mergedWorktreeCacheEntry) isMerged(base, head string) bool {
 	return e.Found &&
 		e.State == "MERGED" &&

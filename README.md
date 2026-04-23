@@ -194,7 +194,7 @@ From the tmux picker, `Ctrl-E` opens the same existing-branch flow from cached r
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker. When `gh` is installed, willow also marks branches whose latest PR was merged on GitHub via squash/rebase, even if the branch tip is not an ancestor of the base branch.
+Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker. When `gh` is installed, willow also marks branches whose latest PR was merged on GitHub via squash/rebase, even if the branch tip is not an ancestor of the base branch. The tmux picker uses cached GitHub merge results on open so slow PR lookups don't block rendering.
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
