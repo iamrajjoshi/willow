@@ -73,6 +73,8 @@ ww new feature/auth                    # auto-cd via shell integration (tmux-awa
 
 Running `ww new -e` without a branch name opens an fzf picker showing all remote branches that don't already have worktrees. Select one to create a worktree for it.
 
+From the tmux picker, `Ctrl-E` opens the same existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+
 #### GitHub PR support
 
 Use `--pr` with a PR number or pass a full PR URL as the branch argument. Willow resolves the branch name via `gh`, fetches it, and creates the worktree. Requires the [GitHub CLI](https://cli.github.com/) (`gh`).

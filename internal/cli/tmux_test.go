@@ -272,6 +272,35 @@ func TestMergedDeleteSkipReasonFromState(t *testing.T) {
 	}
 }
 
+func TestAvailableExistingBranches(t *testing.T) {
+	remoteBranches := []string{"main", "feat-a", "feat-b", "shared"}
+	items := []tmux.PickerItem{
+		item("repo1", "main"),
+		item("repo1", "feat-a"),
+		item("repo2", "shared"),
+	}
+
+	got := availableExistingBranches(remoteBranches, "repo1", items)
+	want := []string{"feat-b", "shared"}
+	assertBranches(t, got, want)
+}
+
+func TestExistingBranchCacheRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	want := []string{"main", "feat-a", "feat-b"}
+	if err := saveExistingBranchCache("repo1", want); err != nil {
+		t.Fatalf("saveExistingBranchCache() error = %v", err)
+	}
+
+	got, err := loadExistingBranchCache("repo1")
+	if err != nil {
+		t.Fatalf("loadExistingBranchCache() error = %v", err)
+	}
+	assertBranches(t, got, want)
+}
+
 func assertBranches(t *testing.T, got, want []string) {
 	t.Helper()
 	if len(got) != len(want) {

@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/iamrajjoshi/willow/internal/trace"
+	"github.com/iamrajjoshi/willow/internal/config"
+	willowerrors "github.com/iamrajjoshi/willow/internal/errors"
 )
 
 // isolateHome points HOME at a fresh temp dir so config.Load("") can't pick up
@@ -50,6 +51,7 @@ func TestIsEnabled_EnvVar(t *testing.T) {
 func TestInit_DisabledByEnvVar(t *testing.T) {
 	isolateHome(t)
 	enabled = false
+	pendingEvents.Store(false)
 	os.Setenv("WILLOW_TELEMETRY", "off")
 	defer os.Unsetenv("WILLOW_TELEMETRY")
 
@@ -64,6 +66,7 @@ func TestInit_DisabledByEnvVar(t *testing.T) {
 func TestInit_DisabledByDefault(t *testing.T) {
 	isolateHome(t)
 	enabled = false
+	pendingEvents.Store(false)
 	os.Unsetenv("WILLOW_TELEMETRY")
 
 	cleanup := Init("dev")
@@ -76,65 +79,62 @@ func TestInit_DisabledByDefault(t *testing.T) {
 
 func TestStartCommand_NoopWhenDisabled(t *testing.T) {
 	enabled = false
+	pendingEvents.Store(false)
 
 	ctx, finish := StartCommand(context.Background(), "test")
 	if ctx == nil {
 		t.Error("expected non-nil context")
 	}
 
-	// Should not panic
 	finish(nil)
 	finish(fmt.Errorf("test error"))
 }
 
-func TestStartCommand_WithTransaction(t *testing.T) {
-	// Use empty DSN so events are silently discarded, not sent to real Sentry
-	sentry.Init(sentry.ClientOptions{EnableTracing: true, EnableLogs: true})
+func TestStartCommand_IgnoresSuccessAndUserErrors(t *testing.T) {
+	sentry.Init(sentry.ClientOptions{})
 	enabled = true
-	defer func() { enabled = false }()
+	pendingEvents.Store(false)
+	t.Cleanup(func() {
+		enabled = false
+		pendingEvents.Store(false)
+	})
 
-	ctx, finish := StartCommand(context.Background(), "new")
-	if ctx == nil {
-		t.Error("expected non-nil context")
+	_, finishSuccess := StartCommand(context.Background(), "ls")
+	finishSuccess(nil)
+	if pendingEvents.Load() {
+		t.Fatal("successful command should not mark telemetry for flushing")
 	}
 
-	// Should not panic with nil error
-	finish(nil)
+	_, finishUser := StartCommand(context.Background(), "ls")
+	finishUser(willowerrors.Userf("bad input"))
+	if pendingEvents.Load() {
+		t.Fatal("user error should not mark telemetry for flushing")
+	}
 }
 
-func TestStartCommand_WithError(t *testing.T) {
-	// Use empty DSN so events are silently discarded, not sent to real Sentry
-	sentry.Init(sentry.ClientOptions{EnableTracing: true, EnableLogs: true})
+func TestStartCommand_CapturesSystemErrors(t *testing.T) {
+	sentry.Init(sentry.ClientOptions{})
 	enabled = true
-	defer func() { enabled = false }()
+	pendingEvents.Store(false)
+	t.Cleanup(func() {
+		enabled = false
+		pendingEvents.Store(false)
+	})
 
-	_, finish := StartCommand(context.Background(), "clone")
-
-	// Should not panic with real error
-	finish(fmt.Errorf("test error: failed to clone"))
+	_, finish := StartCommand(context.Background(), "ls")
+	finish(fmt.Errorf("boom"))
+	if !pendingEvents.Load() {
+		t.Fatal("system error should mark telemetry for flushing")
+	}
 }
 
-func TestInit_DoesNotInstallSpanHookWhenDisabled(t *testing.T) {
-	isolateHome(t)
-	trace.SetSpanHook(nil)
-	t.Cleanup(func() { trace.SetSpanHook(nil) })
-
+func TestCaptureException_NoOpWhenDisabled(t *testing.T) {
 	enabled = false
-	os.Unsetenv("WILLOW_TELEMETRY")
+	pendingEvents.Store(false)
 
-	cleanup := Init("dev")
-	defer cleanup()
-
-	// A probe hook registered after Init must be the only one firing;
-	// if Init had installed its own, we'd see two invocations.
-	count := 0
-	trace.SetSpanHook(func(ctx context.Context, label string) func() {
-		count++
-		return func() {}
-	})
-	trace.Span(context.Background(), "probe")()
-	if count != 1 {
-		t.Errorf("span hook invoked %d times, want 1 (Init should not have installed one)", count)
+	CaptureException(fmt.Errorf("boom"))
+	if pendingEvents.Load() {
+		t.Fatal("disabled telemetry should not mark pending events")
 	}
 }
 
@@ -159,5 +159,18 @@ func TestResolveCommandName(t *testing.T) {
 				t.Errorf("ResolveCommandName(%v) = %q, want %q", tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsEnabled_Config(t *testing.T) {
+	isolateHome(t)
+	cfg := config.DefaultConfig()
+	cfg.Telemetry = config.BoolPtr(true)
+	if err := config.Save(cfg, config.GlobalConfigPath()); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	if !isEnabled() {
+		t.Fatal("expected telemetry to be enabled from config")
 	}
 }

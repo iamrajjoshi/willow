@@ -53,7 +53,6 @@ func writeSessionStatus(t *testing.T, home, repo, wt string, status claude.Statu
 		t.Fatalf("write session: %v", err)
 	}
 }
-
 func TestBuildWorktreeLines(t *testing.T) {
 	// Use a temp HOME so claude.ReadStatus returns offline for all
 	home := t.TempDir()

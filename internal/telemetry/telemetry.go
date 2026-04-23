@@ -7,19 +7,19 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/getsentry/sentry-go/attribute"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
-	"github.com/iamrajjoshi/willow/internal/trace"
 )
 
 var enabled bool
+var pendingEvents atomic.Bool
 
 // Init initializes Sentry if telemetry is enabled.
-// Returns a cleanup function that flushes buffered events.
+// Returns a cleanup function that flushes buffered exceptions before exit.
 func Init(version string) func() {
 	noop := func() {}
 
@@ -36,9 +36,6 @@ func Init(version string) func() {
 		Dsn:              "https://6f8ef87bf464515316f432ee9273a55c@o4509294838415360.ingest.us.sentry.io/4511103855034368",
 		Release:          "willow@" + version,
 		Environment:      env,
-		EnableTracing:    true,
-		TracesSampleRate: 1.0,
-		EnableLogs:       true,
 		AttachStacktrace: true,
 	})
 	if err != nil {
@@ -51,79 +48,43 @@ func Init(version string) func() {
 		scope.SetUser(sentry.User{ID: machineID()})
 	})
 
-	// Installed only on the enabled path — opting out of telemetry means
-	// no spans are sent.
-	trace.SetSpanHook(func(ctx context.Context, label string) func() {
-		span := sentry.StartSpan(ctx, "willow."+label)
-		return span.Finish
-	})
-
 	enabled = true
+	pendingEvents.Store(false)
 	return func() {
-		trace.SetSpanHook(nil)
-		sentry.Flush(2 * time.Second)
+		enabled = false
+		if pendingEvents.Load() {
+			sentry.Flush(2 * time.Second)
+		}
+		pendingEvents.Store(false)
 	}
 }
 
-// StartCommand begins a Sentry transaction for a CLI command.
-// Returns a context carrying the transaction and a finish function.
-// The finish function captures errors, emits metrics, and ends the transaction.
+// StartCommand tracks command failures for telemetry.
+// Successful commands do not emit telemetry.
 func StartCommand(ctx context.Context, command string) (context.Context, func(error)) {
 	if !enabled {
 		return ctx, func(error) {}
 	}
 
 	start := time.Now()
-
-	tx := sentry.StartTransaction(ctx, "cli."+command,
-		sentry.WithOpName("cli.command"),
-		sentry.WithTransactionSource(sentry.SourceCustom),
-	)
-	tx.SetTag("command", command)
-
-	return tx.Context(), func(err error) {
-		if err != nil {
-			if errors.IsUser(err) {
-				tx.Status = sentry.SpanStatusInvalidArgument
-			} else {
-				tx.Status = sentry.SpanStatusInternalError
-				sentry.CaptureException(err)
-			}
-		} else {
-			tx.Status = sentry.SpanStatusOK
+	return ctx, func(err error) {
+		if err == nil || errors.IsUser(err) {
+			return
 		}
 
 		elapsed := float64(time.Since(start).Milliseconds())
-
-		logger := sentry.NewLogger(tx.Context())
-		if err != nil {
-			errorType := "system"
-			if errors.IsUser(err) {
-				errorType = "user"
-			}
-			logger.Warn().
-				String("command", command).
-				Float64("duration_ms", elapsed).
-				String("status", "error").
-				String("error_type", errorType).
-				Emitf("command failed: %s", err)
-		} else {
-			logger.Info().
-				String("command", command).
-				Float64("duration_ms", elapsed).
-				String("status", "ok").
-				Emit("command completed")
-		}
-		meter := sentry.NewMeter(tx.Context())
-		meter.Count("cli.command.count", 1,
-			sentry.WithAttributes(attribute.String("command", command)),
-		)
-		meter.Distribution("cli.command.duration_ms", elapsed,
-			sentry.WithAttributes(attribute.String("command", command)),
-		)
-
-		tx.Finish()
+		captureExceptionWithScope(err, func(scope *sentry.Scope) {
+			scope.SetTag("command", command)
+			scope.SetExtra("duration_ms", elapsed)
+			scope.SetExtra("status", "system_error")
+		})
 	}
+}
+
+// CaptureException reports an error to Sentry and ensures the current process
+// flushes before exit.
+func CaptureException(err error) {
+	captureExceptionWithScope(err, nil)
 }
 
 // ResolveCommandName extracts the subcommand name from os.Args.
@@ -159,4 +120,18 @@ func isEnabled() bool {
 	}
 
 	return false
+}
+
+func captureExceptionWithScope(err error, configure func(*sentry.Scope)) {
+	if err == nil || !enabled {
+		return
+	}
+
+	pendingEvents.Store(true)
+	sentry.WithScope(func(scope *sentry.Scope) {
+		if configure != nil {
+			configure(scope)
+		}
+		sentry.CaptureException(err)
+	})
 }

@@ -46,7 +46,7 @@ func StatusDir() string {
 
 // ReadAllSessions reads all session status files from the directory-based layout:
 // <willow-base>/status/<repo>/<worktree>/*.json. Corrupt session files are
-// cleaned up as they're encountered.
+// cleaned up as they're encountered so broken artifacts do not accumulate.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := filepath.Join(StatusDir(), repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)

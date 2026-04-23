@@ -53,7 +53,7 @@ You can also paste a PR URL into the query field and press `Ctrl-N` for quick on
 
 ### Existing branch picker
 
-Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Willow fetches from origin first (unless `defaults.fetch` is disabled) so freshly pushed branches show up. Select one to create a worktree and switch to it immediately.
+Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Willow opens this picker immediately from cached refs, then refreshes from origin in the background (unless `defaults.fetch` is disabled) so freshly pushed branches appear without blocking the initial render. Press `Ctrl-R` inside the branch picker to force a synchronous refresh.
 
 ### Merged worktree indicator
 

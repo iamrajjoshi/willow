@@ -206,7 +206,7 @@ func (g *Git) MergedBranchSet(base string, branches []string) map[string]bool {
 // RemoteBranches returns remote branch names from origin, stripping the
 // "origin/" prefix. The HEAD pointer is excluded.
 func (g *Git) RemoteBranches() ([]string, error) {
-	out, err := g.Run("branch", "-r", "--format=%(refname:short)")
+	out, err := g.Run("for-each-ref", "--format=%(refname:short)", "refs/remotes/origin")
 	if err != nil {
 		return nil, err
 	}
