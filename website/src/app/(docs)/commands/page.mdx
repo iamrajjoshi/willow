@@ -252,6 +252,30 @@ ww sync --abort            # abort any in-progress rebases
 
 Dirty worktrees and in-progress rebases are skipped with a warning.
 
+### `ww pr create`
+
+Create a GitHub PR for the current worktree. Willow derives the PR base from the stack parent when the branch is stacked, or from the repo's default base branch otherwise. It pushes the branch if needed, skips creation if an open PR already exists, and can publish the current branch's ancestor stack in root-to-current order.
+
+```bash
+ww pr create                  # create PR for the current branch
+ww pr create --draft          # create a draft PR
+ww pr create --stack          # create missing PRs for root → current branch
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--draft` | Create draft pull requests | `false` |
+| `--stack` | Create missing PRs for the current branch's ancestor stack | `false` |
+
+**Behavior:**
+1. Must be run from inside a willow-managed worktree
+2. Refuses to run if the current worktree has uncommitted changes
+3. Uses the stack parent as the PR base when the branch is stacked
+4. Pushes the branch if the remote is missing or behind
+5. Reuses an existing open PR instead of creating a duplicate
+
+Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
+
 ## Inspection
 
 ### `ww status`

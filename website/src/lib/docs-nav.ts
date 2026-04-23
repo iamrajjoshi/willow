@@ -58,6 +58,7 @@ export const DOCS_NAV: DocNavGroup[] = [
           { id: "stacked-prs", text: "Stacked PRs", level: 3 },
           { id: "ww-stack-status-alias-ww-stack-s", text: "ww stack status", level: 3 },
           { id: "ww-sync-branch", text: "ww sync", level: 3 },
+          { id: "ww-pr-create", text: "ww pr create", level: 3 },
           { id: "inspection", text: "Inspection", level: 2 },
           { id: "ww-status", text: "ww status", level: 3 },
           { id: "ww-dashboard-alias-dash-d", text: "ww dashboard", level: 3 },

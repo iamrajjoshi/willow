@@ -23,6 +23,7 @@ Use willow (`ww`) commands instead of `git checkout`, `git branch`, or `git work
 | Hand a task to a fresh Claude agent | `ww dispatch "<prompt>"` |
 | Stack a branch on another | `ww new <child> -b <parent>` |
 | Rebase a stack after upstream changes | `ww sync` |
+| Turn the current branch or stack into PRs | `ww pr create [--stack]` |
 | Check CI/review for the whole stack | `ww stack status` |
 | Switch to an existing worktree | `ww sw <name>` |
 | See all worktrees and their status | `ww ls` |
@@ -94,6 +95,20 @@ ww stack status --json
 ```
 
 Requires the GitHub CLI (`gh`).
+
+### `ww pr create`
+
+Create a GitHub PR for the current branch. The base branch is inferred automatically:
+- stacked branch: uses its recorded parent
+- unstacked branch: uses the repo's default base branch
+
+```bash
+ww pr create                 # current branch only
+ww pr create --draft         # open as draft
+ww pr create --stack         # create missing PRs from root → current branch
+```
+
+Use this when the user says "open a PR", "publish this branch", or "create PRs for this stack". It must be run from inside a willow-managed worktree with no uncommitted changes.
 
 ### `ww dispatch <prompt>`
 
