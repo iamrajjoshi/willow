@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getsentry/sentry-go"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/notify"
+	"github.com/iamrajjoshi/willow/internal/telemetry"
 )
 
 // HookInput is the JSON payload Claude Code pipes to stdin for every hook event.
@@ -309,7 +309,7 @@ func fireNotifications(repo, wt string) {
 			err = notify.Send("willow", body)
 		}
 		if err != nil {
-			sentry.CaptureException(err)
+			telemetry.CaptureException(err)
 		}
 	}
 }

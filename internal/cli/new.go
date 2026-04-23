@@ -424,6 +424,10 @@ func resolvePRRef(input, bareDir string) (string, error) {
 }
 
 func pickExistingBranch(repoGit *git.Git) (string, error) {
+	return pickExistingBranchWithQuery(repoGit, "")
+}
+
+func pickExistingBranchWithQuery(repoGit *git.Git, query string) (string, error) {
 	remoteBranches, err := repoGit.RemoteBranches()
 	if err != nil {
 		return "", fmt.Errorf("failed to list remote branches: %w", err)
@@ -453,10 +457,15 @@ func pickExistingBranch(repoGit *git.Git) (string, error) {
 		return "", errors.Userf("all remote branches already have worktrees")
 	}
 
-	selected, err := fzf.Run(available,
+	opts := []fzf.Option{
 		fzf.WithReverse(),
 		fzf.WithHeader("Select a branch to check out"),
-	)
+	}
+	if strings.TrimSpace(query) != "" {
+		opts = append(opts, fzf.WithQuery(query))
+	}
+
+	selected, err := fzf.Run(available, opts...)
 	if err != nil {
 		return "", err
 	}

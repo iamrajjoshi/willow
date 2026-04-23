@@ -68,7 +68,9 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
 | `tmux.layout` | `string[]` | Raw tmux subcommands to run after session creation (e.g. `["split-window -h", "select-layout even-horizontal"]`) |
 | `tmux.panes` | `PaneConfig[]` | Per-pane commands, indexed by pane order. Pane 0 is the initial pane, pane 1 is the first split, etc. Each entry: `{ "command": "..." }` |
-| `telemetry` | `boolean` | Enable/disable anonymous usage telemetry (default: `true`). Also controllable via `WILLOW_TELEMETRY=off` env var |
+| `telemetry` | `boolean` | Enable/disable anonymous error telemetry. Willow is opt-in by default. Also controllable via `WILLOW_TELEMETRY=off` env var |
+
+When telemetry is enabled, Willow only reports system errors and panics, along with basic context like the failing command and elapsed time.
 
 ## Directory structure
 

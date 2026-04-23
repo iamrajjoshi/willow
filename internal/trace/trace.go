@@ -1,6 +1,5 @@
-// Package trace emits timing data to stderr (dev, via --trace/WILLOW_TRACE)
-// and/or to a registered SpanHook (prod, wired to Sentry by the telemetry
-// package). Both sinks are optional; calls are no-op when neither is active.
+// Package trace emits timing data to stderr when enabled via --trace or
+// WILLOW_TRACE. Calls are otherwise no-op.
 //
 //	done := trace.Span(ctx, "git.fetch")
 //	defer done()
@@ -10,28 +9,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync/atomic"
 	"time"
 )
 
 type Tracer struct {
 	stderr bool
 	start  time.Time
-}
-
-// SpanHook is invoked on every traced operation. The returned func runs
-// when the span ends.
-type SpanHook func(ctx context.Context, label string) func()
-
-var hook atomic.Pointer[SpanHook]
-
-// SetSpanHook installs the global span hook. Pass nil to clear.
-func SetSpanHook(h SpanHook) {
-	if h == nil {
-		hook.Store(nil)
-		return
-	}
-	hook.Store(&h)
 }
 
 type ctxKey struct{}
@@ -66,32 +49,20 @@ func New(stderr bool) *Tracer {
 var noop = func() {}
 
 func (t *Tracer) StartCtx(ctx context.Context, label string) func() {
-	var h SpanHook
-	if p := hook.Load(); p != nil {
-		h = *p
-	}
 	stderr := t != nil && t.stderr
-	if !stderr && h == nil {
+	if !stderr {
 		return noop
 	}
 
 	start := time.Now()
-	var hookFinish func()
-	if h != nil {
-		hookFinish = h(ctx, label)
-	}
 	return func() {
-		if hookFinish != nil {
-			hookFinish()
-		}
 		if stderr {
 			fmt.Fprintf(os.Stderr, "[trace] %-30s %s\n", label, formatDuration(time.Since(start)))
 		}
 	}
 }
 
-// Start is the ctx-less form; prefer Span(ctx, ...) when ctx is available
-// so Sentry spans can link to a parent transaction.
+// Start is the ctx-less form.
 func (t *Tracer) Start(label string) func() {
 	return t.StartCtx(context.Background(), label)
 }

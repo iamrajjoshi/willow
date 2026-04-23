@@ -181,6 +181,8 @@ ww new feature/auth -r myrepo          # target a specific repo
 ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
+From the tmux picker, `Ctrl-E` opens the same existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+
 | Flag | Description |
 |------|-------------|
 | `-b, --base` | Base branch to fork from |
@@ -488,13 +490,14 @@ Config merges two tiers (local wins):
       { "command": "cd website" },
       { "command": "cd website" }
     ]
-  }
+  },
+  "telemetry": true
 }
 ```
 
 ## Telemetry
 
-Willow collects anonymous usage telemetry via [Sentry](https://sentry.io) to help improve the tool. This includes command names, execution times, and error reports. **No repo contents, branch names, file paths, or personally identifiable information is sent.** Each machine is identified by a hashed hostname only.
+Willow can collect anonymous error telemetry via [Sentry](https://sentry.io) after you opt in. This includes system errors and panic reports, plus basic context like the failing command and elapsed time. **No repo contents, branch names, file paths, or personally identifiable information is sent.** Each machine is identified by a hashed hostname only.
 
 **Opt out:**
 

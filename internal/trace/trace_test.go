@@ -2,7 +2,6 @@ package trace
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -50,67 +49,9 @@ func TestFromContext_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestSpan_NoHookNoStderrIsNoop(t *testing.T) {
-	// Ensure no hook is registered.
-	SetSpanHook(nil)
-	t.Cleanup(func() { SetSpanHook(nil) })
-
+func TestSpan_NoStderrIsNoop(t *testing.T) {
 	done := Span(context.Background(), "label")
 	done() // must not panic
-}
-
-func TestSpan_InvokesRegisteredHook(t *testing.T) {
-	var startCount, finishCount atomic.Int32
-	var gotLabel string
-	SetSpanHook(func(ctx context.Context, label string) func() {
-		startCount.Add(1)
-		gotLabel = label
-		return func() { finishCount.Add(1) }
-	})
-	t.Cleanup(func() { SetSpanHook(nil) })
-
-	done := Span(context.Background(), "hook-label")
-	if startCount.Load() != 1 {
-		t.Fatalf("hook not invoked on start")
-	}
-	if finishCount.Load() != 0 {
-		t.Fatalf("finisher invoked too early")
-	}
-	done()
-	if finishCount.Load() != 1 {
-		t.Fatalf("finisher not invoked")
-	}
-	if gotLabel != "hook-label" {
-		t.Errorf("hook got label %q, want %q", gotLabel, "hook-label")
-	}
-}
-
-func TestSpan_HookRunsEvenWhenStderrOff(t *testing.T) {
-	var ran atomic.Bool
-	SetSpanHook(func(ctx context.Context, label string) func() {
-		return func() { ran.Store(true) }
-	})
-	t.Cleanup(func() { SetSpanHook(nil) })
-
-	// Tracer with stderr off — hook should still fire.
-	ctx := WithTracer(context.Background(), New(false))
-	Span(ctx, "silent")()
-	if !ran.Load() {
-		t.Error("hook should fire even when tracer is in silent mode")
-	}
-}
-
-func TestSetSpanHook_Nil_ClearsHook(t *testing.T) {
-	var ran atomic.Bool
-	SetSpanHook(func(ctx context.Context, label string) func() {
-		return func() { ran.Store(true) }
-	})
-	SetSpanHook(nil)
-
-	Span(context.Background(), "cleared")()
-	if ran.Load() {
-		t.Error("cleared hook was invoked")
-	}
 }
 
 func TestFormatDuration_Microseconds(t *testing.T) {

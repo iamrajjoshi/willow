@@ -234,7 +234,7 @@ func configInitCmd() *cli.Command {
 
 			cfg := config.DefaultConfig()
 
-			if u.Confirm("Enable anonymous telemetry (crash reports & usage stats)?") {
+			if u.Confirm("Enable anonymous error telemetry (crash reports)?") {
 				cfg.Telemetry = config.BoolPtr(true)
 			} else {
 				cfg.Telemetry = config.BoolPtr(false)

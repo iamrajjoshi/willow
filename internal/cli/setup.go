@@ -40,7 +40,7 @@ func setupCmd() *cli.Command {
 			cfg := config.Load("")
 			if cfg.Telemetry == nil {
 				u.Info("")
-				enabled := u.Confirm("Enable anonymous telemetry (crash reports & usage stats)?")
+				enabled := u.Confirm("Enable anonymous error telemetry (crash reports)?")
 				cfg.Telemetry = config.BoolPtr(enabled)
 				if err := config.Save(cfg, config.GlobalConfigPath()); err != nil {
 					return fmt.Errorf("failed to save telemetry preference: %w", err)

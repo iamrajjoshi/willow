@@ -29,6 +29,7 @@ func tmuxCmd() *cli.Command {
 		Usage: "Tmux integration for worktree management",
 		Commands: []*cli.Command{
 			tmuxPickCmd(),
+			tmuxExistingBranchesCmd(),
 			tmuxSwCmd(),
 			tmuxPreviewCmd(),
 			tmuxListCmd(),
@@ -136,7 +137,7 @@ func tmuxPickCmd() *cli.Command {
 					return nil
 
 				case "ctrl-e":
-					if err := tmuxPickExisting(self, repoFilter, sessionName, items); err != nil {
+					if err := tmuxPickExisting(self, repoFilter, sessionName, items, result.Query); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -222,6 +223,41 @@ func tmuxSwCmd() *cli.Command {
 
 			claude.MarkRead(repoName, wtDir)
 			return ensureTmuxSession(repoName, wtDir, wtPath)
+		},
+	}
+}
+
+func tmuxExistingBranchesCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "existing-branches",
+		Usage:  "Print existing remote branches for tmux picker reloads",
+		Hidden: true,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
+			&cli.BoolFlag{
+				Name:  "refresh",
+				Usage: "Fetch origin before listing branches",
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "tmux.existing-branches")()
+			repo := cmd.String("repo")
+			if repo == "" {
+				return errors.Userf("repo is required")
+			}
+
+			branches, err := existingBranchesForRepo(repo, cmd.Bool("refresh"))
+			if err != nil {
+				return err
+			}
+			for _, branch := range branches {
+				fmt.Println(branch)
+			}
+			return nil
 		},
 	}
 }
@@ -323,7 +359,7 @@ func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tm
 	return ensureTmuxSessionFromPath(wtPath)
 }
 
-func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
+func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerItem, query string) error {
 	repo, err := resolveRepo(repoFilter, sessionName, items)
 	if err != nil {
 		return err
@@ -336,45 +372,49 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 
 	repoGit := &git.Git{Dir: bareDir}
 	cfg := config.Load(bareDir)
-	if *cfg.Defaults.Fetch {
-		fmt.Fprintln(os.Stderr, "Fetching latest branches from origin...")
-		if _, err := repoGit.Run("fetch", "origin"); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to fetch: %v\n", err)
-		}
-	}
-
-	remoteBranches, err := repoGit.RemoteBranches()
+	remoteBranches, err := loadExistingBranchCache(repo)
 	if err != nil {
-		return fmt.Errorf("failed to list remote branches: %w", err)
+		remoteBranches = nil
+	}
+	if len(remoteBranches) == 0 {
+		remoteBranches, err = repoGit.RemoteBranches()
+		if err != nil {
+			return fmt.Errorf("failed to list remote branches: %w", err)
+		}
+		_ = saveExistingBranchCache(repo, remoteBranches)
 	}
 	if len(remoteBranches) == 0 {
 		return errors.Userf("no remote branches found")
 	}
 
-	wts, err := worktree.List(repoGit)
-	if err != nil {
-		return fmt.Errorf("failed to list worktrees: %w", err)
-	}
-	wtBranches := make(map[string]bool)
-	for _, wt := range wts {
-		if !wt.IsBare {
-			wtBranches[wt.Branch] = true
-		}
-	}
-	var available []string
-	for _, b := range remoteBranches {
-		if !wtBranches[b] {
-			available = append(available, b)
+	available := availableExistingBranches(remoteBranches, repo, items)
+	if len(available) == 0 && *cfg.Defaults.Fetch {
+		available, err = existingBranchesForRepo(repo, true)
+		if err != nil {
+			return err
 		}
 	}
 	if len(available) == 0 {
 		return errors.Userf("all remote branches already have worktrees")
 	}
 
-	branch, err := fzf.Run(available,
+	opts := []fzf.Option{
 		fzf.WithReverse(),
 		fzf.WithHeader("Select a branch to check out"),
-	)
+	}
+	if strings.TrimSpace(query) != "" {
+		opts = append(opts, fzf.WithQuery(query))
+	}
+	if *cfg.Defaults.Fetch {
+		refreshCmd := fmt.Sprintf("%s tmux existing-branches --repo %s --refresh", shellQuote(self), shellQuote(repo))
+		opts = append(opts,
+			fzf.WithHeader("Select a branch to check out (refreshing in background; Ctrl-R to refresh)"),
+			fzf.WithBind(fmt.Sprintf("start:reload(%s)", refreshCmd)),
+			fzf.WithBind(fmt.Sprintf("ctrl-r:reload-sync(%s)", refreshCmd)),
+		)
+	}
+
+	branch, err := fzf.Run(available, opts...)
 	if err != nil {
 		return err
 	}
@@ -396,6 +436,108 @@ func tmuxPickExisting(self, repoFilter, sessionName string, items []tmux.PickerI
 	}
 
 	return ensureTmuxSessionFromPath(wtPath)
+}
+
+func existingBranchesForRepo(repo string, refresh bool) ([]string, error) {
+	bareDir, err := config.ResolveRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	repoGit := &git.Git{Dir: bareDir}
+	if refresh {
+		_, _ = repoGit.Run("fetch", "origin")
+	}
+
+	remoteBranches, err := repoGit.RemoteBranches()
+	if err != nil {
+		cached, cacheErr := loadExistingBranchCache(repo)
+		if cacheErr == nil {
+			remoteBranches = cached
+		} else {
+			return nil, fmt.Errorf("failed to list remote branches: %w", err)
+		}
+	}
+	_ = saveExistingBranchCache(repo, remoteBranches)
+
+	wtBranches, err := currentWorktreeBranchSet(repoGit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+	return filterAvailableBranches(remoteBranches, wtBranches), nil
+}
+
+func availableExistingBranches(remoteBranches []string, repo string, items []tmux.PickerItem) []string {
+	wtBranches := make(map[string]bool)
+	for _, item := range items {
+		if item.RepoName != repo {
+			continue
+		}
+		wtBranches[item.Branch] = true
+	}
+	return filterAvailableBranches(remoteBranches, wtBranches)
+}
+
+func currentWorktreeBranchSet(repoGit *git.Git) (map[string]bool, error) {
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return nil, err
+	}
+
+	wtBranches := make(map[string]bool)
+	for _, wt := range wts {
+		if wt.IsBare {
+			continue
+		}
+		wtBranches[wt.Branch] = true
+	}
+	return wtBranches, nil
+}
+
+func filterAvailableBranches(remoteBranches []string, wtBranches map[string]bool) []string {
+	available := make([]string, 0, len(remoteBranches))
+	for _, branch := range remoteBranches {
+		if !wtBranches[branch] {
+			available = append(available, branch)
+		}
+	}
+	return available
+}
+
+func existingBranchesCachePath(repo string) string {
+	return filepath.Join(config.WillowHome(), "cache", "existing-branches", repo+".txt")
+}
+
+func loadExistingBranchCache(repo string) ([]string, error) {
+	data, err := os.ReadFile(existingBranchesCachePath(repo))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var branches []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			branches = append(branches, line)
+		}
+	}
+	return branches, nil
+}
+
+func saveExistingBranchCache(repo string, branches []string) error {
+	path := existingBranchesCachePath(repo)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	data := strings.Join(branches, "\n")
+	if data != "" {
+		data += "\n"
+	}
+	return os.WriteFile(path, []byte(data), 0o644)
 }
 
 func tmuxPickPR(self, repoFilter, sessionName string, items []tmux.PickerItem) error {
