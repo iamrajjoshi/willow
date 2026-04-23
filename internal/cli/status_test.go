@@ -100,6 +100,15 @@ func TestCollectRepoStatus_RepoNameSet(t *testing.T) {
 	}
 }
 
+func TestStatusBranchLabel(t *testing.T) {
+	if got := statusBranchLabel("feature", "1234567890"); got != "feature [12345678]" {
+		t.Errorf("statusBranchLabel with session = %q, want %q", got, "feature [12345678]")
+	}
+	if got := statusBranchLabel("main", ""); got != "main" {
+		t.Errorf("statusBranchLabel without session = %q, want %q", got, "main")
+	}
+}
+
 func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

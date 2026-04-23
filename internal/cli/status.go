@@ -85,6 +85,13 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 	return rs
 }
 
+func statusBranchLabel(branch, sessionID string) string {
+	if sessionID == "" {
+		return branch
+	}
+	return fmt.Sprintf("%s [%s]", branch, claude.ShortSessionID(sessionID))
+}
+
 func statusCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "status",
@@ -147,8 +154,9 @@ func statusCmd() *cli.Command {
 
 				branchW := 0
 				for _, e := range rs.Entries {
-					if len(e.Branch) > branchW {
-						branchW = len(e.Branch)
+					label := statusBranchLabel(e.Branch, e.SessionID)
+					if len(label) > branchW {
+						branchW = len(label)
 					}
 				}
 
@@ -158,13 +166,14 @@ func statusCmd() *cli.Command {
 					if e.Unread {
 						label += "\u25CF" // bullet
 					}
+					branchLabel := statusBranchLabel(e.Branch, e.SessionID)
 					var line string
 					if e.Timestamp != "" {
 						line = fmt.Sprintf("  %s %-*s  %-6s  %s",
-							icon, branchW, e.Branch, label, u.Dim(e.Timestamp))
+							icon, branchW, branchLabel, label, u.Dim(e.Timestamp))
 					} else {
 						line = fmt.Sprintf("  %s %-*s  %s",
-							icon, branchW, e.Branch, label)
+							icon, branchW, branchLabel, label)
 					}
 					u.Info(line)
 				}

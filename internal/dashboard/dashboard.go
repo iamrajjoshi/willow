@@ -40,9 +40,9 @@ type session struct {
 }
 
 type summary struct {
-	Repos   int
-	Agents  int
-	Unread  int
+	Repos  int
+	Agents int
+	Unread int
 }
 
 type cachedDiff struct {
@@ -51,8 +51,8 @@ type cachedDiff struct {
 }
 
 var (
-	diffCache   = map[string]cachedDiff{}
-	diffCacheMu sync.Mutex
+	diffCache    = map[string]cachedDiff{}
+	diffCacheMu  sync.Mutex
 	diffCacheTTL = 10 * time.Second
 )
 
@@ -274,6 +274,9 @@ func collectData() ([]session, summary) {
 			if len(allSessions) > 0 {
 				for _, ss := range allSessions {
 					effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+					if effective == claude.StatusIdle || effective == claude.StatusOffline {
+						continue
+					}
 					timeline, _ := claude.ReadTimeline(repoName, wtDir, ss.SessionID, timelineSince)
 					s := session{
 						Repo:      repoName,
@@ -340,24 +343,27 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	}
 
 	type rowLabel struct {
-		text string
+		status  string
+		session string
 	}
 	labels := make([]rowLabel, len(sessions))
 	statusW := len("STATUS")
 	repoW := len("REPO")
 	branchW := len("BRANCH")
+	sessionW := len("SESSION")
 	diffW := len("DIFF")
 	for i, s := range sessions {
-		text := string(s.Status)
+		statusText := string(s.Status)
 		if s.Unread {
-			text += "\u25CF"
+			statusText += "\u25CF"
 		}
 		if s.Status == claude.StatusBusy && s.Tool != "" {
-			text += " (" + s.Tool + ")"
+			statusText += " (" + s.Tool + ")"
 		}
-		labels[i] = rowLabel{text: text}
-		if len(text) > statusW {
-			statusW = len(text)
+		sessionText := claude.ShortSessionID(s.SessionID)
+		labels[i] = rowLabel{status: statusText, session: sessionText}
+		if len(statusText) > statusW {
+			statusW = len(statusText)
 		}
 		if len(s.Repo) > repoW {
 			repoW = len(s.Repo)
@@ -365,13 +371,16 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		if len(s.Branch) > branchW {
 			branchW = len(s.Branch)
 		}
+		if len(sessionText) > sessionW {
+			sessionW = len(sessionText)
+		}
 		if len(s.DiffStats) > diffW {
 			diffW = len(s.DiffStats)
 		}
 	}
 
 	timelineW := 30
-	tableW := 2 + 2 + 1 + statusW + 2 + repoW + 2 + branchW + 2 + diffW + 2 + 8
+	tableW := 2 + 2 + 1 + statusW + 2 + repoW + 2 + branchW + 2 + sessionW + 2 + diffW + 2 + 8
 	if showTimeline {
 		tableW += 2 + timelineW // 2 for gap + column width
 	}
@@ -387,8 +396,8 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString(u.Bold(headerText))
 	b.WriteString("\n\n")
 
-	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s",
-		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", diffW, "DIFF")
+	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s  %-*s",
+		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", sessionW, "SESSION", diffW, "DIFF")
 	headerLine += "  AGE"
 	if showTimeline {
 		headerLine += fmt.Sprintf("  %-*s", timelineW, "TIMELINE")
@@ -410,10 +419,11 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		if s.Status == claude.StatusBusy {
 			icon = u.Cyan(u.SpinnerFrame(frame))
 		}
-		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s",
-			icon, statusW, labels[i].text,
+		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s  %-*s",
+			icon, statusW, labels[i].status,
 			repoW, s.Repo,
 			branchW, s.Branch,
+			sessionW, labels[i].session,
 			diffW, s.DiffStats)
 		line += "  " + u.Dim(s.Age)
 		if showTimeline {
@@ -469,7 +479,6 @@ func getDiffStats(wtPath, baseBranch string) string {
 
 	return stats
 }
-
 
 func termWidth() int {
 	cmd := exec.Command("stty", "size")

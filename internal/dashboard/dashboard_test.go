@@ -66,7 +66,7 @@ func TestRenderSingleSession(t *testing.T) {
 		{
 			Repo:      "myrepo",
 			Branch:    "feat--thing",
-			SessionID: "abc123",
+			SessionID: "abc12345rest",
 			Status:    claude.StatusBusy,
 			Tool:      "",
 			DiffStats: "2f +10 -3",
@@ -85,6 +85,12 @@ func TestRenderSingleSession(t *testing.T) {
 	}
 	if !strings.Contains(out, "2f +10 -3") {
 		t.Errorf("expected diff stats in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "SESSION") {
+		t.Errorf("expected SESSION column header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "abc12345") {
+		t.Errorf("expected shortened session id in output, got:\n%s", out)
 	}
 }
 

@@ -308,7 +308,7 @@ List worktrees with status.
 
 ### `ww status`
 
-Rich view of Claude Code agent status. Shows per-session rows when multiple agents run in the same worktree, with unread indicators (`●`) for completed sessions you haven't reviewed.
+Rich view of Claude Code agent status. Shows per-session rows when multiple agents run in the same worktree, with a short session ID on each session row and unread indicators (`●`) for completed sessions you haven't reviewed.
 
 ![ww status](screenshots/demo-status.gif)
 
@@ -318,7 +318,7 @@ Rich view of Claude Code agent status. Shows per-session rows when multiple agen
 
 ### `ww dashboard` (alias: `dash`, `d`)
 
-Live-refreshing TUI showing all Claude Code sessions across all repos. Includes diff stats, unread counts, per-session activity, and a timeline sparkline showing agent status transitions over the last 60 minutes.
+Live-refreshing TUI showing active Claude Code sessions across all repos. Includes short session IDs, diff stats, unread counts, per-session activity, and a timeline sparkline showing agent status transitions over the last 60 minutes.
 
 ```bash
 ww dashboard              # default 2s refresh
@@ -442,7 +442,7 @@ After running `ww cc-setup`, Claude Code automatically reports its state:
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. Stale `BUSY`/`DONE` status (>5 min) automatically degrades to `IDLE`. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
+Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
 
 ## Configuration
 
