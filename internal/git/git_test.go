@@ -210,6 +210,31 @@ func TestMergedBranchSet_FiltersToGivenBranches(t *testing.T) {
 	}
 }
 
+func TestMergedBranchSet_ExcludesTrivialBranchesAtBaseTip(t *testing.T) {
+	work := setupRemoteAndClone(t, "main")
+	g := &Git{Dir: work}
+
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	runGit("branch", "wt-trivial", "origin/main")
+
+	set := g.MergedBranchSet("main", []string{"wt-trivial"})
+	if set["wt-trivial"] {
+		t.Errorf("wt-trivial should be excluded as a zero-commit branch, got %v", set)
+	}
+}
+
 func TestMergedBranchSet_EmptyInput(t *testing.T) {
 	work := setupRemoteAndClone(t, "main")
 	g := &Git{Dir: work}

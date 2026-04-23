@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/stack"
 )
 
 func TestStripAnsi(t *testing.T) {
@@ -112,7 +113,6 @@ func TestStatusColor(t *testing.T) {
 		})
 	}
 }
-
 
 func TestDisplayName(t *testing.T) {
 	item := PickerItem{RepoName: "myrepo", Branch: "feat-auth"}
@@ -247,5 +247,107 @@ func TestExtractPathFromLine(t *testing.T) {
 				t.Errorf("ExtractPathFromLine() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func pickerStack(pairs ...string) *stack.Stack {
+	st := &stack.Stack{Parents: make(map[string]string)}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		st.Parents[pairs[i]] = pairs[i+1]
+	}
+	return st
+}
+
+func pickerLoader(stacks map[string]*stack.Stack) pickerStackLoader {
+	return func(repoName string) *stack.Stack {
+		return stacks[repoName]
+	}
+}
+
+func pickerBranches(items []PickerItem) []string {
+	branches := make([]string, len(items))
+	for i, item := range items {
+		branches[i] = item.Branch
+	}
+	return branches
+}
+
+func TestSortPickerItems_UrgencyOrder(t *testing.T) {
+	items := []PickerItem{
+		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "done-unread", Status: claude.StatusDone, Unread: true},
+		{RepoName: "repo", Branch: "wait", Status: claude.StatusWait},
+		{RepoName: "repo", Branch: "done-read", Status: claude.StatusDone},
+		{RepoName: "repo", Branch: "idle", Status: claude.StatusIdle},
+		{RepoName: "repo", Branch: "offline", Status: claude.StatusOffline},
+	}
+
+	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))
+	want := []string{"wait", "done-unread", "busy", "done-read", "idle", "offline"}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("branch[%d] = %q, want %q (full order %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestSortPickerItems_MergedLast(t *testing.T) {
+	items := []PickerItem{
+		{RepoName: "repo", Branch: "merged-wait", Status: claude.StatusWait, Merged: true},
+		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
+	}
+
+	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))
+	want := []string{"busy", "merged-wait"}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("branch[%d] = %q, want %q (full order %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestSortPickerItems_StackStaysContiguousAndRanksByUrgency(t *testing.T) {
+	items := []PickerItem{
+		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "stack-a", Status: claude.StatusIdle},
+		{RepoName: "repo", Branch: "stack-b", Status: claude.StatusWait},
+		{RepoName: "repo", Branch: "done-read", Status: claude.StatusDone},
+	}
+
+	got := sortPickerItems(items, []string{"repo"}, pickerLoader(map[string]*stack.Stack{
+		"repo": pickerStack("stack-a", "main", "stack-b", "stack-a"),
+	}))
+
+	want := []string{"stack-a", "stack-b", "busy", "done-read"}
+	branches := pickerBranches(got)
+	for i := range want {
+		if branches[i] != want[i] {
+			t.Fatalf("branch[%d] = %q, want %q (full order %v)", i, branches[i], want[i], branches)
+		}
+	}
+	if got[0].StackPrefix != "" {
+		t.Fatalf("root stack prefix = %q, want empty", got[0].StackPrefix)
+	}
+	if got[1].StackPrefix == "" {
+		t.Fatal("child stack prefix should be preserved")
+	}
+}
+
+func TestSortPickerItems_EqualPriorityKeepsStableOrder(t *testing.T) {
+	items := []PickerItem{
+		{RepoName: "repo", Branch: "busy-a", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "busy-b", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "busy-c", Status: claude.StatusBusy},
+	}
+
+	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))
+	want := []string{"busy-a", "busy-b", "busy-c"}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("branch[%d] = %q, want %q (full order %v)", i, got[i], want[i], got)
+		}
 	}
 }

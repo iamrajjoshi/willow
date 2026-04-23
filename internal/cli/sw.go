@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
+	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -118,20 +120,30 @@ func swCmd() *cli.Command {
 type worktreeWithStatus struct {
 	wt     worktree.Worktree
 	status *claude.WorktreeStatus
+	unread bool
+	merged bool
 }
 
 func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string {
+	mergedSet := mergedBranchSetForRepo(repoName, "", worktrees)
 	items := make([]worktreeWithStatus, len(worktrees))
 	for i, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
+		ws := claude.ReadStatus(repoName, wtDir)
 		items[i] = worktreeWithStatus{
 			wt:     wt,
-			status: claude.ReadStatus(repoName, wtDir),
+			status: ws,
+			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
+			merged: mergedSet[wt.Branch],
 		}
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
-		return claude.StatusOrder(items[i].status.Status) < claude.StatusOrder(items[j].status.Status)
+		if items[i].merged != items[j].merged {
+			return !items[i].merged
+		}
+		return claude.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
+			claude.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
 	})
 
 	branchW := 0
@@ -146,6 +158,9 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 	for _, item := range items {
 		icon := claude.StatusIcon(item.status.Status)
 		label := claude.StatusLabel(item.status.Status)
+		if item.unread {
+			label += "\u25CF"
+		}
 		line := fmt.Sprintf("%s %-*s  %-*s  %s",
 			icon,
 			statusW, label,
@@ -161,18 +176,40 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	type item struct {
 		rwt    repoWorktree
 		status *claude.WorktreeStatus
+		unread bool
+		merged bool
 	}
+
+	mergedSets := make(map[string]map[string]bool)
+	grouped := make(map[string][]worktree.Worktree)
+	for _, rwt := range rwts {
+		grouped[rwt.Repo.Name] = append(grouped[rwt.Repo.Name], rwt.Worktree)
+	}
+	for _, rwt := range rwts {
+		if _, ok := mergedSets[rwt.Repo.Name]; ok {
+			continue
+		}
+		mergedSets[rwt.Repo.Name] = mergedBranchSetForRepo(rwt.Repo.Name, rwt.Repo.BareDir, grouped[rwt.Repo.Name])
+	}
+
 	items := make([]item, len(rwts))
 	for i, rwt := range rwts {
 		wtDir := filepath.Base(rwt.Worktree.Path)
+		ws := claude.ReadStatus(rwt.Repo.Name, wtDir)
 		items[i] = item{
 			rwt:    rwt,
-			status: claude.ReadStatus(rwt.Repo.Name, wtDir),
+			status: ws,
+			unread: ws.Status == claude.StatusDone && claude.IsUnread(rwt.Repo.Name, wtDir),
+			merged: mergedSets[rwt.Repo.Name][rwt.Worktree.Branch],
 		}
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
-		return claude.StatusOrder(items[i].status.Status) < claude.StatusOrder(items[j].status.Status)
+		if items[i].merged != items[j].merged {
+			return !items[i].merged
+		}
+		return claude.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
+			claude.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
 	})
 
 	nameW := 0
@@ -188,6 +225,9 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	for _, it := range items {
 		icon := claude.StatusIcon(it.status.Status)
 		label := claude.StatusLabel(it.status.Status)
+		if it.unread {
+			label += "\u25CF"
+		}
 		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.Branch
 		line := fmt.Sprintf("%s %-*s  %-*s  %s",
 			icon,
@@ -198,6 +238,41 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+func mergedBranchSetForRepo(repoName, bareDir string, worktrees []worktree.Worktree) map[string]bool {
+	if bareDir == "" {
+		resolved, err := config.ResolveRepo(repoName)
+		if err != nil {
+			return map[string]bool{}
+		}
+		bareDir = resolved
+	}
+
+	branches := make([]string, 0, len(worktrees))
+	branchHeads := make(map[string]string, len(worktrees))
+	repoDir := ""
+	for _, wt := range worktrees {
+		if wt.Branch != "" {
+			if repoDir == "" {
+				repoDir = wt.Path
+			}
+			branches = append(branches, wt.Branch)
+			branchHeads[wt.Branch] = wt.Head
+		}
+	}
+	if len(branches) == 0 {
+		return map[string]bool{}
+	}
+
+	repoGit := &git.Git{Dir: bareDir}
+	cfg := config.Load(bareDir)
+	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
+	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
+	for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+		mergedSet[branch] = true
+	}
+	return mergedSet
 }
 
 func fzfPickWorktree(worktrees []worktree.Worktree, repoName string) (string, error) {
@@ -247,4 +322,3 @@ func extractPathFromLine(line string) string {
 	}
 	return fields[len(fields)-1]
 }
-

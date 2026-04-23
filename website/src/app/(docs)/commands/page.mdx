@@ -112,17 +112,17 @@ ww checkout auth-refactor                # auto-cd via shell integration (tmux-a
 
 ### `ww sw`
 
-Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by activity.
+Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
 
 ```
-🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
-✅ DONE   api-cleanup          <willow-base>/worktrees/repo/api-cleanup
 ⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
+✅ DONE●  api-cleanup          <willow-base>/worktrees/repo/api-cleanup
+🤖 BUSY   auth-refactor        <willow-base>/worktrees/repo/auth-refactor
 🟡 IDLE   main                 <willow-base>/worktrees/repo/main
    --     old-feature          <willow-base>/worktrees/repo/old-feature
 ```
 
-Active agents sorted first, offline sorted last. Pass a name to skip the picker: `ww sw auth-refactor`.
+Pass a name to skip the picker: `ww sw auth-refactor`.
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -157,11 +157,13 @@ List worktrees with status.
 
 ```
   BRANCH               STATUS  PATH                                        AGE
-  main                 IDLE    <willow-base>/worktrees/myrepo/main         3d
-  auth-refactor        BUSY    <willow-base>/worktrees/myrepo/auth-refactor 2h
   payments             WAIT    <willow-base>/worktrees/myrepo/payments     1d
+  auth-refactor        BUSY    <willow-base>/worktrees/myrepo/auth-refactor 2h
+  main                 IDLE    <willow-base>/worktrees/myrepo/main         3d
   old-feature          --      <willow-base>/worktrees/myrepo/old-feature  5m
 ```
+
+Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom.
 
 When run outside a willow repo, lists all repos and their worktree counts.
 
@@ -344,7 +346,7 @@ ww gc --prune --dry-run  # list what --prune would remove
 | `--prune` | Interactively remove merged worktrees | `false` |
 | `--dry-run` | Show what would be cleaned up without removing anything | `false` |
 
-Without `--prune`, willow only empties the trash directory and prints the commands you'd run to remove each merged worktree. With `--prune`, it reads `branches.json` across all repos, cross-references `git branch --merged`, and prompts before removing each one.
+Without `--prune`, willow only empties the trash directory and prints the commands you'd run to remove each merged worktree. With `--prune`, it checks both Git ancestry and, when `gh` is available, merged GitHub PR state so squash/rebase-merged branches still show up for cleanup. If `gh` is missing or lookup fails, willow falls back to Git-only detection.
 
 ## Agents
 

@@ -150,11 +150,15 @@ func (g *Git) MergedBranches(base string) ([]string, error) {
 // `git branch --merged`, which scans every local ref and would take
 // hundreds of ms on repos with thousands of branches. Excludes trivial
 // forks whose tip SHA equals origin/<base> (same filter as MergedBranches).
+// The origin/<base> ref is included in the query so we can reuse its SHA
+// without spawning a second git process.
 func (g *Git) MergedBranchSet(base string, branches []string) map[string]bool {
 	if len(branches) == 0 {
 		return map[string]bool{}
 	}
 	args := []string{"for-each-ref", "--merged=origin/" + base, "--format=%(refname:short) %(objectname)"}
+	baseRef := "refs/remotes/origin/" + base
+	args = append(args, baseRef)
 	for _, b := range branches {
 		args = append(args, "refs/heads/"+b)
 	}
@@ -162,8 +166,14 @@ func (g *Git) MergedBranchSet(base string, branches []string) map[string]bool {
 	if err != nil || out == "" {
 		return map[string]bool{}
 	}
-	baseSHA, _ := g.Run("rev-parse", "origin/"+base)
-	set := make(map[string]bool)
+
+	baseName := "origin/" + base
+	baseSHA := ""
+	type refInfo struct {
+		name string
+		sha  string
+	}
+	refs := make([]refInfo, 0, len(branches))
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -173,13 +183,22 @@ func (g *Git) MergedBranchSet(base string, branches []string) map[string]bool {
 		if !ok {
 			continue
 		}
+		if name == baseName {
+			baseSHA = sha
+			continue
+		}
 		if name == base {
 			continue
 		}
-		if baseSHA != "" && sha == baseSHA {
+		refs = append(refs, refInfo{name: name, sha: sha})
+	}
+
+	set := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		if baseSHA != "" && ref.sha == baseSHA {
 			continue
 		}
-		set[name] = true
+		set[ref.name] = true
 	}
 	return set
 }
