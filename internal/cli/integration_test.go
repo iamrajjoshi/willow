@@ -11,6 +11,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/tmux"
 )
 
 // setupTestEnv creates a fake HOME with an "origin" git repo to clone from.
@@ -304,6 +305,143 @@ func TestRm_KeepBranch(t *testing.T) {
 	out, _ := repoGit.Run("branch", "--list", "keep-me")
 	if out == "" {
 		t.Error("branch 'keep-me' should still exist with --keep-branch")
+	}
+}
+
+func TestFilterMergedDeleteCandidates_SkipsUnsafeWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read worktrees dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 initial worktree, got %d", len(entries))
+	}
+
+	mainBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, mainBranch)
+	os.Chdir(mainDir)
+
+	mainGit := &git.Git{Dir: mainDir}
+	if _, err := mainGit.Run("config", "user.email", "test@test.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := mainGit.Run("config", "user.name", "Test"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+
+	createMergedBranch := func(branch string, pushBranch, dirtyAfterMerge, unsetUpstream bool) string {
+		t.Helper()
+
+		if err := runApp("new", branch, "--no-fetch"); err != nil {
+			t.Fatalf("new %s failed: %v", branch, err)
+		}
+
+		wtPath := filepath.Join(worktreeDir, branch)
+		wtGit := &git.Git{Dir: wtPath}
+		file := filepath.Join(wtPath, branch+".txt")
+		if err := os.WriteFile(file, []byte(branch+"\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", file, err)
+		}
+		if _, err := wtGit.Run("add", "."); err != nil {
+			t.Fatalf("git add %s: %v", branch, err)
+		}
+		if _, err := wtGit.Run("commit", "-m", "add "+branch); err != nil {
+			t.Fatalf("git commit %s: %v", branch, err)
+		}
+		if pushBranch {
+			if _, err := wtGit.Run("push", "-u", "origin", branch); err != nil {
+				t.Fatalf("git push %s: %v", branch, err)
+			}
+		}
+		if _, err := mainGit.Run("merge", "--no-ff", branch, "-m", "merge "+branch); err != nil {
+			t.Fatalf("git merge %s: %v", branch, err)
+		}
+		if _, err := mainGit.Run("push", "origin", mainBranch); err != nil {
+			t.Fatalf("git push %s: %v", mainBranch, err)
+		}
+		if dirtyAfterMerge {
+			if err := os.WriteFile(file, []byte(branch+"\ndirty\n"), 0o644); err != nil {
+				t.Fatalf("dirty write %s: %v", file, err)
+			}
+		}
+		if unsetUpstream {
+			if _, err := wtGit.Run("branch", "--unset-upstream"); err != nil {
+				t.Fatalf("unset upstream %s: %v", branch, err)
+			}
+		}
+		return wtPath
+	}
+
+	safePath := createMergedBranch("safe-merged", true, false, false)
+	dirtyPath := createMergedBranch("dirty-merged", true, true, false)
+	unpushedPath := createMergedBranch("unpushed-merged", false, false, true)
+
+	if err := runApp("new", "stack-parent", "--no-fetch"); err != nil {
+		t.Fatalf("new stack-parent failed: %v", err)
+	}
+	parentPath := filepath.Join(worktreeDir, "stack-parent")
+	parentGit := &git.Git{Dir: parentPath}
+	parentFile := filepath.Join(parentPath, "stack-parent.txt")
+	if err := os.WriteFile(parentFile, []byte("stack parent\n"), 0o644); err != nil {
+		t.Fatalf("write stack-parent: %v", err)
+	}
+	if _, err := parentGit.Run("add", "."); err != nil {
+		t.Fatalf("git add stack-parent: %v", err)
+	}
+	if _, err := parentGit.Run("commit", "-m", "add stack-parent"); err != nil {
+		t.Fatalf("git commit stack-parent: %v", err)
+	}
+	if _, err := parentGit.Run("push", "-u", "origin", "stack-parent"); err != nil {
+		t.Fatalf("git push stack-parent: %v", err)
+	}
+
+	if err := runApp("new", "stack-child", "-b", "stack-parent", "--no-fetch"); err != nil {
+		t.Fatalf("new stack-child failed: %v", err)
+	}
+	if _, err := mainGit.Run("merge", "--no-ff", "stack-parent", "-m", "merge stack-parent"); err != nil {
+		t.Fatalf("git merge stack-parent: %v", err)
+	}
+	if _, err := mainGit.Run("push", "origin", mainBranch); err != nil {
+		t.Fatalf("git push %s: %v", mainBranch, err)
+	}
+
+	items := []tmux.PickerItem{
+		{RepoName: "testrepo", Branch: "safe-merged", WtDirName: "safe-merged", WtPath: safePath},
+		{RepoName: "testrepo", Branch: "dirty-merged", WtDirName: "dirty-merged", WtPath: dirtyPath},
+		{RepoName: "testrepo", Branch: "unpushed-merged", WtDirName: "unpushed-merged", WtPath: unpushedPath},
+		{RepoName: "testrepo", Branch: "stack-parent", WtDirName: "stack-parent", WtPath: parentPath},
+	}
+
+	safe, skipped, err := filterMergedDeleteCandidates(items)
+	if err != nil {
+		t.Fatalf("filterMergedDeleteCandidates failed: %v", err)
+	}
+
+	if got := branches(safe); len(got) != 1 || got[0] != "safe-merged" {
+		t.Fatalf("safe branches = %v, want [safe-merged]", got)
+	}
+
+	reasons := make(map[string]string)
+	for _, skip := range skipped {
+		reasons[skip.Item.Branch] = skip.Reason
+	}
+
+	if !strings.Contains(reasons["dirty-merged"], "uncommitted changes") {
+		t.Fatalf("dirty-merged reason = %q, want uncommitted changes", reasons["dirty-merged"])
+	}
+	if !strings.Contains(reasons["unpushed-merged"], "unpushed commits") {
+		t.Fatalf("unpushed-merged reason = %q, want unpushed commits", reasons["unpushed-merged"])
+	}
+	if !strings.Contains(reasons["stack-parent"], "stacked children: stack-child") {
+		t.Fatalf("stack-parent reason = %q, want stacked child", reasons["stack-parent"])
 	}
 }
 

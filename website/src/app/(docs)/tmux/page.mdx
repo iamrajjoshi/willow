@@ -38,6 +38,7 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 | `Ctrl-G` | Dispatch: create worktree from query text as prompt, launch Claude Code |
 | `Ctrl-S` | Sync stacked worktrees (selected branch's subtree, or all) |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
+| `Ctrl-X` | Delete merged worktrees currently shown, skipping unsafe ones |
 | `Esc` | Close picker |
 
 ### Dispatch
@@ -56,7 +57,7 @@ Press `Ctrl-E` to open a secondary picker showing all remote branches that don't
 
 ### Merged worktree indicator
 
-Worktrees whose branches have been merged into the base branch show a dim `[merged]` tag. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up with `Ctrl-D` or `ww gc --prune`.
+Worktrees whose branches have been merged into the base branch show a dim `[merged]` tag. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up one at a time with `Ctrl-D`, bulk-delete the safe subset currently shown with `Ctrl-X` (the active tmux session and any merged worktrees with local changes, unpushed commits, or stacked children are skipped), or use `ww gc --prune`.
 
 ### Features
 

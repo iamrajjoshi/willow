@@ -198,6 +198,80 @@ func TestMoveToFrontWithStack_BranchNotInStack(t *testing.T) {
 	assertBranches(t, got, want)
 }
 
+func TestMergedDeleteCandidates_SkipsCurrentSessionAndKeepsOrder(t *testing.T) {
+	items := []tmux.PickerItem{
+		{RepoName: "repo", Branch: "main", WtDirName: "main"},
+		{RepoName: "repo", Branch: "feature-a", WtDirName: "feature-a", Merged: true},
+		{RepoName: "repo", Branch: "feature-b", WtDirName: "feature-b", Merged: true},
+		{RepoName: "repo", Branch: "feature-c", WtDirName: "feature-c", Merged: true},
+	}
+
+	got, skippedCurrent := mergedDeleteCandidates(items, "repo/feature-b")
+	if !skippedCurrent {
+		t.Fatal("expected current session worktree to be skipped")
+	}
+
+	want := []string{"feature-a", "feature-c"}
+	assertBranches(t, branches(got), want)
+}
+
+func TestMergedDeleteCandidates_NoCurrentSessionDeletesAllMerged(t *testing.T) {
+	items := []tmux.PickerItem{
+		{RepoName: "repo", Branch: "main", WtDirName: "main"},
+		{RepoName: "repo", Branch: "feature-a", WtDirName: "feature-a", Merged: true},
+		{RepoName: "other", Branch: "feature-b", WtDirName: "feature-b", Merged: true},
+	}
+
+	got, skippedCurrent := mergedDeleteCandidates(items, "")
+	if skippedCurrent {
+		t.Fatal("did not expect any current session skip")
+	}
+
+	want := []string{"feature-a", "feature-b"}
+	assertBranches(t, branches(got), want)
+}
+
+func TestMergedDeleteSkipReasonFromState(t *testing.T) {
+	tests := []struct {
+		name     string
+		children []string
+		dirty    bool
+		unpushed bool
+		want     string
+	}{
+		{
+			name: "safe",
+			want: "",
+		},
+		{
+			name:     "stacked children only",
+			children: []string{"child-a", "child-b"},
+			want:     "stacked children: child-a, child-b",
+		},
+		{
+			name:  "dirty only",
+			dirty: true,
+			want:  "uncommitted changes",
+		},
+		{
+			name:     "all reasons",
+			children: []string{"child-a"},
+			dirty:    true,
+			unpushed: true,
+			want:     "stacked children: child-a; uncommitted changes; unpushed commits",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergedDeleteSkipReasonFromState(tt.children, tt.dirty, tt.unpushed)
+			if got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func assertBranches(t *testing.T, got, want []string) {
 	t.Helper()
 	if len(got) != len(want) {
