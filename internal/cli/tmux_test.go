@@ -1,8 +1,13 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 )
@@ -299,6 +304,215 @@ func TestExistingBranchCacheRoundTrip(t *testing.T) {
 		t.Fatalf("loadExistingBranchCache() error = %v", err)
 	}
 	assertBranches(t, got, want)
+}
+
+func TestExtractBranchFromPRLine(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "normal PR line",
+			line: "#42  Add picker action  (raj)  [feature/tmux-picker]",
+			want: "feature/tmux-picker",
+		},
+		{
+			name: "branch with brackets earlier in title",
+			line: "#43  Fix [docs] rendering  (raj)  [fix/docs-rendering]",
+			want: "fix/docs-rendering",
+		},
+		{
+			name: "missing brackets",
+			line: "#44  No branch here",
+			want: "",
+		},
+		{
+			name: "empty branch",
+			line: "#45  Bad line []",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractBranchFromPRLine(tt.line); got != tt.want {
+				t.Fatalf("extractBranchFromPRLine(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMergedDeleteLabel(t *testing.T) {
+	item := tmux.PickerItem{RepoName: "repo-a", Branch: "feature-a"}
+	if got := mergedDeleteLabel(item, false); got != "feature-a" {
+		t.Fatalf("single-repo label = %q, want feature-a", got)
+	}
+	if got := mergedDeleteLabel(item, true); got != "repo-a/feature-a" {
+		t.Fatalf("multi-repo label = %q, want repo-a/feature-a", got)
+	}
+}
+
+func TestMergedDeleteHasMultipleRepos(t *testing.T) {
+	if mergedDeleteHasMultipleRepos(nil) {
+		t.Fatal("empty item set should not count as multiple repos")
+	}
+	if mergedDeleteHasMultipleRepos([]tmux.PickerItem{item("repo-a", "main"), item("repo-a", "feature")}) {
+		t.Fatal("same repo items should not count as multiple repos")
+	}
+	if !mergedDeleteHasMultipleRepos([]tmux.PickerItem{item("repo-a", "main"), item("repo-b", "feature")}) {
+		t.Fatal("different repo items should count as multiple repos")
+	}
+}
+
+func TestFindItemByPath(t *testing.T) {
+	items := []tmux.PickerItem{
+		item("repo", "main"),
+		item("repo", "feature"),
+	}
+
+	got := findItemByPath(items, "/fake/repo/feature")
+	if got == nil || got.Branch != "feature" {
+		t.Fatalf("findItemByPath() = %+v, want feature item", got)
+	}
+	if got := findItemByPath(items, "/fake/repo/missing"); got != nil {
+		t.Fatalf("findItemByPath() = %+v, want nil for missing path", got)
+	}
+}
+
+func TestBuildStackChain(t *testing.T) {
+	st := makeStack(
+		"feature-a", "main",
+		"feature-b", "feature-a",
+		"feature-c", "feature-b",
+		"feature-d", "feature-b",
+	)
+
+	got := buildStackChain(st, "feature-b")
+	for _, want := range []string{"main", "feature-a", "[feature-b]", "feature-c", "feature-d"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("buildStackChain() = %q, missing %q", got, want)
+		}
+	}
+	if !strings.Contains(got, "→") {
+		t.Fatalf("buildStackChain() = %q, want arrow separators", got)
+	}
+}
+
+func TestTmuxInstallCommand_PrintsConfig(t *testing.T) {
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "install")
+	})
+	if err != nil {
+		t.Fatalf("tmux install failed: %v", err)
+	}
+	for _, want := range []string{"bind w run-shell", "tmux pick", "status-right", "status-interval 3"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("tmux install output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestTmuxExistingBranchesCommand_ListsAvailableRemoteBranches(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "tmuxbranches"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "tmuxbranches")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read worktrees dir: %v", err)
+	}
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	wg := &git.Git{Dir: mainDir}
+	if _, err := wg.Run("checkout", "-b", "remote-only"); err != nil {
+		t.Fatalf("create remote-only branch: %v", err)
+	}
+	if _, err := wg.Run("push", "origin", "remote-only"); err != nil {
+		t.Fatalf("push remote-only branch: %v", err)
+	}
+	if _, err := wg.Run("checkout", "-"); err != nil {
+		t.Fatalf("checkout previous branch: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "existing-branches", "--repo", "tmuxbranches", "--refresh")
+	})
+	if err != nil {
+		t.Fatalf("tmux existing-branches failed: %v", err)
+	}
+	if !strings.Contains(out, "remote-only") {
+		t.Fatalf("expected available remote branch in output, got:\n%s", out)
+	}
+	if strings.Contains(out, entries[0].Name()) {
+		t.Fatalf("current worktree branch should be filtered out, got:\n%s", out)
+	}
+}
+
+func TestTmuxListCommand_PrintsPickerLines(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "tmuxlist"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "tmuxlist")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	if err := runApp("new", "feature-picker", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "list", "--repo", "tmuxlist")
+	})
+	if err != nil {
+		t.Fatalf("tmux list failed: %v", err)
+	}
+	if !strings.Contains(out, "feature-picker") {
+		t.Fatalf("expected picker output to include feature branch, got:\n%s", out)
+	}
+	if !strings.Contains(out, filepath.Join(".willow", "worktrees", "tmuxlist", "feature-picker")) {
+		t.Fatalf("expected picker output to include shortened worktree path, got:\n%s", out)
+	}
+}
+
+func TestTmuxStatusBarCommand_CountsWorktreesAndAgents(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "tmuxstatus"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "tmuxstatus")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	if err := runApp("new", "feature-agent", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+	writeActiveSessionFile(t, "tmuxstatus", "feature-agent", "s1", claude.StatusDone)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "status-bar")
+	})
+	if err != nil {
+		t.Fatalf("tmux status-bar failed: %v", err)
+	}
+	if !strings.Contains(out, " 2 ") {
+		t.Fatalf("expected two worktrees in status bar, got %q", out)
+	}
+	if !strings.Contains(out, " 1") {
+		t.Fatalf("expected one active agent in status bar, got %q", out)
+	}
 }
 
 func assertBranches(t *testing.T, got, want []string) {

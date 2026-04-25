@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -241,5 +242,145 @@ func TestMergedBranchSet_EmptyInput(t *testing.T) {
 	set := g.MergedBranchSet("main", nil)
 	if len(set) != 0 {
 		t.Errorf("empty input should return empty set, got %v", set)
+	}
+}
+
+func TestRemoteBranchesFiltersOriginHead(t *testing.T) {
+	work := setupRemoteAndClone(t, "main")
+	g := &Git{Dir: work}
+
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	runGit("checkout", "-b", "remote-feature", "origin/main")
+	if err := os.WriteFile(filepath.Join(work, "remote-feature.txt"), []byte("remote feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "remote-feature.txt")
+	runGit("commit", "-m", "remote feature")
+	runGit("push", "origin", "remote-feature")
+	runGit("fetch", "origin")
+	runGit("remote", "set-head", "origin", "main")
+
+	branches, err := g.RemoteBranches()
+	if err != nil {
+		t.Fatalf("RemoteBranches() error = %v", err)
+	}
+	set := make(map[string]bool, len(branches))
+	for _, branch := range branches {
+		set[branch] = true
+		if branch == "HEAD" || branch == "origin/HEAD" {
+			t.Fatalf("RemoteBranches() should filter HEAD pointers, got %v", branches)
+		}
+		if strings.HasPrefix(branch, "origin/") {
+			t.Fatalf("RemoteBranches() should trim origin/ prefix, got %v", branches)
+		}
+	}
+	for _, want := range []string{"main", "remote-feature"} {
+		if !set[want] {
+			t.Fatalf("RemoteBranches() = %v, missing %q", branches, want)
+		}
+	}
+}
+
+func TestDirtyAheadUnpushedAndRebaseHelpers(t *testing.T) {
+	work := setupRemoteAndClone(t, "main")
+	g := &Git{Dir: work}
+
+	dirty, err := g.IsDirty()
+	if err != nil {
+		t.Fatalf("IsDirty() error = %v", err)
+	}
+	if dirty {
+		t.Fatal("fresh checkout should be clean")
+	}
+
+	if err := os.WriteFile(filepath.Join(work, "change.txt"), []byte("change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = g.IsDirty()
+	if err != nil {
+		t.Fatalf("IsDirty() after write error = %v", err)
+	}
+	if !dirty {
+		t.Fatal("untracked file should mark worktree dirty")
+	}
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("add", "change.txt")
+	run("commit", "-m", "change")
+
+	dirty, err = g.IsDirty()
+	if err != nil {
+		t.Fatalf("IsDirty() after commit error = %v", err)
+	}
+	if dirty {
+		t.Fatal("committed worktree should be clean")
+	}
+
+	ahead, err := g.CommitsAhead("origin/main")
+	if err != nil {
+		t.Fatalf("CommitsAhead() error = %v", err)
+	}
+	if ahead != 1 {
+		t.Fatalf("CommitsAhead(origin/main) = %d, want 1", ahead)
+	}
+
+	unpushed, err := g.HasUnpushedCommits()
+	if err != nil {
+		t.Fatalf("HasUnpushedCommits() error = %v", err)
+	}
+	if !unpushed {
+		t.Fatal("local commit should be unpushed")
+	}
+	run("push", "origin", "main")
+	unpushed, err = g.HasUnpushedCommits()
+	if err != nil {
+		t.Fatalf("HasUnpushedCommits() after push error = %v", err)
+	}
+	if unpushed {
+		t.Fatal("pushed branch should not have unpushed commits")
+	}
+
+	gitDir, err := g.Run("rev-parse", "--git-dir")
+	if err != nil {
+		t.Fatalf("rev-parse --git-dir: %v", err)
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(work, gitDir)
+	}
+	rebaseDir := filepath.Join(gitDir, "rebase-merge")
+	if err := os.MkdirAll(rebaseDir, 0o755); err != nil {
+		t.Fatalf("mkdir rebase dir: %v", err)
+	}
+	if !g.IsRebaseInProgress() {
+		t.Fatal("synthetic rebase-merge dir should be detected")
+	}
+	if err := os.RemoveAll(rebaseDir); err != nil {
+		t.Fatalf("remove rebase dir: %v", err)
+	}
+	if g.IsRebaseInProgress() {
+		t.Fatal("removed rebase dir should not be detected")
 	}
 }

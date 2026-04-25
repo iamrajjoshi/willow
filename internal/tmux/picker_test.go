@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -247,6 +248,56 @@ func TestExtractPathFromLine(t *testing.T) {
 				t.Errorf("ExtractPathFromLine() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFormatPickerLinesMultiRepoMergedUnreadAndSubSessions(t *testing.T) {
+	t.Setenv("HOME", "/fakehome")
+	now := time.Now()
+
+	items := []PickerItem{
+		{
+			RepoName:  "repo-a",
+			Branch:    "done-branch",
+			WtPath:    "/fakehome/worktrees/repo-a/done-branch",
+			Status:    claude.StatusDone,
+			Unread:    true,
+			Merged:    true,
+			WtDirName: "done-branch",
+		},
+		{
+			RepoName:    "repo-b",
+			Branch:      "stack-child",
+			WtPath:      "/fakehome/worktrees/repo-b/stack-child",
+			Status:      claude.StatusBusy,
+			StackPrefix: "└─ ",
+			Sessions: []*claude.SessionStatus{
+				{SessionID: "busy-session-123", Status: claude.StatusBusy, Tool: "Edit", Timestamp: now},
+				{SessionID: "done-session-456", Status: claude.StatusDone, Timestamp: now},
+			},
+			WtDirName: "stack-child",
+		},
+	}
+
+	lines := FormatPickerLines(items)
+	if len(lines) != 4 {
+		t.Fatalf("FormatPickerLines() returned %d lines, want 4: %#v", len(lines), lines)
+	}
+
+	joined := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"repo-a/done-branch",
+		"[merged]",
+		"●",
+		"~/worktrees/repo-a/done-branch",
+		"└─ repo-b/stack-child",
+		"busy-se",
+		"(Edit)",
+		"done-se",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("formatted picker lines missing %q:\n%s", want, joined)
+		}
 	}
 }
 

@@ -254,6 +254,15 @@ func (g *Git) IsRebaseInProgress() bool {
 	if err != nil {
 		return false
 	}
+	if !filepath.IsAbs(gitDir) {
+		base := g.Dir
+		if base == "" {
+			if cwd, err := os.Getwd(); err == nil {
+				base = cwd
+			}
+		}
+		gitDir = filepath.Join(base, gitDir)
+	}
 	for _, dir := range []string{"rebase-merge", "rebase-apply"} {
 		if _, err := os.Stat(filepath.Join(gitDir, dir)); err == nil {
 			return true
