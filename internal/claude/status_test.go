@@ -121,6 +121,30 @@ func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
 	}
 }
 
+func TestMoveStatusDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
+
+	oldDir := StatusWorktreeDir("repo", "old")
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatalf("mkdir old status dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(oldDir, "s1.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write status file: %v", err)
+	}
+
+	if err := MoveStatusDir("repo", "old", "new"); err != nil {
+		t.Fatalf("MoveStatusDir: %v", err)
+	}
+	if _, err := os.Stat(StatusWorktreeDir("repo", "old")); !os.IsNotExist(err) {
+		t.Fatalf("old status dir should be gone, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(StatusWorktreeDir("repo", "new"), "s1.json")); err != nil {
+		t.Fatalf("new status file missing: %v", err)
+	}
+}
+
 func TestStatusIcon(t *testing.T) {
 	tests := []struct {
 		status Status

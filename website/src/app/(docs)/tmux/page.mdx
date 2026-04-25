@@ -59,6 +59,12 @@ Type a name in the query field and press `Ctrl-T` to create a detached worktree 
 
 To keep the work, select the detached worktree and press `Ctrl-U`. If the query field has text, Willow uses it as the new branch name; otherwise it reuses the detached worktree name. Promotion happens in place, so the tmux session and agent status stay attached to the same directory.
 
+### Renaming worktrees
+
+Use `ww rename <new-name>` from the current worktree, or `ww rename <worktree> <new-name>` from anywhere, to rename a worktree. When a matching tmux session exists, Willow renames it from `<repo>/<old-dir>` to `<repo>/<new-dir>` so panes and running agents stay reachable under the new worktree name.
+
+Rename refuses to overwrite an existing tmux session. If you use the shell integration while inside the renamed worktree, your shell moves to the new path and preserves the nested subdirectory when possible.
+
 ### Existing branch picker
 
 Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Willow opens this picker immediately from cached refs, then refreshes from origin in the background (unless `defaults.fetch` is disabled) so freshly pushed branches appear without blocking the initial render. Press `Ctrl-R` inside the branch picker to force a synchronous refresh.

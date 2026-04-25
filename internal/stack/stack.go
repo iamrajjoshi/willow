@@ -115,6 +115,18 @@ func (s *Stack) Remove(branch string) {
 	delete(s.Parents, branch)
 }
 
+func (s *Stack) Rename(oldBranch, newBranch string) {
+	if parent, ok := s.Parents[oldBranch]; ok {
+		delete(s.Parents, oldBranch)
+		s.Parents[newBranch] = parent
+	}
+	for branch, parent := range s.Parents {
+		if parent == oldBranch {
+			s.Parents[branch] = newBranch
+		}
+	}
+}
+
 func (s *Stack) Parent(branch string) string {
 	return s.Parents[branch]
 }
@@ -251,7 +263,7 @@ func (s *Stack) collectTreeLines(lines *[]TreeLine, branch, prefix string, depth
 		isLast := i == len(visibleChildren)-1
 		var childPrefix, nextPrefix string
 		if depth == 0 && skipSelf {
-				if isLast {
+			if isLast {
 				childPrefix = "└─ "
 				nextPrefix = "   "
 			} else {

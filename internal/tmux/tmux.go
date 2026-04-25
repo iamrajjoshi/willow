@@ -118,6 +118,11 @@ func KillSession(name string) error {
 	return err
 }
 
+func RenameSession(oldName, newName string) error {
+	_, err := run("rename-session", "-t", oldName, newName)
+	return err
+}
+
 func SwitchClient(name string) error {
 	if InTmux() {
 		_, err := run("switch-client", "-t", name)
