@@ -9,6 +9,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -37,7 +38,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
 		sessions := claude.ReadAllSessions(repoName, wtDir)
-		unread := claude.IsUnread(repoName, wtDir)
+		unread := claude.CountUnreadIn(repoName, wtDir, sessions) > 0
 		if unread {
 			rs.UnreadCount++
 		}
@@ -65,7 +66,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 				}
 			}
 		} else {
-			ws := claude.ReadStatus(repoName, wtDir)
+			ws := claude.AggregateStatus(sessions)
 			entry := sessionEntry{
 				Repo:   repoName,
 				Branch: wt.DisplayName(),
@@ -83,6 +84,33 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 		}
 	}
 	return rs
+}
+
+func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
+	type result struct {
+		status repoStatus
+		ok     bool
+	}
+
+	results := parallel.Map(repos, func(_ int, r repoInfo) result {
+		repoGit := &git.Git{Dir: r.BareDir, Verbose: verbose}
+		wts, err := worktree.List(repoGit)
+		if err != nil {
+			return result{}
+		}
+		return result{
+			status: collectRepoStatus(r.Name, filterBareWorktrees(wts)),
+			ok:     true,
+		}
+	})
+
+	statuses := make([]repoStatus, 0, len(repos))
+	for _, result := range results {
+		if result.ok {
+			statuses = append(statuses, result.status)
+		}
+	}
+	return statuses
 }
 
 func statusBranchLabel(branch, sessionID string) string {
@@ -119,16 +147,7 @@ func statusCmd() *cli.Command {
 				return err
 			}
 
-			var allStatuses []repoStatus
-			for _, r := range repos {
-				repoGit := &git.Git{Dir: r.BareDir, Verbose: g.Verbose}
-				wts, err := worktree.List(repoGit)
-				if err != nil {
-					continue
-				}
-				filtered := filterBareWorktrees(wts)
-				allStatuses = append(allStatuses, collectRepoStatus(r.Name, filtered))
-			}
+			allStatuses := collectRepoStatuses(repos, g.Verbose)
 
 			if cmd.Bool("json") {
 				var allEntries []sessionEntry

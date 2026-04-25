@@ -13,6 +13,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -74,81 +75,107 @@ func BuildPickerItemsWithOptions(ctx context.Context, repoFilter string, opts Pi
 
 	sessionSet := ListSessions()
 
+	results := parallel.Map(repoNames, func(_ int, repoName string) pickerRepoResult {
+		return buildPickerItemsForRepo(ctx, repoName, sessionSet, opts)
+	})
+
 	var items []PickerItem
-	for _, repoName := range repoNames {
-		bareDir, err := config.ResolveRepo(repoName)
-		if err != nil {
+	stacks := make(map[string]*stack.Stack, len(repoNames))
+	for _, result := range results {
+		if result.repoName == "" {
 			continue
 		}
-		repoGit := &git.Git{Dir: bareDir}
-		done := trace.Span(ctx, "worktree.List/"+repoName)
-		wts, err := worktree.List(repoGit)
-		done()
-		if err != nil {
-			continue
-		}
-
-		cfg := config.Load(bareDir)
-		baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-		branches := make([]string, 0, len(wts))
-		branchHeads := make(map[string]string, len(wts))
-		repoDir := ""
-		for _, wt := range wts {
-			if !wt.IsBare && !wt.Detached && wt.Branch != "" {
-				if repoDir == "" {
-					repoDir = wt.Path
-				}
-				branches = append(branches, wt.Branch)
-				branchHeads[wt.Branch] = wt.Head
-			}
-		}
-		done = trace.Span(ctx, "git.MergedBranchSet/"+repoName)
-		mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-		done()
-
-		done = trace.Span(ctx, "gh.MergedWorktreeSet/"+repoName)
-		var githubMerged map[string]bool
-		if opts.RefreshGitHubMerged {
-			githubMerged = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads)
-		} else {
-			githubMerged = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads)
-		}
-		for branch := range githubMerged {
-			mergedSet[branch] = true
-		}
-		done()
-
-		done = trace.Span(ctx, "per-wt-loop/"+repoName)
-		for _, wt := range wts {
-			if wt.IsBare {
-				continue
-			}
-			wtDir := filepath.Base(wt.Path)
-			sessions := claude.ReadAllSessions(repoName, wtDir)
-			ws := claude.AggregateStatus(sessions)
-			sessName := SessionNameForWorktree(repoName, wtDir)
-			items = append(items, PickerItem{
-				RepoName:   repoName,
-				Branch:     wt.Branch,
-				Head:       wt.Head,
-				Detached:   wt.Detached,
-				WtDirName:  wtDir,
-				WtPath:     wt.Path,
-				Status:     ws.Status,
-				Unread:     ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
-				HasSession: sessionSet[sessName],
-				Sessions:   sessions,
-				Merged:     !wt.Detached && mergedSet[wt.Branch],
-			})
-		}
-		done()
+		items = append(items, result.items...)
+		stacks[result.repoName] = result.stack
 	}
 
 	done := trace.Span(ctx, "sortPickerItems")
-	items = sortPickerItems(items, repoNames, defaultPickerStackLoader)
+	items = sortPickerItems(items, repoNames, func(repoName string) *stack.Stack {
+		return stacks[repoName]
+	})
 	done()
 
 	return items, nil
+}
+
+type pickerRepoResult struct {
+	repoName string
+	items    []PickerItem
+	stack    *stack.Stack
+}
+
+func buildPickerItemsForRepo(ctx context.Context, repoName string, sessionSet map[string]bool, opts PickerBuildOptions) pickerRepoResult {
+	result := pickerRepoResult{repoName: repoName}
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return pickerRepoResult{}
+	}
+
+	result.stack = stack.Load(bareDir)
+	repoGit := &git.Git{Dir: bareDir}
+	done := trace.Span(ctx, "worktree.List/"+repoName)
+	wts, err := worktree.List(repoGit)
+	done()
+	if err != nil {
+		return result
+	}
+
+	cfg := config.Load(bareDir)
+	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
+	branches := make([]string, 0, len(wts))
+	branchHeads := make(map[string]string, len(wts))
+	repoDir := ""
+	for _, wt := range wts {
+		if !wt.IsBare && !wt.Detached && wt.Branch != "" {
+			if repoDir == "" {
+				repoDir = wt.Path
+			}
+			branches = append(branches, wt.Branch)
+			branchHeads[wt.Branch] = wt.Head
+		}
+	}
+	done = trace.Span(ctx, "git.MergedBranchSet/"+repoName)
+	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
+	done()
+
+	done = trace.Span(ctx, "gh.MergedWorktreeSet/"+repoName)
+	var githubMerged map[string]bool
+	if opts.RefreshGitHubMerged {
+		githubMerged = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads)
+	} else {
+		githubMerged = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads)
+	}
+	for branch := range githubMerged {
+		mergedSet[branch] = true
+	}
+	done()
+
+	done = trace.Span(ctx, "per-wt-loop/"+repoName)
+	for _, wt := range wts {
+		if wt.IsBare {
+			continue
+		}
+		wtDir := filepath.Base(wt.Path)
+		sessions := claude.ReadAllSessions(repoName, wtDir)
+		ws := claude.AggregateStatus(sessions)
+		sessName := SessionNameForWorktree(repoName, wtDir)
+		result.items = append(result.items, PickerItem{
+			RepoName:   repoName,
+			Branch:     wt.Branch,
+			Head:       wt.Head,
+			Detached:   wt.Detached,
+			WtDirName:  wtDir,
+			WtPath:     wt.Path,
+			Status:     ws.Status,
+			Unread:     ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			HasSession: sessionSet[sessName],
+			Sessions:   sessions,
+			Merged:     !wt.Detached && mergedSet[wt.Branch],
+		})
+	}
+	done()
+
+	return result
 }
 
 type pickerStackLoader func(repoName string) *stack.Stack
@@ -285,6 +312,7 @@ func pickerStableItemKey(item PickerItem) string {
 // indented below the parent row.
 func FormatPickerLines(items []PickerItem) []string {
 	multiRepo := hasMultipleRepos(items)
+	home, _ := os.UserHomeDir()
 
 	nameW := 0
 	for _, item := range items {
@@ -323,7 +351,7 @@ func FormatPickerLines(items []PickerItem) []string {
 		line := fmt.Sprintf("%s%s %s%s%s | %s | %s%s%s",
 			color, icon, label, dot, colorReset,
 			nameCol,
-			colorDim, shortenPath(item.WtPath), colorReset,
+			colorDim, shortenPathWithHome(item.WtPath, home), colorReset,
 		)
 		lines = append(lines, line)
 
@@ -357,7 +385,7 @@ func FormatPickerLines(items []PickerItem) []string {
 				subLine := fmt.Sprintf("  %s%s %s%s | %s | %s%s%s",
 					subColor, subIcon, subLabel, colorReset,
 					infoCol,
-					colorDim, shortenPath(item.WtPath), colorReset,
+					colorDim, shortenPathWithHome(item.WtPath, home), colorReset,
 				)
 				lines = append(lines, subLine)
 			}
@@ -464,7 +492,11 @@ func shortenPath(path string) string {
 	if err != nil {
 		return path
 	}
-	if strings.HasPrefix(path, home) {
+	return shortenPathWithHome(path, home)
+}
+
+func shortenPathWithHome(path, home string) string {
+	if home != "" && strings.HasPrefix(path, home) {
 		return "~" + path[len(home):]
 	}
 	return path

@@ -8,6 +8,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -103,16 +104,22 @@ func resolveRepos(g *git.Git, repoFlag string) ([]repoInfo, error) {
 }
 
 func collectAllWorktrees(repos []repoInfo, verbose bool) []repoWorktree {
-	var all []repoWorktree
-	for _, r := range repos {
+	results := parallel.Map(repos, func(_ int, r repoInfo) []repoWorktree {
 		repoGit := &git.Git{Dir: r.BareDir, Verbose: verbose}
 		wts, err := worktree.List(repoGit)
 		if err != nil {
-			continue
+			return nil
 		}
+		var repoWts []repoWorktree
 		for _, wt := range filterBareWorktrees(wts) {
-			all = append(all, repoWorktree{Repo: r, Worktree: wt})
+			repoWts = append(repoWts, repoWorktree{Repo: r, Worktree: wt})
 		}
+		return repoWts
+	})
+
+	var all []repoWorktree
+	for _, repoWts := range results {
+		all = append(all, repoWts...)
 	}
 	return all
 }

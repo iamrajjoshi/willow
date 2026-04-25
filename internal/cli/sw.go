@@ -13,6 +13,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -129,11 +130,12 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 	items := make([]worktreeWithStatus, len(worktrees))
 	for i, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
-		ws := claude.ReadStatus(repoName, wtDir)
+		sessions := claude.ReadAllSessions(repoName, wtDir)
+		ws := claude.AggregateStatus(sessions)
 		items[i] = worktreeWithStatus{
 			wt:     wt,
 			status: ws,
-			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
+			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
 			merged: !wt.Detached && mergedSet[wt.Branch],
 		}
 	}
@@ -183,24 +185,37 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 
 	mergedSets := make(map[string]map[string]bool)
 	grouped := make(map[string][]worktree.Worktree)
+	var repoOrder []repoInfo
 	for _, rwt := range rwts {
+		if _, ok := grouped[rwt.Repo.Name]; !ok {
+			repoOrder = append(repoOrder, rwt.Repo)
+		}
 		grouped[rwt.Repo.Name] = append(grouped[rwt.Repo.Name], rwt.Worktree)
 	}
-	for _, rwt := range rwts {
-		if _, ok := mergedSets[rwt.Repo.Name]; ok {
-			continue
+
+	type mergedResult struct {
+		repoName string
+		merged   map[string]bool
+	}
+	results := parallel.Map(repoOrder, func(_ int, repo repoInfo) mergedResult {
+		return mergedResult{
+			repoName: repo.Name,
+			merged:   mergedBranchSetForRepo(repo.Name, repo.BareDir, grouped[repo.Name]),
 		}
-		mergedSets[rwt.Repo.Name] = mergedBranchSetForRepo(rwt.Repo.Name, rwt.Repo.BareDir, grouped[rwt.Repo.Name])
+	})
+	for _, result := range results {
+		mergedSets[result.repoName] = result.merged
 	}
 
 	items := make([]item, len(rwts))
 	for i, rwt := range rwts {
 		wtDir := filepath.Base(rwt.Worktree.Path)
-		ws := claude.ReadStatus(rwt.Repo.Name, wtDir)
+		sessions := claude.ReadAllSessions(rwt.Repo.Name, wtDir)
+		ws := claude.AggregateStatus(sessions)
 		items[i] = item{
 			rwt:    rwt,
 			status: ws,
-			unread: ws.Status == claude.StatusDone && claude.IsUnread(rwt.Repo.Name, wtDir),
+			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(rwt.Repo.Name, wtDir, sessions) > 0,
 			merged: !rwt.Worktree.Detached && mergedSets[rwt.Repo.Name][rwt.Worktree.Branch],
 		}
 	}
