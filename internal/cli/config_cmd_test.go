@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -26,6 +29,91 @@ func TestConfigCmd_Structure(t *testing.T) {
 		if !names[want] {
 			t.Errorf("missing subcommand %q", want)
 		}
+	}
+}
+
+func TestConfigShowJSONUsesGlobalConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := config.GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"branchPrefix":"raj","defaults":{"fetch":false}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("config", "show", "--json")
+	})
+	if err != nil {
+		t.Fatalf("config show --json failed: %v", err)
+	}
+
+	var got config.Config
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("config show output is not JSON: %v\n%s", err, out)
+	}
+	if got.BranchPrefix != "raj" {
+		t.Fatalf("BranchPrefix = %q, want raj", got.BranchPrefix)
+	}
+	if got.Defaults.Fetch == nil || *got.Defaults.Fetch {
+		t.Fatalf("Defaults.Fetch = %v, want false", got.Defaults.Fetch)
+	}
+	if got.BaseDir != filepath.Join(home, ".willow") {
+		t.Fatalf("BaseDir = %q, want default willow home", got.BaseDir)
+	}
+}
+
+func TestConfigShowPrintsSourceAnnotationsAndWarnings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := config.GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"tmux":{"panes":[{"command":"echo hi"}]}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("config", "show")
+	})
+	if err != nil {
+		t.Fatalf("config show failed: %v", err)
+	}
+	for _, want := range []string{"baseDir:", "# default", "tmux.panes:", "# global", "tmux.panes configured"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("config show output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfigEditCreatesFileAndRunsEditor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	logPath := filepath.Join(home, "editor.log")
+	editorPath := filepath.Join(home, "editor")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> " + logPath + "\n"
+	if err := os.WriteFile(editorPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write editor: %v", err)
+	}
+	t.Setenv("VISUAL", editorPath)
+
+	if err := runApp("config", "edit"); err != nil {
+		t.Fatalf("config edit failed: %v", err)
+	}
+
+	cfgPath := config.GlobalConfigPath()
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Fatalf("expected config file to be created: %v", err)
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read editor log: %v", err)
+	}
+	if strings.TrimSpace(string(logData)) != cfgPath {
+		t.Fatalf("editor invoked with %q, want %q", strings.TrimSpace(string(logData)), cfgPath)
 	}
 }
 

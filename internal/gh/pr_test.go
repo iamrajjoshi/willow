@@ -2,6 +2,8 @@ package gh
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -251,5 +253,77 @@ func TestSelectMatchingPR(t *testing.T) {
 	}
 	if got := selectMatchingPR(prs, ""); got != nil {
 		t.Fatalf("selectMatchingPR() with ambiguous empty head = %+v, want nil", got)
+	}
+}
+
+func TestBatchPRInfoUsesSingleGHCallAndFiltersBranches(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "gh.log")
+	ghPath := filepath.Join(binDir, "gh")
+	script := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "` + logPath + `"
+/bin/cat <<'JSON'
+[
+  {
+    "number": 1,
+    "title": "Feature A",
+    "headRefName": "feature-a",
+    "headRefOid": "sha-a",
+    "baseRefName": "main",
+    "state": "OPEN",
+    "reviewDecision": "APPROVED",
+    "mergeable": "MERGEABLE",
+    "additions": 10,
+    "deletions": 2,
+    "url": "https://github.com/org/repo/pull/1",
+    "statusCheckRollup": [{"name":"test","status":"COMPLETED","conclusion":"SUCCESS"}]
+  },
+  {
+    "number": 2,
+    "title": "Other",
+    "headRefName": "other",
+    "headRefOid": "sha-other",
+    "baseRefName": "main",
+    "state": "OPEN",
+    "reviewDecision": "REVIEW_REQUIRED",
+    "mergeable": "UNKNOWN",
+    "additions": 3,
+    "deletions": 4,
+    "url": "https://github.com/org/repo/pull/2",
+    "statusCheckRollup": []
+  }
+]
+JSON
+`
+	if err := os.WriteFile(ghPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	got, err := BatchPRInfo(t.TempDir(), []string{"feature-a", "missing"})
+	if err != nil {
+		t.Fatalf("BatchPRInfo() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("BatchPRInfo() returned %d entries, want 1: %#v", len(got), got)
+	}
+	pr := got["feature-a"]
+	if pr == nil {
+		t.Fatalf("feature-a PR missing from result: %#v", got)
+	}
+	if pr.Number != 1 || pr.Title != "Feature A" || pr.CIStatus() != "pass" {
+		t.Fatalf("unexpected feature-a PR: %+v", pr)
+	}
+	if got["other"] != nil {
+		t.Fatalf("unrequested branch should be filtered out: %#v", got)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read gh log: %v", err)
+	}
+	if string(logData) != "pr list --json number,title,headRefName,headRefOid,baseRefName,state,mergedAt,reviewDecision,mergeable,additions,deletions,url,statusCheckRollup --limit 100 --state all\n" {
+		t.Fatalf("unexpected gh invocation:\n%s", logData)
 	}
 }

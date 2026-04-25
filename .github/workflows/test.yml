@@ -24,3 +24,7 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1 -v
+
+      - name: Coverage
+        continue-on-error: true
+        run: go test ./... -coverpkg=./... -coverprofile=coverage.out -covermode=count

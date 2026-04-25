@@ -168,3 +168,39 @@ func TestRemoveReparentsChildren(t *testing.T) {
 		t.Error("a should be removed")
 	}
 }
+
+func TestIsEmpty(t *testing.T) {
+	if !(&Stack{Parents: map[string]string{}}).IsEmpty() {
+		t.Fatal("empty stack should report IsEmpty")
+	}
+	if (&Stack{Parents: map[string]string{"a": "main"}}).IsEmpty() {
+		t.Fatal("non-empty stack should not report IsEmpty")
+	}
+}
+
+func TestTreeLinesFiltersToVisibleBranches(t *testing.T) {
+	s := &Stack{Parents: map[string]string{
+		"a": "main",
+		"b": "a",
+		"c": "b",
+		"x": "main",
+	}}
+
+	lines := s.TreeLines(map[string]bool{"b": true, "c": true})
+	if len(lines) != 2 {
+		t.Fatalf("TreeLines() returned %d lines, want 2: %+v", len(lines), lines)
+	}
+	if lines[0].Branch != "b" || lines[0].Prefix != "└─ " || lines[0].Depth != 1 {
+		t.Fatalf("first tree line = %+v, want b with skipped-root prefix", lines[0])
+	}
+	if lines[1].Branch != "c" || lines[1].Depth != 2 {
+		t.Fatalf("second tree line = %+v, want c descendant", lines[1])
+	}
+}
+
+func TestTreeLinesEmptyStack(t *testing.T) {
+	s := &Stack{Parents: map[string]string{}}
+	if got := s.TreeLines(map[string]bool{"a": true}); got != nil {
+		t.Fatalf("empty TreeLines() = %+v, want nil", got)
+	}
+}

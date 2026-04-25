@@ -1,6 +1,7 @@
 package fzf
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -58,5 +59,41 @@ func TestQueryEmpty(t *testing.T) {
 		if arg == "--query" {
 			t.Errorf("expected no --query in args when empty, got: %v", args)
 		}
+	}
+}
+
+func TestBuildArgsIncludesAllOptionsInOrder(t *testing.T) {
+	cfg := defaults()
+	WithAnsi()(cfg)
+	WithReverse()(cfg)
+	WithNoSort()(cfg)
+	WithHeader("Pick one")(cfg)
+	WithPreview("willow tmux preview -- {}", "right:50%:wrap")(cfg)
+	WithExpectKeys("ctrl-n", "ctrl-p")(cfg)
+	WithPrintQuery()(cfg)
+	WithQuery("feature")(cfg)
+	WithBind("start:reload(echo hi)", "ctrl-r:reload-sync(echo refresh)")(cfg)
+	WithDelimiter("\\|")(cfg)
+	WithNth("1,2")(cfg)
+
+	got := buildArgs(cfg)
+	want := []string{
+		"--ansi",
+		"--reverse",
+		"--no-sort",
+		"--cycle",
+		"--header", "Pick one",
+		"--preview", "willow tmux preview -- {}",
+		"--preview-window", "right:50%:wrap",
+		"--expect", "ctrl-n,ctrl-p",
+		"--print-query",
+		"--query", "feature",
+		"--bind", "start:reload(echo hi)",
+		"--bind", "ctrl-r:reload-sync(echo refresh)",
+		"--delimiter", "\\|",
+		"--nth", "1,2",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildArgs() = %#v, want %#v", got, want)
 	}
 }

@@ -1,10 +1,16 @@
 package dashboard
 
 import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 )
 
@@ -223,5 +229,189 @@ func TestRenderTimelineKeybindingHint(t *testing.T) {
 	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, true, 0, nil)
 	if !strings.Contains(out, "t: timeline") {
 		t.Errorf("expected 't: timeline' in keybinding hint, got:\n%s", out)
+	}
+}
+
+func runDashboardGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func setupDashboardRepo(t *testing.T) string {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	src := filepath.Join(home, "src")
+	bareDir := filepath.Join(config.ReposDir(), "dashrepo.git")
+	wtPath := filepath.Join(config.WorktreesDir(), "dashrepo", "main")
+
+	if err := os.MkdirAll(filepath.Dir(bareDir), 0o755); err != nil {
+		t.Fatalf("mkdir repos dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0o755); err != nil {
+		t.Fatalf("mkdir worktrees dir: %v", err)
+	}
+
+	runDashboardGit(t, home, "init", "--initial-branch=main", src)
+	runDashboardGit(t, src, "config", "user.email", "test@test")
+	runDashboardGit(t, src, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(src, "README.md"), []byte("# dash\n"), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runDashboardGit(t, src, "add", ".")
+	runDashboardGit(t, src, "commit", "-m", "initial")
+	runDashboardGit(t, home, "clone", "--bare", src, bareDir)
+	runDashboardGit(t, bareDir, "update-ref", "refs/remotes/origin/main", "main")
+	runDashboardGit(t, bareDir, "worktree", "add", wtPath, "main")
+	runDashboardGit(t, wtPath, "config", "user.email", "test@test")
+	runDashboardGit(t, wtPath, "config", "user.name", "Test")
+	return wtPath
+}
+
+func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status claude.Status, tool string, ts time.Time) {
+	t.Helper()
+
+	dir := filepath.Join(claude.StatusDir(), repo, wtDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir status dir: %v", err)
+	}
+	data, err := json.Marshal(claude.SessionStatus{
+		Status:    status,
+		SessionID: sessionID,
+		Tool:      tool,
+		Timestamp: ts,
+	})
+	if err != nil {
+		t.Fatalf("marshal session: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, sessionID+".json"), data, 0o644); err != nil {
+		t.Fatalf("write session: %v", err)
+	}
+}
+
+func resetDiffCache() {
+	diffCacheMu.Lock()
+	defer diffCacheMu.Unlock()
+	diffCache = map[string]cachedDiff{}
+}
+
+func TestCollectDataIncludesActiveSessionsUnreadAndDiffStats(t *testing.T) {
+	resetDiffCache()
+	wtPath := setupDashboardRepo(t)
+	if err := os.WriteFile(filepath.Join(wtPath, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatalf("write feature: %v", err)
+	}
+	runDashboardGit(t, wtPath, "add", "feature.txt")
+	runDashboardGit(t, wtPath, "commit", "-m", "feature")
+
+	now := time.Now()
+	writeDashboardSession(t, "dashrepo", "main", "busy-session", claude.StatusBusy, "Edit", now)
+	writeDashboardSession(t, "dashrepo", "main", "done-session", claude.StatusDone, "", now)
+
+	sessions, sum := collectData()
+	if sum.Repos != 1 {
+		t.Fatalf("Repos = %d, want 1", sum.Repos)
+	}
+	if sum.Agents != 2 {
+		t.Fatalf("Agents = %d, want 2 active busy/done sessions", sum.Agents)
+	}
+	if sum.Unread != 1 {
+		t.Fatalf("Unread = %d, want 1 done unread session", sum.Unread)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	}
+
+	var sawBusy, sawDone bool
+	for _, s := range sessions {
+		if s.Repo != "dashrepo" || s.Branch != "main" || s.WtDirName != "main" {
+			t.Fatalf("unexpected session row: %+v", s)
+		}
+		if s.DiffStats != "1f +1" {
+			t.Fatalf("DiffStats = %q, want 1f +1", s.DiffStats)
+		}
+		if s.Status == claude.StatusBusy && s.Tool == "Edit" {
+			sawBusy = true
+		}
+		if s.Status == claude.StatusDone && s.Unread {
+			sawDone = true
+		}
+	}
+	if !sawBusy || !sawDone {
+		t.Fatalf("expected busy and unread done rows, got %+v", sessions)
+	}
+}
+
+func TestGetDiffStatsCachesByWorktreePath(t *testing.T) {
+	resetDiffCache()
+	wtPath := setupDashboardRepo(t)
+	if err := os.WriteFile(filepath.Join(wtPath, "first.txt"), []byte("first\n"), 0o644); err != nil {
+		t.Fatalf("write first: %v", err)
+	}
+	runDashboardGit(t, wtPath, "add", "first.txt")
+	runDashboardGit(t, wtPath, "commit", "-m", "first")
+
+	first := getDiffStats(wtPath, "main")
+	if first != "1f +1" {
+		t.Fatalf("first diff stats = %q, want 1f +1", first)
+	}
+
+	if err := os.WriteFile(filepath.Join(wtPath, "second.txt"), []byte("second\n"), 0o644); err != nil {
+		t.Fatalf("write second: %v", err)
+	}
+	runDashboardGit(t, wtPath, "add", "second.txt")
+	runDashboardGit(t, wtPath, "commit", "-m", "second")
+
+	second := getDiffStats(wtPath, "main")
+	if second != first {
+		t.Fatalf("cached diff stats changed before TTL expiry: got %q, want %q", second, first)
+	}
+}
+
+func TestUpdateFlashesRecordsBusyToDoneAndPrunesMissingSessions(t *testing.T) {
+	doneSession := session{
+		Repo:      "repo",
+		Branch:    "feature",
+		SessionID: "s1",
+		Status:    claude.StatusDone,
+		WtDirName: "feature",
+	}
+	key := sessionKey(doneSession)
+	prev := map[string]claude.Status{key: claude.StatusBusy}
+	flashUntil := map[string]time.Time{}
+
+	updateFlashes([]session{doneSession}, prev, flashUntil)
+	if prev[key] != claude.StatusDone {
+		t.Fatalf("prev[%q] = %s, want DONE", key, prev[key])
+	}
+	if until, ok := flashUntil[key]; !ok || time.Now().After(until) {
+		t.Fatalf("expected fresh flash entry, got %v ok=%v", until, ok)
+	}
+
+	updateFlashes(nil, prev, flashUntil)
+	if _, ok := prev[key]; ok {
+		t.Fatalf("expected missing session to be pruned from prev: %v", prev)
+	}
+	if _, ok := flashUntil[key]; ok {
+		t.Fatalf("expected missing session to be pruned from flashUntil: %v", flashUntil)
+	}
+}
+
+func TestTermWidthReturnsPositiveFallback(t *testing.T) {
+	if got := termWidth(); got <= 0 {
+		t.Fatalf("termWidth() = %d, want positive width", got)
 	}
 }

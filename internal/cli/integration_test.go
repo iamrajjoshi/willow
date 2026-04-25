@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -97,6 +98,7 @@ func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status cla
 	data, err := json.Marshal(claude.SessionStatus{
 		Status:    status,
 		SessionID: sessionID,
+		Timestamp: time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("marshal session status: %v", err)

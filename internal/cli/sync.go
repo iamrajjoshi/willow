@@ -3,6 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
@@ -82,6 +85,19 @@ func syncCmd() *cli.Command {
 			for _, wt := range wts {
 				if !wt.IsBare {
 					wtPaths[wt.Branch] = wt.Path
+				}
+			}
+			if cmd.Bool("abort") {
+				repoName := repoNameFromDir(bareDir)
+				for _, branch := range st.TopoSort() {
+					if _, ok := wtPaths[branch]; ok {
+						continue
+					}
+					dirName := strings.ReplaceAll(branch, "/", "-")
+					candidate := filepath.Join(config.WorktreesDir(), repoName, dirName)
+					if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+						wtPaths[branch] = candidate
+					}
 				}
 			}
 			done()
@@ -188,9 +204,9 @@ func syncCmd() *cli.Command {
 					meta["ahead"] = fmt.Sprintf("%d", ahead)
 				}
 				_ = log.Append(log.Event{
-					Action: "sync",
-					Repo:   repoNameFromDir(bareDir),
-					Branch: branch,
+					Action:   "sync",
+					Repo:     repoNameFromDir(bareDir),
+					Branch:   branch,
 					Metadata: meta,
 				})
 				synced++
