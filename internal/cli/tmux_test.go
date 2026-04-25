@@ -228,12 +228,10 @@ func TestMoveToFrontWithStack_DetachedOnlyMovesSelectedWorktree(t *testing.T) {
 	assertBranches(t, branches(result[1:]), []string{"feat-a", "feat-b"})
 }
 
-func TestTmuxPickerHeaderFitsEightyColumns(t *testing.T) {
-	if got := len(tmuxPickerHeader); got > 80 {
-		t.Fatalf("tmux picker header length = %d, want <= 80", got)
-	}
-	if strings.Contains(tmuxPickerHeader, "upgrade") {
-		t.Fatal("tmux picker header should not mention the removed upgrade alias")
+func TestTmuxPickerHeaderActions(t *testing.T) {
+	want := "^N new ^T detach ^U promote ^B rebase ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
+	if tmuxPickerHeader != want {
+		t.Fatalf("tmux picker header = %q, want %q", tmuxPickerHeader, want)
 	}
 }
 

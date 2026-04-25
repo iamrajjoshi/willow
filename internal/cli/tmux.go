@@ -24,7 +24,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const tmuxPickerHeader = "Enter | ^N new ^T det ^U prom ^B base ^E ex ^P PR ^G run ^S sync ^D rm ^X prune"
+const tmuxPickerHeader = "^N new ^T detach ^U promote ^B rebase ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
 
 func tmuxCmd() *cli.Command {
 	return &cli.Command{
