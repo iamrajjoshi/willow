@@ -16,6 +16,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -43,6 +44,12 @@ type summary struct {
 	Repos  int
 	Agents int
 	Unread int
+}
+
+type repoData struct {
+	sessions []session
+	agents   int
+	unread   int
 }
 
 type cachedDiff struct {
@@ -237,86 +244,97 @@ func collectData() ([]session, summary) {
 		return nil, summary{}
 	}
 
-	var sessions []session
 	sum := summary{Repos: len(repos)}
+	results := parallel.Map(repos, func(_ int, repoName string) repoData {
+		return collectRepoData(repoName)
+	})
 
-	for _, repoName := range repos {
-		bareDir, err := config.ResolveRepo(repoName)
-		if err != nil {
-			continue
-		}
-
-		repoGit := &git.Git{Dir: bareDir}
-		wts, err := worktree.List(repoGit)
-		if err != nil {
-			continue
-		}
-
-		cfg := config.Load(bareDir)
-		baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-
-		for _, wt := range wts {
-			if wt.IsBare {
-				continue
-			}
-			wtDir := filepath.Base(wt.Path)
-			allSessions := claude.ReadAllSessions(repoName, wtDir)
-			unread := claude.IsUnread(repoName, wtDir)
-
-			if unread {
-				sum.Unread++
-			}
-
-			diff := getDiffStats(wt.Path, baseBranch)
-
-			timelineSince := time.Now().Add(-60 * time.Minute)
-
-			if len(allSessions) > 0 {
-				for _, ss := range allSessions {
-					effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
-					if effective == claude.StatusIdle || effective == claude.StatusOffline {
-						continue
-					}
-					timeline, _ := claude.ReadTimeline(repoName, wtDir, ss.SessionID, timelineSince)
-					s := session{
-						Repo:      repoName,
-						Branch:    wt.DisplayName(),
-						SessionID: ss.SessionID,
-						Status:    effective,
-						Tool:      ss.Tool,
-						DiffStats: diff,
-						Age:       claude.TimeSince(ss.Timestamp),
-						Unread:    effective == claude.StatusDone && unread,
-						WtDirName: wtDir,
-						Timeline:  claude.Sparkline(timeline, 30, 60*time.Minute),
-					}
-					sessions = append(sessions, s)
-					if claude.IsActive(effective) {
-						sum.Agents++
-					}
-				}
-			} else {
-				ws := claude.ReadStatus(repoName, wtDir)
-				if ws.Status == claude.StatusOffline || ws.Status == claude.StatusIdle {
-					continue
-				}
-				s := session{
-					Repo:      repoName,
-					Branch:    wt.DisplayName(),
-					Status:    ws.Status,
-					DiffStats: diff,
-					Age:       claude.TimeSince(ws.Timestamp),
-					Unread:    ws.Status == claude.StatusDone && unread,
-					WtDirName: wtDir,
-					Timeline:  strings.Repeat("\033[2m\u00b7\033[0m", 30),
-				}
-				sessions = append(sessions, s)
-				sum.Agents++
-			}
-		}
+	var sessions []session
+	for _, result := range results {
+		sessions = append(sessions, result.sessions...)
+		sum.Agents += result.agents
+		sum.Unread += result.unread
 	}
 
 	return sessions, sum
+}
+
+func collectRepoData(repoName string) repoData {
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return repoData{}
+	}
+
+	repoGit := &git.Git{Dir: bareDir}
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		return repoData{}
+	}
+
+	cfg := config.Load(bareDir)
+	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
+	timelineSince := time.Now().Add(-60 * time.Minute)
+	var result repoData
+
+	for _, wt := range wts {
+		if wt.IsBare {
+			continue
+		}
+		wtDir := filepath.Base(wt.Path)
+		allSessions := claude.ReadAllSessions(repoName, wtDir)
+		unread := claude.CountUnreadIn(repoName, wtDir, allSessions) > 0
+
+		if unread {
+			result.unread++
+		}
+
+		diff := getDiffStats(wt.Path, baseBranch)
+
+		if len(allSessions) > 0 {
+			for _, ss := range allSessions {
+				effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+				if effective == claude.StatusIdle || effective == claude.StatusOffline {
+					continue
+				}
+				timeline, _ := claude.ReadTimeline(repoName, wtDir, ss.SessionID, timelineSince)
+				s := session{
+					Repo:      repoName,
+					Branch:    wt.DisplayName(),
+					SessionID: ss.SessionID,
+					Status:    effective,
+					Tool:      ss.Tool,
+					DiffStats: diff,
+					Age:       claude.TimeSince(ss.Timestamp),
+					Unread:    effective == claude.StatusDone && unread,
+					WtDirName: wtDir,
+					Timeline:  claude.Sparkline(timeline, 30, 60*time.Minute),
+				}
+				result.sessions = append(result.sessions, s)
+				if claude.IsActive(effective) {
+					result.agents++
+				}
+			}
+		} else {
+			ws := claude.AggregateStatus(allSessions)
+			if ws.Status == claude.StatusOffline || ws.Status == claude.StatusIdle {
+				continue
+			}
+			s := session{
+				Repo:      repoName,
+				Branch:    wt.DisplayName(),
+				Status:    ws.Status,
+				DiffStats: diff,
+				Age:       claude.TimeSince(ws.Timestamp),
+				Unread:    ws.Status == claude.StatusDone && unread,
+				WtDirName: wtDir,
+				Timeline:  strings.Repeat("\033[2m\u00b7\033[0m", 30),
+			}
+			result.sessions = append(result.sessions, s)
+			result.agents++
+		}
+	}
+
+	return result
 }
 
 func render(sessions []session, sum summary, width int, selectedIdx int, showTimeline bool, frame int, flashUntil map[string]time.Time) string {

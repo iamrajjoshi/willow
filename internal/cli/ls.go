@@ -15,6 +15,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -119,34 +120,47 @@ func printRepoList(flags Flags) error {
 	header := fmt.Sprintf("  %-*s  %-9s  %-6s  %s", nameW, "REPO", "WORKTREES", "ACTIVE", "UNREAD")
 	u.Info(u.Bold(header))
 
-	for _, r := range repos {
+	type repoListRow struct {
+		repo        string
+		count       int
+		activeCount int
+		unreadCount int
+		ok          bool
+	}
+	rows := parallel.Map(repos, func(_ int, r string) repoListRow {
 		bareDir, err := config.ResolveRepo(r)
 		if err != nil {
-			continue
+			return repoListRow{}
 		}
 		repoGit := &git.Git{Dir: bareDir}
 		wts, err := worktree.List(repoGit)
 		if err != nil {
-			continue
+			return repoListRow{}
 		}
-		count := 0
-		activeCount := 0
-		unreadCount := 0
+		row := repoListRow{repo: r, ok: true}
 		for _, wt := range wts {
 			if wt.IsBare {
 				continue
 			}
-			count++
+			row.count++
 			wtDir := filepath.Base(wt.Path)
-			ws := claude.ReadStatus(r, wtDir)
+			sessions := claude.ReadAllSessions(r, wtDir)
+			ws := claude.AggregateStatus(sessions)
 			if claude.IsActive(ws.Status) {
-				activeCount++
+				row.activeCount++
 			}
-			if claude.IsUnread(r, wtDir) {
-				unreadCount++
+			if claude.CountUnreadIn(r, wtDir, sessions) > 0 {
+				row.unreadCount++
 			}
 		}
-		line := fmt.Sprintf("  %-*s  %-9d  %-6d  %d", nameW, r, count, activeCount, unreadCount)
+		return row
+	})
+
+	for _, row := range rows {
+		if !row.ok {
+			continue
+		}
+		line := fmt.Sprintf("  %-*s  %-9d  %-6d  %d", nameW, row.repo, row.count, row.activeCount, row.unreadCount)
 		u.Info(line)
 	}
 	return nil
@@ -174,6 +188,7 @@ type lsRow struct {
 	merged bool
 	status claude.Status
 	unread bool
+	age    string
 	wt     worktree.Worktree
 }
 
@@ -219,12 +234,14 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	var rows []lsRow
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
-		ws := claude.ReadStatus(repoName, wtDir)
+		sessions := claude.ReadAllSessions(repoName, wtDir)
+		ws := claude.AggregateStatus(sessions)
 		rows = append(rows, lsRow{
 			branch: wt.Branch,
 			merged: !wt.Detached && mergedSet[wt.Branch],
 			status: ws.Status,
-			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
+			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			age:    worktreeAge(wt.Path),
 			wt:     wt,
 		})
 	}
@@ -245,9 +262,8 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		if len(row.wt.Path) > pathW {
 			pathW = len(row.wt.Path)
 		}
-		age := worktreeAge(row.wt.Path)
-		if len(age) > ageW {
-			ageW = len(age)
+		if len(row.age) > ageW {
+			ageW = len(row.age)
 		}
 	}
 
@@ -255,7 +271,6 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	u.Info(u.Bold(header))
 
 	for _, row := range rows {
-		age := worktreeAge(row.wt.Path)
 		statusLabel := claude.StatusLabel(row.status)
 		if row.unread {
 			statusLabel += "\u25CF" // ●
@@ -273,7 +288,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		}
 		branchCol := branchDisplay + strings.Repeat(" ", padding)
 		pathPadded := fmt.Sprintf("%-*s", pathW, row.wt.Path)
-		agePadded := fmt.Sprintf("%*s", ageW, age)
+		agePadded := fmt.Sprintf("%*s", ageW, row.age)
 		line := fmt.Sprintf("  %s  %-*s  %s  %s", branchCol, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
 		u.Info(line)
 	}

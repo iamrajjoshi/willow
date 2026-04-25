@@ -16,6 +16,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/fzf"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
+	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -1331,42 +1332,15 @@ func tmuxStatusBarCmd() *cli.Command {
 			sessionSet := tmux.ListSessions()
 			done()
 
-			for _, repoName := range repos {
-				bareDir, err := config.ResolveRepo(repoName)
-				if err != nil {
-					continue
-				}
-				repoGit := &git.Git{Dir: bareDir}
-				done := trace.Span(ctx, "worktree.List/"+repoName)
-				wts, err := worktree.List(repoGit)
-				done()
-				if err != nil {
-					continue
-				}
-				for _, wt := range wts {
-					if wt.IsBare {
-						continue
-					}
-					totalWt++
-					wtDir := filepath.Base(wt.Path)
-					sessions := claude.ReadAllSessions(repoName, wtDir)
-					ws := claude.AggregateStatus(sessions)
+			results := parallel.Map(repos, func(_ int, repoName string) tmuxStatusBarRepoResult {
+				return collectTmuxStatusBarRepo(ctx, repoName, sessionSet)
+			})
 
-					// Clean orphaned sessions whose tmux session no longer exists
-					sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-					if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !sessionSet[sessName] {
-						for _, ss := range sessions {
-							if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait {
-								claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
-							}
-						}
-						ws = claude.AggregateStatus(claude.ReadAllSessions(repoName, wtDir))
-					}
-
-					currentStatuses[repoName+"/"+wtDir] = ws.Status
-					if claude.IsActive(ws.Status) {
-						activeAgents++
-					}
+			for _, result := range results {
+				totalWt += result.totalWt
+				activeAgents += result.activeAgents
+				for key, status := range result.statuses {
+					currentStatuses[key] = status
 				}
 			}
 
@@ -1382,6 +1356,53 @@ func tmuxStatusBarCmd() *cli.Command {
 			return nil
 		},
 	}
+}
+
+type tmuxStatusBarRepoResult struct {
+	totalWt      int
+	activeAgents int
+	statuses     map[string]claude.Status
+}
+
+func collectTmuxStatusBarRepo(ctx context.Context, repoName string, sessionSet map[string]bool) tmuxStatusBarRepoResult {
+	result := tmuxStatusBarRepoResult{statuses: make(map[string]claude.Status)}
+	bareDir, err := config.ResolveRepo(repoName)
+	if err != nil {
+		return result
+	}
+	repoGit := &git.Git{Dir: bareDir}
+	done := trace.Span(ctx, "worktree.List/"+repoName)
+	wts, err := worktree.List(repoGit)
+	done()
+	if err != nil {
+		return result
+	}
+	for _, wt := range wts {
+		if wt.IsBare {
+			continue
+		}
+		result.totalWt++
+		wtDir := filepath.Base(wt.Path)
+		sessions := claude.ReadAllSessions(repoName, wtDir)
+		ws := claude.AggregateStatus(sessions)
+
+		// Clean orphaned sessions whose tmux session no longer exists.
+		sessName := tmux.SessionNameForWorktree(repoName, wtDir)
+		if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !sessionSet[sessName] {
+			for _, ss := range sessions {
+				if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait {
+					claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
+				}
+			}
+			ws = claude.AggregateStatus(claude.ReadAllSessions(repoName, wtDir))
+		}
+
+		result.statuses[repoName+"/"+wtDir] = ws.Status
+		if claude.IsActive(ws.Status) {
+			result.activeAgents++
+		}
+	}
+	return result
 }
 
 func tmuxInstallCmd() *cli.Command {
