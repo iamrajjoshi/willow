@@ -447,6 +447,258 @@ func TestNew_CreatesWorktree(t *testing.T) {
 	}
 }
 
+func TestNew_DetachedCreatesNamedWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "scratch-repro", "--detach", "--ref", "HEAD", "--no-fetch"); err != nil {
+		t.Fatalf("new --detach failed: %v", err)
+	}
+
+	detachedDir := filepath.Join(worktreeDir, "scratch-repro")
+	if _, err := os.Stat(detachedDir); os.IsNotExist(err) {
+		t.Fatalf("detached worktree not created at %s", detachedDir)
+	}
+
+	wtGit := &git.Git{Dir: detachedDir}
+	branch, err := wtGit.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	if branch != "HEAD" {
+		t.Fatalf("detached worktree branch = %q, want HEAD", branch)
+	}
+
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	repoGit := &git.Git{Dir: bareDir}
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		t.Fatalf("list worktrees: %v", err)
+	}
+	var found *worktree.Worktree
+	for i := range wts {
+		if comparablePath(wts[i].Path) == comparablePath(detachedDir) {
+			found = &wts[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("detached worktree missing from git worktree list")
+	}
+	if !found.Detached {
+		t.Fatalf("Detached = false, want true")
+	}
+	if got := found.MatchName(); got != "scratch-repro" {
+		t.Fatalf("MatchName() = %q, want scratch-repro", got)
+	}
+}
+
+func TestPromote_DetachedWorktreeInPlace(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "scratch-repro", "--detach", "--ref", "HEAD", "--no-fetch"); err != nil {
+		t.Fatalf("new --detach failed: %v", err)
+	}
+
+	detachedDir := filepath.Join(worktreeDir, "scratch-repro")
+	os.Chdir(detachedDir)
+	if err := runApp("promote", "feature-from-scratch"); err != nil {
+		t.Fatalf("promote failed: %v", err)
+	}
+
+	wtGit := &git.Git{Dir: detachedDir}
+	branch, err := wtGit.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	if branch != "feature-from-scratch" {
+		t.Fatalf("branch = %q, want feature-from-scratch", branch)
+	}
+
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	repoGit := &git.Git{Dir: bareDir}
+	out, err := repoGit.Run("branch", "--list", "feature-from-scratch")
+	if err != nil {
+		t.Fatalf("git branch --list: %v", err)
+	}
+	if out == "" {
+		t.Fatal("branch 'feature-from-scratch' not found")
+	}
+
+	wts, err := worktree.List(repoGit)
+	if err != nil {
+		t.Fatalf("list worktrees: %v", err)
+	}
+	for _, wt := range wts {
+		if comparablePath(wt.Path) == comparablePath(detachedDir) {
+			if wt.Detached {
+				t.Fatal("promoted worktree still marked detached")
+			}
+			if wt.Branch != "feature-from-scratch" {
+				t.Fatalf("worktree branch = %q, want feature-from-scratch", wt.Branch)
+			}
+			return
+		}
+	}
+	t.Fatalf("promoted worktree missing from git worktree list")
+}
+
+func TestPromote_DetachedByNameFromAnotherWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	bareDir := filepath.Join(home, ".willow", "repos", "testrepo.git")
+	configPath := filepath.Join(bareDir, "willow.json")
+	if err := os.WriteFile(configPath, []byte(`{"branchPrefix": "alice"}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if err := runApp("new", "scratch-repro", "--detach", "--ref", "HEAD", "--no-fetch"); err != nil {
+		t.Fatalf("new --detach failed: %v", err)
+	}
+	if err := runApp("promote", "scratch-repro", "feature-by-name"); err != nil {
+		t.Fatalf("promote by name failed: %v", err)
+	}
+
+	detachedDir := filepath.Join(worktreeDir, "scratch-repro")
+	wtGit := &git.Git{Dir: detachedDir}
+	branch, err := wtGit.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	if branch != "alice/feature-by-name" {
+		t.Fatalf("branch = %q, want alice/feature-by-name", branch)
+	}
+
+	if err := runApp("new", "scratch-onearg", "--detach", "--ref", "HEAD", "--no-fetch"); err != nil {
+		t.Fatalf("second new --detach failed: %v", err)
+	}
+	if err := runApp("promote", "scratch-onearg"); err != nil {
+		t.Fatalf("promote one arg from another worktree failed: %v", err)
+	}
+
+	oneArgGit := &git.Git{Dir: filepath.Join(worktreeDir, "scratch-onearg")}
+	oneArgBranch, err := oneArgGit.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse one-arg HEAD: %v", err)
+	}
+	if oneArgBranch != "alice/scratch-onearg" {
+		t.Fatalf("branch = %q, want alice/scratch-onearg", oneArgBranch)
+	}
+}
+
+func TestNew_DetachedRejectsConflictingModes(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "ref requires detach",
+			args: []string{"new", "scratch-ref", "--ref", "HEAD"},
+			want: "--ref can only be used with --detach",
+		},
+		{
+			name: "detach excludes existing",
+			args: []string{"new", "scratch-existing", "--detach", "--existing", "--no-fetch"},
+			want: "--detach cannot be used with --existing",
+		},
+		{
+			name: "detach excludes pr",
+			args: []string{"new", "scratch-pr", "--detach", "--pr", "1", "--no-fetch"},
+			want: "--detach cannot be used with --pr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runApp(tt.args...)
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRm_DetachedWithUnanchoredCommitRequiresForce(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "scratch-repro", "--detach", "--ref", "HEAD", "--no-fetch"); err != nil {
+		t.Fatalf("new --detach failed: %v", err)
+	}
+
+	detachedDir := filepath.Join(worktreeDir, "scratch-repro")
+	commitFile(t, detachedDir, "detached.txt", "detached\n", "detached commit")
+
+	err := runApp("rm", "--repo", "testrepo", "scratch-repro")
+	if err == nil {
+		t.Fatal("expected rm to reject unanchored detached commit")
+	}
+	if !strings.Contains(err.Error(), "detached HEAD has unanchored commits") {
+		t.Fatalf("error = %q, want unanchored detached warning", err.Error())
+	}
+
+	if err := runApp("rm", "--repo", "testrepo", "--force", "scratch-repro"); err != nil {
+		t.Fatalf("rm --force failed: %v", err)
+	}
+	if _, err := os.Stat(detachedDir); !os.IsNotExist(err) {
+		t.Fatal("detached worktree should be removed after --force")
+	}
+}
+
 func TestNew_BranchPrefixFromConfig(t *testing.T) {
 	origin := setupTestEnv(t)
 	home, _ := os.UserHomeDir()

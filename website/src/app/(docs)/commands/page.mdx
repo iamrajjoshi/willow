@@ -47,13 +47,15 @@ eval "$(willow shell-init --tab-title)"  # with tab titles
 
 ### `ww new <branch> [flags]`
 
-Create a new worktree with a new branch, an existing branch, or a GitHub PR.
+Create a new worktree with a new branch, an existing branch, a named detached HEAD, or a GitHub PR.
 
 ```bash
 ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
 ww new -e                              # pick from remote branches (fzf)
+ww new scratch-repro --detach          # named detached worktree at default base
+ww new v1-debug --detach --ref v1.2.3  # named detached worktree at a tag/commit
 ww new --pr 123                        # checkout PR #123
 ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
@@ -65,9 +67,21 @@ ww new feature/auth                    # auto-cd via shell integration (tmux-awa
 | `-b, --base` | Base branch to fork from | Config default / auto-detected |
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) | `false` |
+| `--detach` | Create a named detached HEAD worktree | `false` |
+| `--ref` | Commit, tag, or branch to check out in detached mode | Base branch |
 | `--pr` | GitHub PR number or URL | |
 | `--no-fetch` | Skip fetching from remote | `false` |
 | `--cd` | Print only the path (for scripting) | `false` |
+
+#### Detached worktrees
+
+Use `--detach` when you want a named scratch worktree without creating a branch yet. The name becomes the worktree directory and the tmux session identity. Later, promote it in place with `ww promote`; the directory and tmux session stay stable.
+
+```bash
+ww new scratch-repro --detach
+ww new old-release --detach --ref v1.2.3
+ww promote scratch-repro feature/repro-fix
+```
 
 #### Existing branch picker
 
@@ -85,6 +99,23 @@ ww new https://github.com/org/repo/pull/123  # by URL
 ```
 
 This also works from the tmux picker — press `Ctrl-P` for a dedicated PR picker, or paste a PR URL and press `Ctrl-N`.
+
+### `ww promote [worktree] <branch>`
+
+Promote a named detached worktree to a normal branch-backed worktree in place.
+
+If you run it from inside a detached worktree, pass only the branch name. From another directory, pass the detached worktree name first. With one argument outside a detached worktree, Willow uses that name for both the worktree and branch.
+
+```bash
+ww promote feature/auth                 # from inside a detached worktree
+ww promote scratch-repro feature/auth   # promote by worktree name
+ww promote scratch-repro                # promote to branch scratch-repro
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd / all repos |
+| `-b, --base` | Record a stack parent for the promoted branch | |
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
@@ -547,7 +578,7 @@ ww tmux install           # print tmux.conf lines to add
 ```
 
 Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a `prefix + w` keybinding for the picker popup.
-Inside the picker, `Ctrl-D` deletes the selected worktree and `Ctrl-X` bulk-deletes safe merged worktrees currently shown, skipping the active tmux session plus any merged worktrees with local changes, unpushed commits, or stacked children.
+Inside the picker, `Ctrl-T` creates a named detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree, `Ctrl-D` deletes the selected worktree, and `Ctrl-X` bulk-deletes safe merged worktrees currently shown, skipping the active tmux session plus any merged worktrees with local changes, unpushed commits, or stacked children.
 
 ### Aliases
 

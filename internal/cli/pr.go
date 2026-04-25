@@ -232,6 +232,9 @@ func worktreePathsByBranch(repoGit *git.Git) (map[string]string, error) {
 
 	paths := make(map[string]string, len(wts))
 	for _, wt := range filterBareWorktrees(wts) {
+		if wt.Detached {
+			continue
+		}
 		paths[wt.Branch] = wt.Path
 	}
 	return paths, nil

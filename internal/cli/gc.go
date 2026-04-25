@@ -89,7 +89,7 @@ func gcCmd() *cli.Command {
 				branchHeads := make(map[string]string, len(wts))
 				repoDir := ""
 				for _, wt := range wts {
-					if wt.IsBare || wt.Branch == "" {
+					if wt.IsBare || wt.Detached || wt.Branch == "" {
 						continue
 					}
 					if repoDir == "" {
@@ -108,7 +108,7 @@ func gcCmd() *cli.Command {
 				}
 
 				for _, wt := range wts {
-					if !wt.IsBare && mergedSet[wt.Branch] {
+					if !wt.IsBare && !wt.Detached && mergedSet[wt.Branch] {
 						candidates = append(candidates, mergedWorktree{repoName: repoName, branch: wt.Branch})
 					}
 				}

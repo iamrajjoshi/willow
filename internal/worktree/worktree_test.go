@@ -74,6 +74,15 @@ detached
 	if wts[0].Branch != "(detached)" {
 		t.Errorf("Branch = %q, want %q", wts[0].Branch, "(detached)")
 	}
+	if !wts[0].Detached {
+		t.Error("Detached should be true")
+	}
+	if got := wts[0].DisplayName(); got != "detached [detached ddd444]" {
+		t.Errorf("DisplayName() = %q", got)
+	}
+	if got := wts[0].MatchName(); got != "detached" {
+		t.Errorf("MatchName() = %q", got)
+	}
 }
 
 func TestParsePorcelain_EmptyInput(t *testing.T) {

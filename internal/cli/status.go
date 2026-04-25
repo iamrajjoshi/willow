@@ -47,7 +47,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 				effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
 				entry := sessionEntry{
 					Repo:      repoName,
-					Branch:    wt.Branch,
+					Branch:    wt.DisplayName(),
 					SessionID: ss.SessionID,
 					Status:    string(effective),
 					Path:      wt.Path,
@@ -68,7 +68,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 			ws := claude.ReadStatus(repoName, wtDir)
 			entry := sessionEntry{
 				Repo:   repoName,
-				Branch: wt.Branch,
+				Branch: wt.DisplayName(),
 				Status: string(ws.Status),
 				Path:   wt.Path,
 			}

@@ -92,6 +92,8 @@ This gives you:
 | `ww <cmd>` | Alias for `willow` |
 | `ww sw` | fzf worktree switcher (cd's into selection) |
 | `ww new <branch>` | Create worktree + cd into it (tmux-aware) |
+| `ww new <name> --detach` | Create a named detached worktree |
+| `ww promote [name] <branch>` | Promote a detached worktree to a branch |
 | `ww checkout <branch>` | Smart checkout + cd (switch or create, tmux-aware) |
 | `wwn <branch>` | Shorthand for `ww new` |
 | `wwc <branch>` | Shorthand for `ww checkout` |
@@ -168,29 +170,48 @@ ww clone git@github.com:org/repo.git --force    # re-clone from scratch
 
 ### `ww new <branch> [flags]`
 
-Create a new worktree with a new branch, an existing branch, or a GitHub PR.
+Create a new worktree with a new branch, an existing branch, a named detached HEAD, or a GitHub PR.
 
 ```bash
 ww new feature/auth                    # create worktree
 ww new feature/auth -b develop         # fork from specific branch
 ww new -e existing-branch              # use existing branch
 ww new -e                              # pick from remote branches (fzf)
+ww new scratch-repro --detach          # named detached worktree at default base
+ww new v1-debug --detach --ref v1.2.3  # named detached worktree at a tag/commit
 ww new --pr 123                        # checkout PR #123
 ww new https://github.com/org/repo/pull/123  # checkout a PR by URL
 ww new feature/auth -r myrepo          # target a specific repo
 ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
-From the tmux picker, `Ctrl-E` opens the same existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+From the tmux picker, `Ctrl-T` creates a named detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree to a branch, and `Ctrl-E` opens the existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
 
 | Flag | Description |
 |------|-------------|
 | `-b, --base` | Base branch to fork from |
 | `-r, --repo` | Target repo by name |
 | `-e, --existing` | Use an existing branch (or pick from fzf if no branch given) |
+| `--detach` | Create a named detached HEAD worktree |
+| `--ref` | Commit, tag, or branch to check out in detached mode |
 | `--pr` | GitHub PR number or URL |
 | `--no-fetch` | Skip fetching from remote |
 | `--cd` | Print only the path (for scripting) |
+
+### `ww promote [worktree] <branch>`
+
+Promote a named detached worktree to a normal branch-backed worktree in place. The directory and tmux session name stay the same, so active panes and agent status do not move.
+
+```bash
+ww promote feature/auth                 # from inside a detached worktree
+ww promote scratch-repro feature/auth   # promote by worktree name
+ww promote scratch-repro                # promote to branch scratch-repro
+```
+
+| Flag | Description |
+|------|-------------|
+| `-r, --repo` | Target repo by name |
+| `-b, --base` | Record a stack parent for the promoted branch |
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 

@@ -134,7 +134,7 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 			wt:     wt,
 			status: ws,
 			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
-			merged: mergedSet[wt.Branch],
+			merged: !wt.Detached && mergedSet[wt.Branch],
 		}
 	}
 
@@ -149,8 +149,9 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 	branchW := 0
 	statusW := 4 // len("BUSY")
 	for _, item := range items {
-		if len(item.wt.Branch) > branchW {
-			branchW = len(item.wt.Branch)
+		display := item.wt.DisplayName()
+		if len(display) > branchW {
+			branchW = len(display)
 		}
 	}
 
@@ -164,7 +165,7 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 		line := fmt.Sprintf("%s %-*s  %-*s  %s",
 			icon,
 			statusW, label,
-			branchW, item.wt.Branch,
+			branchW, item.wt.DisplayName(),
 			item.wt.Path,
 		)
 		lines = append(lines, line)
@@ -200,7 +201,7 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 			rwt:    rwt,
 			status: ws,
 			unread: ws.Status == claude.StatusDone && claude.IsUnread(rwt.Repo.Name, wtDir),
-			merged: mergedSets[rwt.Repo.Name][rwt.Worktree.Branch],
+			merged: !rwt.Worktree.Detached && mergedSets[rwt.Repo.Name][rwt.Worktree.Branch],
 		}
 	}
 
@@ -215,7 +216,7 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	nameW := 0
 	statusW := 4
 	for _, it := range items {
-		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.Branch
+		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.DisplayName()
 		if len(display) > nameW {
 			nameW = len(display)
 		}
@@ -228,7 +229,7 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 		if it.unread {
 			label += "\u25CF"
 		}
-		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.Branch
+		display := it.rwt.Repo.Name + "/" + it.rwt.Worktree.DisplayName()
 		line := fmt.Sprintf("%s %-*s  %-*s  %s",
 			icon,
 			statusW, label,
@@ -253,7 +254,7 @@ func mergedBranchSetForRepo(repoName, bareDir string, worktrees []worktree.Workt
 	branchHeads := make(map[string]string, len(worktrees))
 	repoDir := ""
 	for _, wt := range worktrees {
-		if wt.Branch != "" {
+		if wt.Branch != "" && !wt.Detached {
 			if repoDir == "" {
 				repoDir = wt.Path
 			}

@@ -83,7 +83,7 @@ func syncCmd() *cli.Command {
 			}
 			wtPaths := make(map[string]string) // branch → worktree path
 			for _, wt := range wts {
-				if !wt.IsBare {
+				if !wt.IsBare && !wt.Detached {
 					wtPaths[wt.Branch] = wt.Path
 				}
 			}

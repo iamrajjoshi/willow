@@ -199,39 +199,56 @@ func rmCmd() *cli.Command {
 
 func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *git.Git, wt *worktree.Worktree, bareDir string, cfg *config.Config, force, keepBranch, verbose bool) error {
 	wtGit := &git.Git{Dir: wt.Path, Verbose: verbose}
+	label := wt.DisplayName()
 
 	st := stack.Load(bareDir)
-	if children := st.Children(wt.Branch); len(children) > 0 && !force {
-		u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
-		u.Warn("Children will be re-parented. Use --force to proceed.")
-		return errors.Userf("branch has stacked children (use --force)")
+	if !wt.Detached {
+		if children := st.Children(wt.Branch); len(children) > 0 && !force {
+			u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
+			u.Warn("Children will be re-parented. Use --force to proceed.")
+			return errors.Userf("branch has stacked children (use --force)")
+		}
 	}
 
 	if !force {
-		done := tr.StartCtx(ctx, "check dirty " + wt.Branch)
+		done := tr.StartCtx(ctx, "check dirty "+label)
 		dirty, err := wtGit.IsDirty()
 		if err != nil {
 			return err
 		}
 		if dirty {
-			u.Warn(fmt.Sprintf("Worktree %s has uncommitted changes", u.Bold(wt.Branch)))
+			u.Warn(fmt.Sprintf("Worktree %s has uncommitted changes", u.Bold(label)))
 		}
 		done()
 
-		done = tr.StartCtx(ctx, "check unpushed " + wt.Branch)
-		unpushed, err := wtGit.HasUnpushedCommits()
-		if err != nil {
-			return err
+		if wt.Detached {
+			done = tr.StartCtx(ctx, "check detached reachability "+label)
+			reachable, err := detachedHeadReachable(wtGit)
+			if err != nil {
+				return err
+			}
+			if !reachable {
+				u.Warn(fmt.Sprintf("Detached worktree %s has commits not reachable from any branch", u.Bold(label)))
+				done()
+				return errors.Userf("detached HEAD has unanchored commits (use --force)")
+			}
+			done()
+		} else {
+			done = tr.StartCtx(ctx, "check unpushed "+wt.Branch)
+			unpushed, err := wtGit.HasUnpushedCommits()
+			if err != nil {
+				return err
+			}
+			if unpushed {
+				u.Warn(fmt.Sprintf("Worktree %s has unpushed commits", u.Bold(wt.Branch)))
+			}
+			done()
 		}
-		if unpushed {
-			u.Warn(fmt.Sprintf("Worktree %s has unpushed commits", u.Bold(wt.Branch)))
-		}
-		done()
 	}
 
 	if len(cfg.Teardown) > 0 {
-		done := tr.StartCtx(ctx, "teardown hooks " + wt.Branch)
-		u.Info(fmt.Sprintf("Running teardown hooks for %s...", u.Bold(wt.Branch)))
+		done := tr.StartCtx(ctx, "teardown hooks "+label)
+		u.Info(fmt.Sprintf("Running teardown hooks for %s...", u.Bold(label)))
 		if err := runHooks(cfg.Teardown, wt.Path, u, os.Stdout); err != nil {
 			return err
 		}
@@ -241,7 +258,7 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	// Read the actual admin dir from the worktree's .git file before moving
 	// anything. The computed path (bareDir/worktrees/<basename>) can be wrong
 	// when git appended a numeric suffix to avoid collisions.
-	done := tr.StartCtx(ctx, "remove worktree " + wt.Branch)
+	done := tr.StartCtx(ctx, "remove worktree "+label)
 	adminDir, err := readGitAdminDir(wt.Path)
 	if err != nil {
 		adminDir = filepath.Join(bareDir, "worktrees", filepath.Base(wt.Path))
@@ -272,21 +289,21 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	}
 	done()
 
-	done = tr.StartCtx(ctx, "git branch -D " + wt.Branch)
-	if !keepBranch {
+	done = tr.StartCtx(ctx, "git branch -D "+wt.Branch)
+	if !keepBranch && !wt.Detached {
 		if _, err := repoGit.Run("branch", "-D", wt.Branch); err != nil {
 			u.Warn(fmt.Sprintf("Failed to delete branch %s: %v", wt.Branch, err))
 		}
 	}
 	done()
 
-	done = tr.StartCtx(ctx, "cleanup status " + wt.Branch)
+	done = tr.StartCtx(ctx, "cleanup status "+label)
 	repoName := repoNameFromDir(bareDir)
 	wtDir := filepath.Base(wt.Path)
 	claude.RemoveStatusDir(repoName, wtDir)
 	done()
 
-	if st.IsTracked(wt.Branch) {
+	if !wt.Detached && st.IsTracked(wt.Branch) {
 		if err := stack.Update(bareDir, func(s *stack.Stack) {
 			s.Remove(wt.Branch)
 		}); err != nil {
@@ -294,10 +311,25 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 		}
 	}
 
-	_ = log.Append(log.Event{Action: "remove", Repo: repoNameFromDir(bareDir), Branch: wt.Branch})
+	_ = log.Append(log.Event{Action: "remove", Repo: repoNameFromDir(bareDir), Branch: wt.MatchName()})
 
-	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(wt.Branch)))
+	u.Success(fmt.Sprintf("Removed worktree %s", u.Bold(label)))
 	return nil
+}
+
+func detachedHeadReachable(g *git.Git) (bool, error) {
+	out, err := g.Run("branch", "-a", "--contains", "HEAD", "--format=%(refname:short)")
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "(") {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // readGitAdminDir reads the worktree's .git file to find the actual admin

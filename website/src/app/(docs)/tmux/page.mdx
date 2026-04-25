@@ -32,6 +32,8 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 |-----|--------|
 | `Enter` | Switch to worktree (creates tmux session if needed) |
 | `Ctrl-N` | Create new worktree from typed query (also accepts PR URLs) |
+| `Ctrl-T` | Create a named detached worktree from the selected HEAD |
+| `Ctrl-U` | Promote the selected detached worktree to a branch |
 | `Ctrl-B` | Create new worktree stacked on a base branch (opens branch picker) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
 | `Ctrl-P` | Browse open PRs and create a worktree for the selected one |
@@ -50,6 +52,12 @@ Type a prompt in the query field and press `Ctrl-G` to dispatch a Claude Code ag
 Press `Ctrl-P` to list open PRs via `gh pr list`. Each line shows the PR number, title, author, and branch. Select one to create a worktree (or switch to it if one already exists). Requires the [GitHub CLI](https://cli.github.com/).
 
 You can also paste a PR URL into the query field and press `Ctrl-N` for quick one-off access.
+
+### Detached worktrees
+
+Type a name in the query field and press `Ctrl-T` to create a detached worktree from the currently selected row's HEAD. The name becomes both the worktree directory and tmux session name, so it is easy to come back to even before you create a branch.
+
+To keep the work, select the detached worktree and press `Ctrl-U`. If the query field has text, Willow uses it as the new branch name; otherwise it reuses the detached worktree name. Promotion happens in place, so the tmux session and agent status stay attached to the same directory.
 
 ### Existing branch picker
 
