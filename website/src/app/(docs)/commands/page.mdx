@@ -117,6 +117,26 @@ ww promote scratch-repro                # promote to branch scratch-repro
 | `-r, --repo` | Target repo by name | Auto-detected from cwd / all repos |
 | `-b, --base` | Record a stack parent for the promoted branch | |
 
+### `ww rename [worktree] <name>` (alias: `mv`)
+
+Rename a worktree safely. Branch-backed worktrees rename the local branch and move the worktree directory. Detached worktrees only move the worktree directory. Claude status files and matching tmux sessions move with the worktree.
+
+```bash
+ww rename better-name              # rename the current worktree
+ww rename old-name better-name     # rename a selected worktree
+ww rename old-name better-name -r myrepo
+ww rename old-name better-name --remote
+```
+
+Willow refuses to overwrite existing branches, worktree paths, status directories, or tmux sessions. By default, remote branches are left unchanged; if `origin/old-name` exists, Willow warns and retargets local upstream config to `origin/better-name` so the branch no longer tracks `origin/old-name`.
+
+Use `--remote` to push the new branch and delete the old remote branch. Before deleting the old remote branch, Willow verifies it has no remote-only commits.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r, --repo` | Target repo by name | Auto-detected from cwd / all repos |
+| `--remote` | Push the new branch and delete the old remote branch | `false` |
+
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
 Smart switch-or-create. Figures out the right action based on what exists:
@@ -384,6 +404,7 @@ ww log --json                   # raw JSON output
 | Action | Trigger |
 |--------|---------|
 | `create` | Worktree created via `ww new` or `ww checkout` |
+| `rename` | Worktree renamed via `ww rename` |
 | `remove` | Worktree removed via `ww rm` |
 | `sync` | Branch rebased via `ww sync` |
 
@@ -585,6 +606,7 @@ Inside the picker, `Ctrl-T` creates a named detached worktree from the selected 
 | Alias | Command |
 |-------|---------|
 | `ww n` | `ww new` |
+| `ww mv` | `ww rename` |
 | `ww co` | `ww checkout` |
 | `ww l` | `ww ls` |
 | `ww s` | `ww status` |

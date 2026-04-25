@@ -324,7 +324,29 @@ func CleanEmptyStatusDirs() error {
 	return nil
 }
 
+func StatusWorktreeDir(repoName, worktreeDir string) string {
+	return filepath.Join(StatusDir(), repoName, worktreeDir)
+}
+
+func MoveStatusDir(repoName, oldWorktreeDir, newWorktreeDir string) error {
+	oldPath := StatusWorktreeDir(repoName, oldWorktreeDir)
+	newPath := StatusWorktreeDir(repoName, newWorktreeDir)
+	if oldPath == newPath {
+		return nil
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(oldPath, newPath)
+}
+
 // RemoveStatusDir removes the entire session directory for a worktree.
 func RemoveStatusDir(repoName, worktreeDir string) {
-	os.RemoveAll(filepath.Join(StatusDir(), repoName, worktreeDir))
+	os.RemoveAll(StatusWorktreeDir(repoName, worktreeDir))
 }

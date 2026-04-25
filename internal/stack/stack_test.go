@@ -169,6 +169,29 @@ func TestRemoveReparentsChildren(t *testing.T) {
 	}
 }
 
+func TestRenameUpdatesBranchAndChildren(t *testing.T) {
+	s := &Stack{Parents: map[string]string{
+		"a": "main",
+		"b": "a",
+		"c": "b",
+	}}
+
+	s.Rename("a", "renamed")
+
+	if s.IsTracked("a") {
+		t.Error("old branch should not remain tracked")
+	}
+	if s.Parent("renamed") != "main" {
+		t.Errorf("renamed parent = %q, want main", s.Parent("renamed"))
+	}
+	if s.Parent("b") != "renamed" {
+		t.Errorf("b parent = %q, want renamed", s.Parent("b"))
+	}
+	if s.Parent("c") != "b" {
+		t.Errorf("c parent = %q, want b", s.Parent("c"))
+	}
+}
+
 func TestIsEmpty(t *testing.T) {
 	if !(&Stack{Parents: map[string]string{}}).IsEmpty() {
 		t.Fatal("empty stack should report IsEmpty")

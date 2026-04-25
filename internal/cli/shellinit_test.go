@@ -81,3 +81,35 @@ func TestShellInitScriptsKeepParentFallbackForRm(t *testing.T) {
 		})
 	}
 }
+
+func TestShellInitScriptsHandleRenameCd(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+		want   string
+	}{
+		{
+			name:   "bash",
+			script: renderBashInitScript(),
+			want:   `command willow rename "${@:2}" --cd`,
+		},
+		{
+			name:   "zsh",
+			script: renderZshInitScript(),
+			want:   `command willow rename "${@:2}" --cd`,
+		},
+		{
+			name:   "fish",
+			script: renderFishInitScript(),
+			want:   `command willow rename $argv[2..] --cd`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(tt.script, tt.want) {
+				t.Fatalf("script missing rename cd hook %q:\n%s", tt.want, tt.script)
+			}
+		})
+	}
+}

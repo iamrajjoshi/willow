@@ -94,6 +94,7 @@ This gives you:
 | `ww new <branch>` | Create worktree + cd into it (tmux-aware) |
 | `ww new <name> --detach` | Create a named detached worktree |
 | `ww promote [name] <branch>` | Promote a detached worktree to a branch |
+| `ww rename [worktree] <name>` | Rename a worktree, branch, status dir, and tmux session |
 | `ww checkout <branch>` | Smart checkout + cd (switch or create, tmux-aware) |
 | `wwn <branch>` | Shorthand for `ww new` |
 | `wwc <branch>` | Shorthand for `ww checkout` |
@@ -212,6 +213,24 @@ ww promote scratch-repro                # promote to branch scratch-repro
 |------|-------------|
 | `-r, --repo` | Target repo by name |
 | `-b, --base` | Record a stack parent for the promoted branch |
+
+### `ww rename [worktree] <name>` (alias: `mv`)
+
+Rename a worktree safely. For branch-backed worktrees, Willow renames the local branch and moves the worktree directory. For detached worktrees, Willow only renames the worktree directory. Claude status files and matching tmux sessions move with the worktree.
+
+```bash
+ww rename better-name              # rename the current worktree
+ww rename old-name better-name     # rename a selected worktree
+ww rename old-name better-name -r myrepo
+ww rename old-name better-name --remote
+```
+
+Willow refuses to overwrite existing branches, worktree paths, status directories, or tmux sessions. By default, remote branches are left unchanged; if `origin/old-name` exists, Willow warns and retargets local upstream config to `origin/better-name` so the branch no longer tracks `origin/old-name`. Use `--remote` to push the new branch and delete the old remote branch after Willow verifies the old remote branch has no remote-only commits.
+
+| Flag | Description |
+|------|-------------|
+| `-r, --repo` | Target repo by name |
+| `--remote` | Push the new branch and delete the old remote branch |
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
@@ -378,7 +397,7 @@ ww dash --no-timeline     # hide the timeline column
 
 ### `ww log`
 
-Show activity log of worktree events (creates, removes, syncs).
+Show activity log of worktree events (creates, renames, removes, syncs).
 
 ```bash
 ww log                          # last 20 events
