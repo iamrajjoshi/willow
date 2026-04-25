@@ -23,6 +23,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const tmuxPickerHeader = "Enter | ^N new ^T det ^U prom ^B base ^E ex ^P PR ^G run ^S sync ^D rm ^X prune"
+
 func tmuxCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "tmux",
@@ -92,8 +94,8 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithNoSort(),
 					fzf.WithDelimiter("\\|"),
 					fzf.WithNth("1,2"),
-					fzf.WithHeader("Ctrl-N: New | Ctrl-B: Stacked | Ctrl-E: Existing | Ctrl-P: PR | Ctrl-G: Dispatch | Ctrl-S: Sync | Ctrl-D: Delete | Ctrl-X: Prune merged"),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-s", "ctrl-d", "ctrl-x"),
+					fzf.WithHeader(tmuxPickerHeader),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-t", "ctrl-u", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-s", "ctrl-d", "ctrl-x"),
 					fzf.WithPrintQuery(),
 				}
 
@@ -113,6 +115,26 @@ func tmuxPickCmd() *cli.Command {
 				switch result.Key {
 				case "ctrl-n":
 					if err := tmuxPickNew(self, result.Query, repoFilter, sessionName, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-t":
+					if result.Selection == "" {
+						continue
+					}
+					if err := tmuxPickDetached(self, result.Query, result.Selection, repoFilter, sessionName, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-u":
+					if result.Selection == "" {
+						continue
+					}
+					if err := tmuxPickPromote(self, result.Query, result.Selection, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -151,7 +173,9 @@ func tmuxPickCmd() *cli.Command {
 					if result.Selection != "" {
 						wtPath := tmux.ExtractPathFromLine(result.Selection)
 						if item := findItemByPath(items, wtPath); item != nil {
-							branch = item.Branch
+							if !item.Detached {
+								branch = item.Branch
+							}
 						}
 					}
 					if err := tmuxPickSync(self, repoFilter, sessionName, items, branch); err != nil {
@@ -289,6 +313,80 @@ func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.Picke
 	return ensureTmuxSessionFromPath(wtPath)
 }
 
+func tmuxPickDetached(self, query, selection, repoFilter, sessionName string, items []tmux.PickerItem) error {
+	name := strings.TrimSpace(query)
+	if name == "" {
+		return errors.Userf("enter a detached worktree name first")
+	}
+
+	repo := ""
+	ref := ""
+	if selection != "" {
+		wtPath := tmux.ExtractPathFromLine(selection)
+		if item := findItemByPath(items, wtPath); item != nil {
+			repo = item.RepoName
+			ref = item.Head
+		}
+	}
+	if repo == "" {
+		var err error
+		repo, err = resolveRepo(repoFilter, sessionName, items)
+		if err != nil {
+			return err
+		}
+	}
+	cmd := exec.Command(self, tmuxPickDetachedArgs(name, repo, ref)...)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to create detached worktree: %w", err)
+	}
+
+	wtPath := strings.TrimSpace(string(out))
+	if wtPath == "" {
+		return fmt.Errorf("no path returned from willow new")
+	}
+
+	return ensureTmuxSessionFromPath(wtPath)
+}
+
+func tmuxPickDetachedArgs(name, repo, ref string) []string {
+	args := []string{"new", "--detach", "--cd", "--repo", repo}
+	if ref != "" {
+		args = append(args, "--ref", ref)
+	}
+	return append(args, "--", name)
+}
+
+func tmuxPickPromote(self, query, selection string, items []tmux.PickerItem) error {
+	wtPath := tmux.ExtractPathFromLine(selection)
+	item := findItemByPath(items, wtPath)
+	if item == nil {
+		return fmt.Errorf("worktree not found: %s", wtPath)
+	}
+	if !item.Detached {
+		return errors.Userf("worktree %s is already on branch %s", item.WtDirName, item.Branch)
+	}
+
+	branch := strings.TrimSpace(query)
+	if branch == "" {
+		branch = item.WtDirName
+	}
+
+	cmd := exec.Command(self, tmuxPickPromoteArgs(*item, branch)...)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to promote detached worktree: %w", err)
+	}
+
+	return ensureTmuxSession(item.RepoName, item.WtDirName, item.WtPath)
+}
+
+func tmuxPickPromoteArgs(item tmux.PickerItem, branch string) []string {
+	return []string{"promote", "--repo", item.RepoName, item.WtDirName, branch}
+}
+
 func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	if query == "" {
 		return errors.Userf("enter a branch name first")
@@ -313,7 +411,9 @@ func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tm
 	var branches []string
 	for _, wt := range wts {
 		if !wt.IsBare {
-			branches = append(branches, wt.Branch)
+			if !wt.Detached {
+				branches = append(branches, wt.Branch)
+			}
 		}
 	}
 	if len(branches) == 0 {
@@ -462,6 +562,9 @@ func availableExistingBranches(remoteBranches []string, repo string, items []tmu
 		if item.RepoName != repo {
 			continue
 		}
+		if item.Detached {
+			continue
+		}
 		wtBranches[item.Branch] = true
 	}
 	return filterAvailableBranches(remoteBranches, wtBranches)
@@ -475,7 +578,7 @@ func currentWorktreeBranchSet(repoGit *git.Git) (map[string]bool, error) {
 
 	wtBranches := make(map[string]bool)
 	for _, wt := range wts {
-		if wt.IsBare {
+		if wt.IsBare || wt.Detached {
 			continue
 		}
 		wtBranches[wt.Branch] = true
@@ -916,10 +1019,18 @@ func tmuxPickDeleteItem(self string, item tmux.PickerItem) error {
 		tmux.KillSession(sessName)
 	}
 
-	cmd := exec.Command(self, "rm", item.Branch, "--force", "--repo", item.RepoName)
+	cmd := exec.Command(self, tmuxPickDeleteArgs(item)...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func tmuxPickDeleteArgs(item tmux.PickerItem) []string {
+	target := item.Branch
+	if item.Detached {
+		target = item.WtDirName
+	}
+	return []string{"rm", target, "--force", "--repo", item.RepoName}
 }
 
 func loadRepoConfig(repoName string) *config.Config {
@@ -981,6 +1092,9 @@ func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack st
 	matched := items[matchIdx]
 
 	st := loadStack(matched.RepoName)
+	if matched.Detached {
+		return moveItemToFront(items, matchIdx)
+	}
 	if st == nil || !st.IsTracked(matched.Branch) {
 		return moveItemToFront(items, matchIdx)
 	}
@@ -1002,7 +1116,7 @@ func moveToFrontWithStack(items []tmux.PickerItem, sessName string, loadStack st
 
 	var treeItems, rest []tmux.PickerItem
 	for _, item := range items {
-		if item.RepoName == matched.RepoName && treeBranches[item.Branch] {
+		if !item.Detached && item.RepoName == matched.RepoName && treeBranches[item.Branch] {
 			treeItems = append(treeItems, item)
 		} else {
 			rest = append(rest, item)
@@ -1081,12 +1195,20 @@ func printPreviewMetadata(wtPath, repoName string) {
 	branch := ""
 	if b, err := g.Run("rev-parse", "--abbrev-ref", "HEAD"); err == nil {
 		branch = b
-		fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
+		if branch == "HEAD" {
+			if head, err := g.Run("rev-parse", "HEAD"); err == nil {
+				fmt.Printf("  \033[1mHead:\033[0m    detached %s\n", worktree.ShortHead(head))
+			} else {
+				fmt.Printf("  \033[1mHead:\033[0m    detached\n")
+			}
+		} else {
+			fmt.Printf("  \033[1mBranch:\033[0m  %s\n", branch)
+		}
 	}
 
 	if bareDir != "" {
 		st := stack.Load(bareDir)
-		if st.IsTracked(branch) {
+		if branch != "HEAD" && st.IsTracked(branch) {
 			chain := buildStackChain(st, branch)
 			fmt.Printf("  \033[1mStack:\033[0m   %s\n", chain)
 		}

@@ -16,14 +16,14 @@ import (
 // directory name, or substring match on the branch.
 func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Worktree, error) {
 	for i := range worktrees {
-		if worktrees[i].Branch == target {
+		if worktrees[i].Branch == target || worktrees[i].MatchName() == target {
 			return &worktrees[i], nil
 		}
 	}
 
 	var matches []worktree.Worktree
 	for _, wt := range worktrees {
-		if strings.Contains(wt.Branch, target) || strings.HasSuffix(wt.Path, "/"+target) {
+		if strings.Contains(wt.MatchName(), target) || strings.Contains(wt.DisplayName(), target) || strings.HasSuffix(wt.Path, "/"+target) {
 			matches = append(matches, wt)
 		}
 	}
@@ -36,7 +36,7 @@ func findWorktree(worktrees []worktree.Worktree, target string) (*worktree.Workt
 	default:
 		lines := fmt.Sprintf("ambiguous match %q, could be:\n", target)
 		for _, wt := range matches {
-			lines += fmt.Sprintf("  %s  %s\n", wt.Branch, wt.Path)
+			lines += fmt.Sprintf("  %s  %s\n", wt.DisplayName(), wt.Path)
 		}
 		return nil, errors.User(fmt.Errorf("%s", strings.TrimRight(lines, "\n")))
 	}
@@ -51,6 +51,10 @@ func filterBareWorktrees(worktrees []worktree.Worktree) []worktree.Worktree {
 		}
 	}
 	return filtered
+}
+
+func worktreeDirName(name string) string {
+	return strings.ReplaceAll(name, "/", "-")
 }
 
 type repoInfo struct {
@@ -115,14 +119,14 @@ func collectAllWorktrees(repos []repoInfo, verbose bool) []repoWorktree {
 
 func findCrossRepoWorktree(rwts []repoWorktree, target string) (*repoWorktree, error) {
 	for i := range rwts {
-		if rwts[i].Worktree.Branch == target {
+		if rwts[i].Worktree.Branch == target || rwts[i].Worktree.MatchName() == target {
 			return &rwts[i], nil
 		}
 	}
 
 	var matches []repoWorktree
 	for _, rwt := range rwts {
-		if strings.Contains(rwt.Worktree.Branch, target) || strings.HasSuffix(rwt.Worktree.Path, "/"+target) {
+		if strings.Contains(rwt.Worktree.MatchName(), target) || strings.Contains(rwt.Worktree.DisplayName(), target) || strings.HasSuffix(rwt.Worktree.Path, "/"+target) {
 			matches = append(matches, rwt)
 		}
 	}
@@ -135,7 +139,7 @@ func findCrossRepoWorktree(rwts []repoWorktree, target string) (*repoWorktree, e
 	default:
 		lines := fmt.Sprintf("ambiguous match %q, could be:\n", target)
 		for _, rwt := range matches {
-			lines += fmt.Sprintf("  %s/%s  %s\n", rwt.Repo.Name, rwt.Worktree.Branch, rwt.Worktree.Path)
+			lines += fmt.Sprintf("  %s/%s  %s\n", rwt.Repo.Name, rwt.Worktree.DisplayName(), rwt.Worktree.Path)
 		}
 		return nil, errors.User(fmt.Errorf("%s", strings.TrimRight(lines, "\n")))
 	}
@@ -175,7 +179,7 @@ func completeWorktreesCrossRepo(ctx context.Context, cmd *cli.Command) {
 		}
 		for _, wt := range wts {
 			if !wt.IsBare {
-				fmt.Fprintln(w, wt.Branch)
+				fmt.Fprintln(w, wt.MatchName())
 			}
 		}
 	}
@@ -201,7 +205,7 @@ func completeWorktreesWithFlag(ctx context.Context, cmd *cli.Command) {
 		w := cmd.Root().Writer
 		for _, wt := range wts {
 			if !wt.IsBare {
-				fmt.Fprintln(w, wt.Branch)
+				fmt.Fprintln(w, wt.MatchName())
 			}
 		}
 		return
@@ -218,7 +222,7 @@ func completeWorktreesWithFlag(ctx context.Context, cmd *cli.Command) {
 		w := cmd.Root().Writer
 		for _, wt := range wts {
 			if !wt.IsBare {
-				fmt.Fprintln(w, wt.Branch)
+				fmt.Fprintln(w, wt.MatchName())
 			}
 		}
 		return
@@ -232,7 +236,7 @@ func completeWorktreesWithFlag(ctx context.Context, cmd *cli.Command) {
 		w := cmd.Root().Writer
 		for _, wt := range wts {
 			if !wt.IsBare {
-				fmt.Fprintln(w, wt.Branch)
+				fmt.Fprintln(w, wt.MatchName())
 			}
 		}
 		return

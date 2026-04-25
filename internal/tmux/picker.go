@@ -30,6 +30,8 @@ const (
 type PickerItem struct {
 	RepoName    string
 	Branch      string
+	Head        string
+	Detached    bool
 	WtDirName   string
 	WtPath      string
 	Status      claude.Status
@@ -92,7 +94,7 @@ func BuildPickerItemsWithOptions(ctx context.Context, repoFilter string, opts Pi
 		branchHeads := make(map[string]string, len(wts))
 		repoDir := ""
 		for _, wt := range wts {
-			if !wt.IsBare && wt.Branch != "" {
+			if !wt.IsBare && !wt.Detached && wt.Branch != "" {
 				if repoDir == "" {
 					repoDir = wt.Path
 				}
@@ -128,13 +130,15 @@ func BuildPickerItemsWithOptions(ctx context.Context, repoFilter string, opts Pi
 			items = append(items, PickerItem{
 				RepoName:   repoName,
 				Branch:     wt.Branch,
+				Head:       wt.Head,
+				Detached:   wt.Detached,
 				WtDirName:  wtDir,
 				WtPath:     wt.Path,
 				Status:     ws.Status,
 				Unread:     ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
 				HasSession: sessionSet[sessName],
 				Sessions:   sessions,
-				Merged:     mergedSet[wt.Branch],
+				Merged:     !wt.Detached && mergedSet[wt.Branch],
 			})
 		}
 		done()
@@ -180,6 +184,9 @@ func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerS
 
 	repoBranchSets := make(map[string]map[string]bool)
 	for _, item := range items {
+		if item.Detached {
+			continue
+		}
 		branchSet := repoBranchSets[item.RepoName]
 		if branchSet == nil {
 			branchSet = make(map[string]bool)
@@ -190,6 +197,9 @@ func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerS
 
 	itemMap := make(map[string]*PickerItem)
 	for i := range items {
+		if items[i].Detached {
+			continue
+		}
 		key := pickerItemKey(items[i].RepoName, items[i].Branch)
 		itemMap[key] = &items[i]
 	}
@@ -222,7 +232,7 @@ func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerS
 					continue
 				}
 				item.StackPrefix = prefixByBranch[branch]
-				groupedKeys[key] = true
+				groupedKeys[pickerStableItemKey(*item)] = true
 				groupItems = append(groupItems, *item)
 			}
 			if len(groupItems) > 0 {
@@ -232,7 +242,7 @@ func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerS
 	}
 
 	for _, item := range items {
-		key := pickerItemKey(item.RepoName, item.Branch)
+		key := pickerStableItemKey(item)
 		if !groupedKeys[key] {
 			groups = append(groups, newPickerGroup([]PickerItem{item}))
 		}
@@ -261,6 +271,13 @@ func newPickerGroup(items []PickerItem) pickerGroup {
 
 func pickerItemKey(repoName, branch string) string {
 	return repoName + "/" + branch
+}
+
+func pickerStableItemKey(item PickerItem) string {
+	if item.WtPath == "" {
+		return pickerItemKey(item.RepoName, item.Branch)
+	}
+	return item.RepoName + "/" + item.WtPath
 }
 
 // FormatPickerLines produces ANSI-colored lines for the fzf picker.
@@ -362,10 +379,17 @@ func filterActiveSessions(sessions []*claude.SessionStatus) []*claude.SessionSta
 
 func displayName(item PickerItem, multiRepo bool) string {
 	name := item.Branch
-	if multiRepo {
-		name = item.RepoName + "/" + item.Branch
+	if item.Detached {
+		if item.Head == "" {
+			name = fmt.Sprintf("%s [detached]", item.WtDirName)
+		} else {
+			name = fmt.Sprintf("%s [detached %s]", item.WtDirName, worktree.ShortHead(item.Head))
+		}
 	}
-	if item.StackPrefix != "" {
+	if multiRepo {
+		name = item.RepoName + "/" + name
+	}
+	if item.StackPrefix != "" && !item.Detached {
 		name = item.StackPrefix + name
 	}
 	return name

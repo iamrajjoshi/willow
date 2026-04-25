@@ -136,6 +136,23 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
+func TestDisplayName_Detached(t *testing.T) {
+	item := PickerItem{
+		RepoName:  "myrepo",
+		Branch:    "(detached)",
+		Head:      "abcdef123456",
+		Detached:  true,
+		WtDirName: "scratch-repro",
+	}
+
+	if got := displayName(item, false); got != "scratch-repro [detached abcdef1]" {
+		t.Fatalf("displayName(single repo) = %q", got)
+	}
+	if got := displayName(item, true); got != "myrepo/scratch-repro [detached abcdef1]" {
+		t.Fatalf("displayName(multi repo) = %q", got)
+	}
+}
+
 func TestHasMultipleRepos(t *testing.T) {
 	tests := []struct {
 		name  string

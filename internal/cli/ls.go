@@ -204,7 +204,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		if repoDir == "" {
 			repoDir = wt.Path
 		}
-		if wt.Branch != "" {
+		if wt.Branch != "" && !wt.Detached {
 			branches = append(branches, wt.Branch)
 			branchHeads[wt.Branch] = wt.Head
 		}
@@ -222,7 +222,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		ws := claude.ReadStatus(repoName, wtDir)
 		rows = append(rows, lsRow{
 			branch: wt.Branch,
-			merged: mergedSet[wt.Branch],
+			merged: !wt.Detached && mergedSet[wt.Branch],
 			status: ws.Status,
 			unread: ws.Status == claude.StatusDone && claude.IsUnread(repoName, wtDir),
 			wt:     wt,
@@ -235,7 +235,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	pathW := len("PATH")
 	ageW := len("AGE")
 	for _, row := range rows {
-		display := row.prefix + row.branch
+		display := row.prefix + row.wt.DisplayName()
 		if row.merged {
 			display += " [merged]"
 		}
@@ -260,7 +260,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 		if row.unread {
 			statusLabel += "\u25CF" // ●
 		}
-		branchPlain := row.prefix + row.branch
+		branchPlain := row.prefix + row.wt.DisplayName()
 		branchDisplay := branchPlain
 		if row.merged {
 			branchPlain += " [merged]"
@@ -283,6 +283,9 @@ func sortLSRows(rows []lsRow, st *stack.Stack) []lsRow {
 	rowMap := make(map[string]*lsRow, len(rows))
 	branchSet := make(map[string]bool, len(rows))
 	for i := range rows {
+		if rows[i].wt.Detached {
+			continue
+		}
 		rowMap[rows[i].branch] = &rows[i]
 		branchSet[rows[i].branch] = true
 	}

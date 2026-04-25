@@ -25,6 +25,14 @@ func repoNameFromDir(bareDir string) string {
 	return strings.TrimSuffix(filepath.Base(bareDir), ".git")
 }
 
+func detachedWorktreeDirName(name string) (string, error) {
+	dirName := worktreeDirName(name)
+	if dirName == "" || dirName == "." || dirName == ".." {
+		return "", errors.Userf("invalid detached worktree name %q", name)
+	}
+	return dirName, nil
+}
+
 func runHooks(commands []string, dir string, u *ui.UI, stdout *os.File) error {
 	for _, c := range commands {
 		u.Info(fmt.Sprintf("  → %s", c))
@@ -76,6 +84,57 @@ func runPostCheckoutHook(hookPath, wtPath string, u *ui.UI, cdOnly bool) {
 	}
 }
 
+func resolveDetachedRef(ctx context.Context, tr *trace.Tracer, cmd *cli.Command, cfg *config.Config, repoGit *git.Git, u *ui.UI, cdOnly bool) (string, string, error) {
+	if ref := cmd.String("ref"); ref != "" {
+		return ref, ref, nil
+	}
+
+	done := tr.StartCtx(ctx, "resolve detached ref")
+	baseBranch := cmd.String("base")
+	explicitBase := baseBranch != ""
+	var err error
+	if baseBranch == "" {
+		baseBranch = cfg.BaseBranch
+	}
+	if baseBranch == "" {
+		baseBranch, err = repoGit.DefaultBranch()
+		if err != nil {
+			done()
+			return "", "", fmt.Errorf("failed to detect default branch (use --ref to specify): %w", err)
+		}
+	}
+	done()
+
+	localBase := explicitBase && repoGit.LocalBranchExists(baseBranch)
+	gitRef := "origin/" + baseBranch
+	if localBase {
+		gitRef = baseBranch
+	}
+
+	shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") && !localBase
+	if shouldFetch {
+		done = tr.StartCtx(ctx, "git fetch detached ref")
+		if cdOnly {
+			fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", baseBranch)
+			if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", baseBranch); err != nil {
+				done()
+				return "", "", fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
+			}
+		} else {
+			if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(baseBranch)), func() error {
+				_, err := repoGit.Run("fetch", "origin", baseBranch)
+				return err
+			}); err != nil {
+				done()
+				return "", "", fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
+			}
+		}
+		done()
+	}
+
+	return gitRef, gitRef, nil
+}
+
 func newCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
@@ -102,6 +161,15 @@ func newCmd() *cli.Command {
 				Name:    "existing",
 				Aliases: []string{"e"},
 				Usage:   "Use an existing local/remote branch",
+			},
+			&cli.BoolFlag{
+				Name:    "detach",
+				Aliases: []string{"detached"},
+				Usage:   "Create a detached HEAD worktree named <branch>",
+			},
+			&cli.StringFlag{
+				Name:  "ref",
+				Usage: "Commit, tag, or branch to check out in detached mode",
 			},
 			&cli.BoolFlag{
 				Name:  "no-fetch",
@@ -152,6 +220,50 @@ func newCmd() *cli.Command {
 			repoName := repoNameFromDir(bareDir)
 
 			branch := cmd.StringArg("branch")
+			detached := cmd.Bool("detach")
+			if !detached && cmd.String("ref") != "" {
+				return errors.Userf("--ref can only be used with --detach")
+			}
+
+			if detached {
+				if existing {
+					return errors.Userf("--detach cannot be used with --existing")
+				}
+				if cmd.String("pr") != "" {
+					return errors.Userf("--detach cannot be used with --pr")
+				}
+				if branch == "" {
+					return errors.Userf("worktree name is required\n\nUsage: ww new <name> --detach [--ref <commit-ish>]")
+				}
+
+				name := branch
+				dirName, err := detachedWorktreeDirName(name)
+				if err != nil {
+					return err
+				}
+				ref, refLabel, err := resolveDetachedRef(ctx, tr, cmd, cfg, repoGit, u, cdOnly)
+				if err != nil {
+					return err
+				}
+
+				wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
+
+				done = tr.StartCtx(ctx, "git worktree add detached")
+				if cdOnly {
+					fmt.Fprintf(os.Stderr, "Creating detached worktree %s at %s...\n", name, refLabel)
+					if _, err := repoGit.RunStream(os.Stderr, "worktree", "add", "--detach", wtPath, ref); err != nil {
+						return fmt.Errorf("failed to create detached worktree: %w", err)
+					}
+				} else {
+					u.Info(fmt.Sprintf("Creating detached worktree %s at %s...", u.Bold(name), u.Bold(refLabel)))
+					if _, err := repoGit.Run("worktree", "add", "--detach", wtPath, ref); err != nil {
+						return fmt.Errorf("failed to create detached worktree: %w", err)
+					}
+				}
+				done()
+
+				return finishDetachedWorktree(ctx, tr, cfg, g, u, wtPath, repoName, name, refLabel, cdOnly)
+			}
 
 			if prRef := cmd.String("pr"); prRef != "" {
 				done = tr.StartCtx(ctx, "resolve PR")
@@ -230,7 +342,7 @@ func newCmd() *cli.Command {
 					done()
 				}
 
-				dirName := strings.ReplaceAll(branch, "/", "-")
+				dirName := worktreeDirName(branch)
 				wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
 				done = tr.StartCtx(ctx, "git worktree add")
@@ -297,7 +409,7 @@ func newCmd() *cli.Command {
 				done()
 			}
 
-			dirName := strings.ReplaceAll(branch, "/", "-")
+			dirName := worktreeDirName(branch)
 			wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
 
 			done = tr.StartCtx(ctx, "git worktree add")
@@ -327,13 +439,27 @@ func newCmd() *cli.Command {
 	}
 }
 
+type finishWorktreeOptions struct {
+	BaseBranch string
+	Detached   bool
+	Ref        string
+}
+
 func finishWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, branch, baseBranch string, cdOnly bool) error {
+	return finishWorktreeWithOptions(ctx, tr, cfg, g, u, wtPath, repoName, branch, finishWorktreeOptions{BaseBranch: baseBranch}, cdOnly)
+}
+
+func finishDetachedWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, name, ref string, cdOnly bool) error {
+	return finishWorktreeWithOptions(ctx, tr, cfg, g, u, wtPath, repoName, name, finishWorktreeOptions{Detached: true, Ref: ref}, cdOnly)
+}
+
+func finishWorktreeWithOptions(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g *git.Git, u *ui.UI, wtPath, repoName, label string, opts finishWorktreeOptions, cdOnly bool) error {
 	done := tr.StartCtx(ctx, "post-checkout hook")
 	runPostCheckoutHook(cfg.PostCheckoutHook, wtPath, u, cdOnly)
 	done()
 
 	done = tr.StartCtx(ctx, "auto setup remote")
-	if *cfg.Defaults.AutoSetupRemote {
+	if *cfg.Defaults.AutoSetupRemote && !opts.Detached {
 		wtGit := &git.Git{Dir: wtPath, Verbose: g.Verbose}
 		if _, err := wtGit.Run("config", "--local", "push.autoSetupRemote", "true"); err != nil {
 			u.Warn("Failed to set push.autoSetupRemote: " + err.Error())
@@ -373,20 +499,33 @@ func finishWorktree(ctx context.Context, tr *trace.Tracer, cfg *config.Config, g
 	done()
 
 	meta := map[string]string{}
-	if baseBranch != "" {
-		meta["base"] = baseBranch
+	if opts.BaseBranch != "" {
+		meta["base"] = opts.BaseBranch
 	}
-	_ = log.Append(log.Event{Action: "create", Repo: repoName, Branch: branch, Metadata: meta})
+	if opts.Detached {
+		meta["detached"] = "true"
+		if opts.Ref != "" {
+			meta["ref"] = opts.Ref
+		}
+	}
+	_ = log.Append(log.Event{Action: "create", Repo: repoName, Branch: label, Metadata: meta})
 
 	if cdOnly {
 		fmt.Println(wtPath)
 		return nil
 	}
 
-	u.Success(fmt.Sprintf("Created worktree %s", u.Bold(branch)))
+	if opts.Detached {
+		u.Success(fmt.Sprintf("Created detached worktree %s", u.Bold(label)))
+	} else {
+		u.Success(fmt.Sprintf("Created worktree %s", u.Bold(label)))
+	}
 	u.Info(fmt.Sprintf("  path:   %s", u.Dim(wtPath)))
-	if baseBranch != "" {
-		u.Info(fmt.Sprintf("  base:   %s", u.Dim("origin/"+baseBranch)))
+	if opts.BaseBranch != "" {
+		u.Info(fmt.Sprintf("  base:   %s", u.Dim("origin/"+opts.BaseBranch)))
+	}
+	if opts.Ref != "" {
+		u.Info(fmt.Sprintf("  ref:    %s", u.Dim(opts.Ref)))
 	}
 	return nil
 }
@@ -442,7 +581,7 @@ func pickExistingBranchWithQuery(repoGit *git.Git, query string) (string, error)
 	}
 	wtBranches := make(map[string]bool)
 	for _, wt := range wts {
-		if !wt.IsBare {
+		if !wt.IsBare && !wt.Detached {
 			wtBranches[wt.Branch] = true
 		}
 	}

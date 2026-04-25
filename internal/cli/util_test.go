@@ -47,6 +47,27 @@ func TestFindWorktree_DirectorySuffix(t *testing.T) {
 	}
 }
 
+func TestFindWorktree_DetachedByName(t *testing.T) {
+	worktrees := append([]worktree.Worktree{}, testWorktrees...)
+	worktrees = append(worktrees, worktree.Worktree{
+		Branch:   worktree.DetachedBranch,
+		Path:     "/home/user/.willow/worktrees/repo/scratch-repro",
+		Head:     "abcdef123456",
+		Detached: true,
+	})
+
+	wt, err := findWorktree(worktrees, "scratch-repro")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !wt.Detached {
+		t.Fatal("expected detached worktree")
+	}
+	if got := wt.DisplayName(); got != "scratch-repro [detached abcdef1]" {
+		t.Fatalf("DisplayName() = %q", got)
+	}
+}
+
 func TestFindWorktree_Ambiguous(t *testing.T) {
 	_, err := findWorktree(testWorktrees, "feature")
 	if err == nil {

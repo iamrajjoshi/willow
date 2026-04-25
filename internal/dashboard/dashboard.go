@@ -280,7 +280,7 @@ func collectData() ([]session, summary) {
 					timeline, _ := claude.ReadTimeline(repoName, wtDir, ss.SessionID, timelineSince)
 					s := session{
 						Repo:      repoName,
-						Branch:    wt.Branch,
+						Branch:    wt.DisplayName(),
 						SessionID: ss.SessionID,
 						Status:    effective,
 						Tool:      ss.Tool,
@@ -302,7 +302,7 @@ func collectData() ([]session, summary) {
 				}
 				s := session{
 					Repo:      repoName,
-					Branch:    wt.Branch,
+					Branch:    wt.DisplayName(),
 					Status:    ws.Status,
 					DiffStats: diff,
 					Age:       claude.TimeSince(ws.Timestamp),

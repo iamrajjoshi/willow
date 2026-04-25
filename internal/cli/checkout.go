@@ -156,7 +156,7 @@ func checkoutCmd() *cli.Command {
 			}
 
 			if repoGit.RemoteBranchExists(branch) {
-				dirName := strings.ReplaceAll(branch, "/", "-")
+				dirName := worktreeDirName(branch)
 				wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
 				done = tr.StartCtx(ctx, "git worktree add (existing)")
@@ -199,7 +199,7 @@ func checkoutCmd() *cli.Command {
 				gitRef = baseBranch
 			}
 
-			dirName := strings.ReplaceAll(branch, "/", "-")
+			dirName := worktreeDirName(branch)
 			wtPath := filepath.Join(config.WorktreesDir(), repo.Name, dirName)
 
 			done = tr.StartCtx(ctx, "git worktree add (new)")

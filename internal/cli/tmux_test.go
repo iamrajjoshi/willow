@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
+	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
 func item(repo, branch string) tmux.PickerItem {
@@ -203,6 +205,82 @@ func TestMoveToFrontWithStack_BranchNotInStack(t *testing.T) {
 	assertBranches(t, got, want)
 }
 
+func TestMoveToFrontWithStack_DetachedOnlyMovesSelectedWorktree(t *testing.T) {
+	st := makeStack("feat-b", "feat-a")
+	loader := mockLoader(map[string]*stack.Stack{"repo": st})
+
+	items := []tmux.PickerItem{
+		item("repo", "feat-a"),
+		{
+			RepoName:  "repo",
+			Branch:    worktree.DetachedBranch,
+			Detached:  true,
+			WtDirName: "scratch-repro",
+			WtPath:    "/fake/repo/scratch-repro",
+		},
+		item("repo", "feat-b"),
+	}
+
+	result := moveToFrontWithStack(items, "repo/scratch-repro", loader)
+	if result[0].WtDirName != "scratch-repro" || !result[0].Detached {
+		t.Fatalf("first item = %#v, want detached scratch-repro", result[0])
+	}
+	assertBranches(t, branches(result[1:]), []string{"feat-a", "feat-b"})
+}
+
+func TestTmuxPickerHeaderFitsEightyColumns(t *testing.T) {
+	if got := len(tmuxPickerHeader); got > 80 {
+		t.Fatalf("tmux picker header length = %d, want <= 80", got)
+	}
+	if strings.Contains(tmuxPickerHeader, "upgrade") {
+		t.Fatal("tmux picker header should not mention the removed upgrade alias")
+	}
+}
+
+func TestTmuxPickDetachedArgs(t *testing.T) {
+	got := tmuxPickDetachedArgs("scratch-repro", "repo", "abcdef123")
+	want := []string{"new", "--detach", "--cd", "--repo", "repo", "--ref", "abcdef123", "--", "scratch-repro"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+
+	got = tmuxPickDetachedArgs("scratch-base", "repo", "")
+	want = []string{"new", "--detach", "--cd", "--repo", "repo", "--", "scratch-base"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args without ref = %v, want %v", got, want)
+	}
+}
+
+func TestTmuxPickPromoteArgsUsesDetachedName(t *testing.T) {
+	item := tmux.PickerItem{
+		RepoName:  "repo",
+		Branch:    worktree.DetachedBranch,
+		Detached:  true,
+		WtDirName: "scratch-repro",
+	}
+
+	got := tmuxPickPromoteArgs(item, "feature/repro")
+	want := []string{"promote", "--repo", "repo", "scratch-repro", "feature/repro"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+}
+
+func TestTmuxPickDeleteArgsDetachedUsesDirName(t *testing.T) {
+	item := tmux.PickerItem{
+		RepoName:  "repo",
+		Branch:    worktree.DetachedBranch,
+		Detached:  true,
+		WtDirName: "scratch-repro",
+	}
+
+	got := tmuxPickDeleteArgs(item)
+	want := []string{"rm", "scratch-repro", "--force", "--repo", "repo"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+}
+
 func TestMergedDeleteCandidates_SkipsCurrentSessionAndKeepsOrder(t *testing.T) {
 	items := []tmux.PickerItem{
 		{RepoName: "repo", Branch: "main", WtDirName: "main"},
@@ -288,6 +366,41 @@ func TestAvailableExistingBranches(t *testing.T) {
 	got := availableExistingBranches(remoteBranches, "repo1", items)
 	want := []string{"feat-b", "shared"}
 	assertBranches(t, got, want)
+}
+
+func TestAvailableExistingBranches_IgnoresDetachedItems(t *testing.T) {
+	remoteBranches := []string{"main", "feat-a", "feat-b"}
+	items := []tmux.PickerItem{
+		item("repo1", "main"),
+		{
+			RepoName:  "repo1",
+			Branch:    "feat-a",
+			Detached:  true,
+			WtDirName: "scratch-repro",
+		},
+	}
+
+	got := availableExistingBranches(remoteBranches, "repo1", items)
+	want := []string{"feat-a", "feat-b"}
+	assertBranches(t, got, want)
+}
+
+func TestFindItemByPath_Detached(t *testing.T) {
+	items := []tmux.PickerItem{
+		{RepoName: "repo", Branch: "main", WtPath: "/fake/repo/main"},
+		{RepoName: "repo", Branch: worktree.DetachedBranch, Detached: true, WtDirName: "scratch", WtPath: "/fake/repo/scratch"},
+	}
+
+	got := findItemByPath(items, "/fake/repo/scratch")
+	if got == nil {
+		t.Fatal("expected item")
+	}
+	if !got.Detached || got.WtDirName != "scratch" {
+		t.Fatalf("item = %#v, want detached scratch", got)
+	}
+	if missing := findItemByPath(items, "/fake/repo/missing"); missing != nil {
+		t.Fatalf("missing item = %#v, want nil", missing)
+	}
 }
 
 func TestExistingBranchCacheRoundTrip(t *testing.T) {
