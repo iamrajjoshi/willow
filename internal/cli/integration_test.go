@@ -319,6 +319,29 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 	return string(out), runErr
 }
 
+func captureStderr(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	runErr := fn()
+	_ = w.Close()
+	os.Stderr = origStderr
+
+	out, readErr := io.ReadAll(r)
+	if readErr != nil {
+		t.Fatalf("read stderr: %v", readErr)
+	}
+	return string(out), runErr
+}
+
 func installMergedStatusGH(t *testing.T, baseBranch, branch, headOID string) string {
 	t.Helper()
 

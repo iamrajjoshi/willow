@@ -2,10 +2,12 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBold(t *testing.T) {
@@ -190,5 +192,51 @@ func TestTerminalControlSequences(t *testing.T) {
 				t.Errorf("%s() should start with ESC", tt.name)
 			}
 		})
+	}
+}
+
+func TestSpinNoColorPrintsLabelAndReturnsError(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	wantErr := errors.New("boom")
+	u := &UI{}
+	gotErr := u.Spin("working", func() error { return wantErr })
+	if !errors.Is(gotErr, wantErr) {
+		t.Fatalf("Spin error = %v, want boom", gotErr)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stderr: %v", err)
+	}
+	os.Stderr = origStderr
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if !strings.Contains(string(data), "working") {
+		t.Fatalf("Spin stderr = %q, want label", string(data))
+	}
+}
+
+func TestSpinnerStartStopWritesFrameAndClearsLine(t *testing.T) {
+	var buf bytes.Buffer
+	s := newSpinner(&UI{}, &buf, "loading")
+	s.start()
+	time.Sleep(125 * time.Millisecond)
+	s.stop()
+
+	out := buf.String()
+	if !strings.Contains(out, "loading") {
+		t.Fatalf("spinner output = %q, want label", out)
+	}
+	if !strings.Contains(out, "\r\033[K") {
+		t.Fatalf("spinner output = %q, want clear-line sequence", out)
 	}
 }

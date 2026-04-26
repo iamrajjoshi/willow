@@ -208,3 +208,130 @@ func TestBuildCrossRepoWorktreeLines_UrgencyOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestSwCommandPickerSingleRepoPrintsSelectedPath(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "swpicker"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=master")
+
+	out, err := captureStdout(t, func() error {
+		return runApp("sw", "--repo", "swpicker")
+	})
+	if err != nil {
+		t.Fatalf("sw picker failed: %v", err)
+	}
+	wtDir := firstWorktreeDir(t, filepath.Join(home, ".willow", "worktrees", "swpicker"))
+	if !strings.Contains(out, filepath.Join(".willow", "worktrees", "swpicker", wtDir)) {
+		t.Fatalf("sw output = %q, want selected worktree path", out)
+	}
+}
+
+func TestSwCommandPickerMultiRepoPrintsSelectedPath(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "swone"); err != nil {
+		t.Fatalf("clone swone failed: %v", err)
+	}
+	if err := runApp("clone", origin, "swtwo"); err != nil {
+		t.Fatalf("clone swtwo failed: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=swtwo/")
+
+	out, err := captureStdout(t, func() error {
+		return runApp("sw")
+	})
+	if err != nil {
+		t.Fatalf("sw multi picker failed: %v", err)
+	}
+	if !strings.Contains(out, filepath.Join(".willow", "worktrees", "swtwo")) {
+		t.Fatalf("sw multi output = %q, want swtwo path", out)
+	}
+}
+
+func TestSwShellCompletionWithRepoFlagListsWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	if err := runApp("clone", origin, "swcomplete"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("sw", "--repo", "swcomplete", "--generate-shell-completion")
+	})
+	if err != nil {
+		t.Fatalf("sw shell completion failed: %v", err)
+	}
+	if !strings.Contains(out, "master") && !strings.Contains(out, "main") {
+		t.Fatalf("completion output = %q, want worktree match name", out)
+	}
+}
+
+func TestSwShellCompletionCrossRepoFallbackListsAllWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "swcompone"); err != nil {
+		t.Fatalf("clone swcompone failed: %v", err)
+	}
+	if err := runApp("clone", origin, "swcomptwo"); err != nil {
+		t.Fatalf("clone swcomptwo failed: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("sw", "--generate-shell-completion")
+	})
+	if err != nil {
+		t.Fatalf("sw cross-repo shell completion failed: %v", err)
+	}
+	if !strings.Contains(out, "master") && !strings.Contains(out, "main") {
+		t.Fatalf("cross-repo completion output = %q, want worktree names", out)
+	}
+}
+
+func TestFzfPickWorktreeFilterModeReturnsSelectedPathAndHandlesNoMatch(t *testing.T) {
+	wts := []worktree.Worktree{
+		{Branch: "main", Path: "/wt/repo/main"},
+		{Branch: "feature", Path: "/wt/repo/feature"},
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=feature")
+
+	got, err := fzfPickWorktree(wts, "repo")
+	if err != nil {
+		t.Fatalf("fzfPickWorktree: %v", err)
+	}
+	if got != "/wt/repo/feature" {
+		t.Fatalf("fzfPickWorktree() = %q, want feature path", got)
+	}
+
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=missing")
+	got, err = fzfPickWorktree(wts, "repo")
+	if err != nil || got != "" {
+		t.Fatalf("fzfPickWorktree no match = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestFzfPickWorktreesFilterModeReturnsSelectedPaths(t *testing.T) {
+	wts := []worktree.Worktree{
+		{Branch: "main", Path: "/wt/repo/main"},
+		{Branch: "feature", Path: "/wt/repo/feature"},
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=repo/")
+
+	got, err := fzfPickWorktrees(wts, "repo")
+	if err != nil {
+		t.Fatalf("fzfPickWorktrees: %v", err)
+	}
+	want := []string{"/wt/repo/feature", "/wt/repo/main"}
+	for _, path := range want {
+		if !containsString(got, path) {
+			t.Fatalf("fzfPickWorktrees = %v, want %s", got, path)
+		}
+	}
+}

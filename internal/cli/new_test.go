@@ -113,3 +113,120 @@ func TestRunPostCheckoutHookInvokesConfiguredHook(t *testing.T) {
 		t.Fatalf("hook log = %q, want checkout flag 1", logText)
 	}
 }
+
+func TestNewDetachedWithoutExplicitRefUsesBaseBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "detachedbase"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeRoot := filepath.Join(home, ".willow", "worktrees", "detachedbase")
+	baseBranch := firstWorktreeDir(t, worktreeRoot)
+	if err := os.Chdir(filepath.Join(worktreeRoot, baseBranch)); err != nil {
+		t.Fatalf("chdir base worktree: %v", err)
+	}
+
+	if err := runApp("new", "scratch-from-base", "--detach", "--base", baseBranch, "--no-fetch"); err != nil {
+		t.Fatalf("new detached from base failed: %v", err)
+	}
+
+	wtPath := filepath.Join(worktreeRoot, "scratch-from-base")
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("detached worktree missing at %s: %v", wtPath, err)
+	}
+	head, err := (&git.Git{Dir: wtPath}).Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse detached head: %v", err)
+	}
+	if head != "HEAD" {
+		t.Fatalf("detached worktree branch = %q, want HEAD", head)
+	}
+}
+
+func TestResolvePRRefUsesGHCLI(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "gh.log")
+	writeTestExecutable(t, binDir, "gh", "#!/bin/sh\n"+
+		"printf '%s\\n' \"$*\" >> "+shellQuote(logPath)+"\n"+
+		"printf 'feature-pr\\n'\n")
+	t.Setenv("PATH", binDir)
+
+	got, err := resolvePRRef("42", t.TempDir())
+	if err != nil {
+		t.Fatalf("resolvePRRef: %v", err)
+	}
+	if got != "feature-pr" {
+		t.Fatalf("resolvePRRef() = %q, want feature-pr", got)
+	}
+	if logText := readTestFile(t, logPath); !strings.Contains(logText, "pr view 42 --json headRefName -q .headRefName") {
+		t.Fatalf("gh log missing pr view invocation:\n%s", logText)
+	}
+}
+
+func TestResolvePRRefReportsGHFailures(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := resolvePRRef("42", t.TempDir()); err == nil || !strings.Contains(err.Error(), "'gh' CLI not found") {
+		t.Fatalf("missing gh error = %v", err)
+	}
+
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "gh", "#!/bin/sh\nprintf 'bad pr\\n' >&2\nexit 1\n")
+	t.Setenv("PATH", binDir)
+	if _, err := resolvePRRef("42", t.TempDir()); err == nil || !strings.Contains(err.Error(), "bad pr") {
+		t.Fatalf("gh failure error = %v", err)
+	}
+}
+
+func TestPickExistingBranchReportsNoRemoteBranches(t *testing.T) {
+	bareDir := filepath.Join(t.TempDir(), "empty.git")
+	if _, err := (&git.Git{}).Run("init", "--bare", bareDir); err != nil {
+		t.Fatalf("init bare repo: %v", err)
+	}
+	repoGit := &git.Git{Dir: bareDir}
+	if got, err := pickExistingBranchWithQuery(repoGit, "main"); err == nil || got != "" || !strings.Contains(err.Error(), "no remote branches found") {
+		t.Fatalf("pickExistingBranchWithQuery = %q, %v; want no-remotes error", got, err)
+	}
+}
+
+func TestPickExistingBranchWithQueryFiltersCurrentWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	seed := filepath.Join(home, "seed-existing")
+	if _, err := (&git.Git{}).Run("clone", origin, seed); err != nil {
+		t.Fatalf("clone seed: %v", err)
+	}
+	configureGitUser(t, seed)
+	seedGit := &git.Git{Dir: seed}
+	if _, err := seedGit.Run("checkout", "-b", "remote-only"); err != nil {
+		t.Fatalf("checkout remote branch: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(seed, "remote.txt"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatalf("write remote file: %v", err)
+	}
+	if _, err := seedGit.Run("add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := seedGit.Run("commit", "-m", "remote branch"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := seedGit.Run("push", "origin", "remote-only"); err != nil {
+		t.Fatalf("git push remote-only: %v", err)
+	}
+
+	if err := runApp("clone", origin, "existingpick"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	bareDir := filepath.Join(home, ".willow", "repos", "existingpick.git")
+	repoGit := &git.Git{Dir: bareDir}
+	if _, err := repoGit.Run("fetch", "origin", "remote-only:refs/remotes/origin/remote-only"); err != nil {
+		t.Fatalf("fetch remote-only: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=remote-only")
+
+	if got, err := pickExistingBranch(repoGit); err != nil || got != "remote-only" {
+		t.Fatalf("pickExistingBranch = %q, %v; want remote-only, nil", got, err)
+	}
+	if got, err := pickExistingBranchWithQuery(repoGit, "remote"); err != nil || got != "remote-only" {
+		t.Fatalf("pickExistingBranchWithQuery = %q, %v; want remote-only, nil", got, err)
+	}
+}

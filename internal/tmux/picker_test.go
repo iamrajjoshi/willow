@@ -1,11 +1,16 @@
 package tmux
 
 import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 )
 
@@ -318,12 +323,136 @@ func TestFormatPickerLinesMultiRepoMergedUnreadAndSubSessions(t *testing.T) {
 	}
 }
 
+func TestBuildPickerItemsUsesRepoWorktreesAndStatuses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bareDir := pickerTestBareRepo(t, home, "repo")
+	wtPath := filepath.Join(home, ".willow", "worktrees", "repo", "main")
+	if _, err := (&git.Git{Dir: bareDir}).Run("worktree", "add", wtPath, "main"); err != nil {
+		t.Fatalf("git worktree add: %v", err)
+	}
+	writePickerSessionStatus(t, "repo", "main", claude.StatusDone)
+
+	items, err := BuildPickerItemsWithOptions(contextBackground(), "repo", PickerBuildOptions{RefreshGitHubMerged: false})
+	if err != nil {
+		t.Fatalf("BuildPickerItems: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("BuildPickerItems returned %d items, want 1: %+v", len(items), items)
+	}
+	item := items[0]
+	resolvedWtPath, err := filepath.EvalSymlinks(wtPath)
+	if err != nil {
+		t.Fatalf("resolve worktree path: %v", err)
+	}
+	if item.RepoName != "repo" || item.Branch != "main" || item.WtPath != resolvedWtPath {
+		t.Fatalf("picker item = %+v, want repo/main at %s", item, wtPath)
+	}
+	if item.Status != claude.StatusDone || !item.Unread {
+		t.Fatalf("picker item status/unread = %s/%v, want DONE/unread", item.Status, item.Unread)
+	}
+}
+
+func TestBuildPickerItemsMissingRepoReturnsEmpty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	items, err := BuildPickerItems(contextBackground(), "missing")
+	if err != nil {
+		t.Fatalf("BuildPickerItems missing repo error = %v, want nil", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("BuildPickerItems missing repo = %+v, want empty", items)
+	}
+}
+
+func TestDefaultPickerStackLoader(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bareDir := filepath.Join(home, ".willow", "repos", "repo.git")
+	if err := os.MkdirAll(bareDir, 0o755); err != nil {
+		t.Fatalf("mkdir bare dir: %v", err)
+	}
+	st := pickerStack("child", "main")
+	if err := st.Save(bareDir); err != nil {
+		t.Fatalf("save stack: %v", err)
+	}
+	got := defaultPickerStackLoader("repo")
+	if got == nil || got.Parent("child") != "main" {
+		t.Fatalf("defaultPickerStackLoader() = %+v, want child parent main", got)
+	}
+	if got := defaultPickerStackLoader("missing"); got != nil {
+		t.Fatalf("defaultPickerStackLoader missing = %+v, want nil", got)
+	}
+}
+
 func pickerStack(pairs ...string) *stack.Stack {
 	st := &stack.Stack{Parents: make(map[string]string)}
 	for i := 0; i+1 < len(pairs); i += 2 {
 		st.Parents[pairs[i]] = pairs[i+1]
 	}
 	return st
+}
+
+func pickerTestBareRepo(t *testing.T, home, repo string) string {
+	t.Helper()
+	bareDir := filepath.Join(home, ".willow", "repos", repo+".git")
+	if err := os.MkdirAll(filepath.Dir(bareDir), 0o755); err != nil {
+		t.Fatalf("mkdir repos dir: %v", err)
+	}
+	if _, err := (&git.Git{}).Run("init", "--bare", bareDir); err != nil {
+		t.Fatalf("git init --bare: %v", err)
+	}
+	seed := filepath.Join(home, "seed")
+	if _, err := (&git.Git{}).Run("clone", bareDir, seed); err != nil {
+		t.Fatalf("git clone seed: %v", err)
+	}
+	seedGit := &git.Git{Dir: seed}
+	if _, err := seedGit.Run("config", "user.email", "test@test.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := seedGit.Run("config", "user.name", "Test"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(seed, "README.md"), []byte("# repo\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	if _, err := seedGit.Run("add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := seedGit.Run("commit", "-m", "initial"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := seedGit.Run("branch", "-M", "main"); err != nil {
+		t.Fatalf("git branch main: %v", err)
+	}
+	if _, err := seedGit.Run("push", "origin", "main"); err != nil {
+		t.Fatalf("git push main: %v", err)
+	}
+	return bareDir
+}
+
+func writePickerSessionStatus(t *testing.T, repo, wt string, status claude.Status) {
+	t.Helper()
+	dir := filepath.Join(claude.StatusDir(), repo, wt)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir status dir: %v", err)
+	}
+	data, err := json.Marshal(claude.SessionStatus{
+		Status:    status,
+		SessionID: "session-1",
+		Timestamp: time.Now(),
+		Worktree:  wt,
+	})
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "session-1.json"), data, 0o644); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
+
+func contextBackground() context.Context {
+	return context.Background()
 }
 
 func pickerLoader(stacks map[string]*stack.Stack) pickerStackLoader {

@@ -123,4 +123,16 @@ exit 1
 	if got["feature-b"].BaseRefName != "feature-a" {
 		t.Fatalf("feature-b PR = %+v, want base feature-a", got["feature-b"])
 	}
+
+	out, err = captureStdout(t, func() error {
+		return runApp("stack", "status", "--repo", "stackstatus")
+	})
+	if err != nil {
+		t.Fatalf("stack status failed: %v", err)
+	}
+	for _, want := range []string{"feature-a", "feature-b", "#10", "#11", "CI", "Review"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stack status output missing %q:\n%s", want, out)
+		}
+	}
 }

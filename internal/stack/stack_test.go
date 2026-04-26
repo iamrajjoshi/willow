@@ -227,3 +227,18 @@ func TestTreeLinesEmptyStack(t *testing.T) {
 		t.Fatalf("empty TreeLines() = %+v, want nil", got)
 	}
 }
+
+func TestHasDescendantIn(t *testing.T) {
+	s := &Stack{Parents: map[string]string{
+		"a": "main",
+		"b": "a",
+		"c": "b",
+		"x": "main",
+	}}
+	if !s.hasDescendantIn("a", map[string]bool{"c": true}) {
+		t.Fatal("a should report visible descendant c")
+	}
+	if s.hasDescendantIn("x", map[string]bool{"c": true}) {
+		t.Fatal("x should not report descendant c")
+	}
+}

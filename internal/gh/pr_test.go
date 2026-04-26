@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -253,6 +254,122 @@ func TestSelectMatchingPR(t *testing.T) {
 	}
 	if got := selectMatchingPR(prs, ""); got != nil {
 		t.Fatalf("selectMatchingPR() with ambiguous empty head = %+v, want nil", got)
+	}
+}
+
+func TestFindOpenPRRunsGHAndSelectsMatchingHead(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "gh.log")
+	ghPath := filepath.Join(binDir, "gh")
+	script := `#!/bin/sh
+set -eu
+printf 'cwd=%s\n' "$PWD" >> "` + logPath + `"
+printf 'args=%s\n' "$*" >> "` + logPath + `"
+/bin/cat <<'JSON'
+[
+  {
+    "number": 42,
+    "title": "Feature",
+    "headRefName": "feature-a",
+    "headRefOid": "sha-match",
+    "baseRefName": "main",
+    "state": "OPEN",
+    "reviewDecision": "APPROVED",
+    "mergeable": "MERGEABLE",
+    "additions": 4,
+    "deletions": 2,
+    "url": "https://github.com/org/repo/pull/42",
+    "statusCheckRollup": []
+  },
+  {
+    "number": 43,
+    "title": "Other",
+    "headRefName": "feature-a",
+    "headRefOid": "sha-other",
+    "baseRefName": "main",
+    "state": "OPEN",
+    "reviewDecision": "",
+    "mergeable": "UNKNOWN",
+    "additions": 1,
+    "deletions": 1,
+    "url": "https://github.com/org/repo/pull/43",
+    "statusCheckRollup": []
+  }
+]
+JSON
+`
+	if err := os.WriteFile(ghPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	dir := t.TempDir()
+	got, err := FindOpenPR(dir, "feature-a", "sha-match")
+	if err != nil {
+		t.Fatalf("FindOpenPR() error = %v", err)
+	}
+	if got == nil || got.Number != 42 || got.HeadRefOID != "sha-match" {
+		t.Fatalf("FindOpenPR() = %+v, want PR #42", got)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read gh log: %v", err)
+	}
+	wantArgs := "args=pr list --head feature-a --state open --json " + prJSONFields + " --limit 20\n"
+	if !strings.HasSuffix(string(logData), "\n"+wantArgs) {
+		t.Fatalf("unexpected gh invocation:\n%s", logData)
+	}
+}
+
+func TestFindOpenPRReturnsCommandOutputOnFailure(t *testing.T) {
+	binDir := t.TempDir()
+	ghPath := filepath.Join(binDir, "gh")
+	script := "#!/bin/sh\nprintf 'no auth\\n' >&2\nexit 7\n"
+	if err := os.WriteFile(ghPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	got, err := FindOpenPR(t.TempDir(), "feature-a", "")
+	if err == nil || got != nil {
+		t.Fatalf("FindOpenPR failure = %+v, %v; want nil error", got, err)
+	}
+	if err.Error() != "gh pr list failed: no auth" {
+		t.Fatalf("FindOpenPR error = %v, want gh output", err)
+	}
+}
+
+func TestCreatePRRunsGHAndReturnsURL(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "gh.log")
+	ghPath := filepath.Join(binDir, "gh")
+	script := `#!/bin/sh
+set -eu
+printf 'cwd=%s\n' "$PWD" >> "` + logPath + `"
+printf 'args=%s\n' "$*" >> "` + logPath + `"
+printf 'https://github.com/org/repo/pull/99\n'
+`
+	if err := os.WriteFile(ghPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	dir := t.TempDir()
+	got, err := CreatePR(dir, "main", "feature-a", true)
+	if err != nil {
+		t.Fatalf("CreatePR() error = %v", err)
+	}
+	if got != "https://github.com/org/repo/pull/99" {
+		t.Fatalf("CreatePR() = %q, want PR URL", got)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read gh log: %v", err)
+	}
+	if !strings.HasSuffix(string(logData), "\nargs=pr create --fill --base main --head feature-a --draft\n") {
+		t.Fatalf("unexpected gh invocation:\n%s", logData)
 	}
 }
 

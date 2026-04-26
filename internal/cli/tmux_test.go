@@ -41,6 +41,65 @@ func nilLoader(_ string) *stack.Stack {
 	return nil
 }
 
+func installFakeTmuxForCLI(t *testing.T) string {
+	t.Helper()
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(logPath) + "\n" +
+		"case \"$1\" in\n" +
+		"  has-session) case \"$3\" in */existing|*/current|exists) exit 0 ;; *) exit 1 ;; esac ;;\n" +
+		"  list-panes) printf '%%1\\n%%2\\n' ;;\n" +
+		"  list-sessions) printf 'repo/existing\\nrepo/current\\n' ;;\n" +
+		"  display-message) printf 'repo/current\\n' ;;\n" +
+		"  capture-pane) printf 'pane output\\n' ;;\n" +
+		"  *) exit 0 ;;\n" +
+		"esac\n"
+	writeTestExecutable(t, binDir, "tmux", script)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
+func installFakeWillowForTmux(t *testing.T, wtRoot string) (string, string) {
+	t.Helper()
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "willow.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(logPath) + "\n" +
+		"last=''\n" +
+		"repo='repo'\n" +
+		"prev=''\n" +
+		"for arg in \"$@\"; do\n" +
+		"  if [ \"$prev\" = '--repo' ]; then repo=\"$arg\"; fi\n" +
+		"  last=\"$arg\"\n" +
+		"  prev=\"$arg\"\n" +
+		"done\n" +
+		"case \"$1\" in\n" +
+		"  new|checkout) path=" + shellQuote(wtRoot) + "/\"$repo\"/\"$last\"; mkdir -p \"$path\"; printf '%s\\n' \"$path\" ;;\n" +
+		"  *) exit 0 ;;\n" +
+		"esac\n"
+	path := writeTestExecutable(t, binDir, "willow-test", script)
+	return path, logPath
+}
+
+func setupTmuxCommandHome(t *testing.T, repos ...string) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if len(repos) == 0 {
+		repos = []string{"repo"}
+	}
+	for _, repo := range repos {
+		if err := os.MkdirAll(filepath.Join(home, ".willow", "repos", repo+".git"), 0o755); err != nil {
+			t.Fatalf("mkdir repo %s: %v", repo, err)
+		}
+		if err := os.MkdirAll(filepath.Join(home, ".willow", "worktrees", repo), 0o755); err != nil {
+			t.Fatalf("mkdir worktrees %s: %v", repo, err)
+		}
+	}
+	return home
+}
+
 // makeStack builds a Stack from parent→child pairs.
 func makeStack(pairs ...string) *stack.Stack {
 	s := &stack.Stack{Parents: make(map[string]string)}
@@ -524,6 +583,434 @@ func TestTmuxInstallCommand_PrintsConfig(t *testing.T) {
 	}
 }
 
+func TestLsShellCompletionListsRepos(t *testing.T) {
+	setupTmuxCommandHome(t, "alpha", "beta")
+	out, err := captureStdout(t, func() error {
+		return runApp("ls", "--generate-shell-completion")
+	})
+	if err != nil {
+		t.Fatalf("ls shell completion failed: %v", err)
+	}
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
+		t.Fatalf("ls completion output = %q, want repo names", out)
+	}
+}
+
+func TestTmuxPickCommandReturnsWhenNoWorktrees(t *testing.T) {
+	setupTmuxCommandHome(t, "empty")
+	out, err := captureStderr(t, func() error {
+		return runApp("tmux", "pick", "--repo", "empty")
+	})
+	if err != nil {
+		t.Fatalf("tmux pick empty repo should not fail: %v", err)
+	}
+	if !strings.Contains(out, "No worktrees found.") {
+		t.Fatalf("tmux pick stderr = %q, want no-worktrees message", out)
+	}
+}
+
+func TestTmuxPreviewCommandPrintsMetadataForOfflineSession(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	installFakeTmuxForCLI(t)
+	if err := runApp("clone", origin, "tmuxpreview"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	wtDir := firstWorktreeDir(t, filepath.Join(home, ".willow", "worktrees", "tmuxpreview"))
+	wtPath := filepath.Join(home, ".willow", "worktrees", "tmuxpreview", wtDir)
+	line := tmux.FormatPickerLines([]tmux.PickerItem{
+		{RepoName: "tmuxpreview", Branch: wtDir, WtDirName: wtDir, WtPath: wtPath},
+	})[0]
+
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "preview", line)
+	})
+	if err != nil {
+		t.Fatalf("tmux preview failed: %v", err)
+	}
+	for _, want := range []string{"tmuxpreview/" + wtDir, "Branch:", "Session 'tmuxpreview/" + wtDir + "' is offline"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("preview output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestTmuxPickSwitchCreatesAndSwitchesSession(t *testing.T) {
+	setupTmuxCommandHome(t, "repo")
+	logPath := installFakeTmuxForCLI(t)
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+
+	items := []tmux.PickerItem{
+		{RepoName: "repo", Branch: "feature", WtDirName: "feature", WtPath: "/work/repo/feature"},
+	}
+	selection := tmux.FormatPickerLines(items)[0]
+
+	if err := tmuxPickSwitch(selection, items); err != nil {
+		t.Fatalf("tmuxPickSwitch: %v", err)
+	}
+
+	logText := readTestFile(t, logPath)
+	for _, want := range []string{
+		"has-session -t repo/feature",
+		"new-session -d -s repo/feature -c /work/repo/feature",
+		"switch-client -t repo/feature",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, logText)
+		}
+	}
+	if err := tmuxPickSwitch(selection, nil); err == nil || !strings.Contains(err.Error(), "worktree not found") {
+		t.Fatalf("missing item error = %v, want worktree not found", err)
+	}
+}
+
+func TestTmuxPickerCreateActionsRunWillowAndEnsureSession(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+
+	baseItem := tmux.PickerItem{
+		RepoName:  "repo",
+		Branch:    "main",
+		Head:      "abcdef1234567890",
+		WtDirName: "main",
+		WtPath:    filepath.Join(home, ".willow", "worktrees", "repo", "main"),
+	}
+	detachedItem := tmux.PickerItem{
+		RepoName:  "repo",
+		Branch:    worktree.DetachedBranch,
+		Head:      "feedface12345678",
+		Detached:  true,
+		WtDirName: "scratch",
+		WtPath:    filepath.Join(home, ".willow", "worktrees", "repo", "scratch"),
+	}
+	items := []tmux.PickerItem{baseItem, detachedItem}
+	lines := tmux.FormatPickerLines(items)
+
+	if err := tmuxPickNew(self, "feature-new", "repo", "", items); err != nil {
+		t.Fatalf("tmuxPickNew: %v", err)
+	}
+	if err := tmuxPickDetached(self, "scratch-copy", lines[0], "", "", items); err != nil {
+		t.Fatalf("tmuxPickDetached: %v", err)
+	}
+	if err := tmuxPickPromote(self, "feature-promoted", lines[1], items); err != nil {
+		t.Fatalf("tmuxPickPromote: %v", err)
+	}
+	if err := tmuxPickSync(self, "repo", "", items, "feature-new"); err != nil {
+		t.Fatalf("tmuxPickSync: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	for _, want := range []string{
+		"new --cd --repo repo -- feature-new",
+		"new --detach --cd --repo repo --ref abcdef1234567890 -- scratch-copy",
+		"promote --repo repo scratch feature-promoted",
+		"sync --repo repo feature-new",
+	} {
+		if !strings.Contains(willowText, want) {
+			t.Fatalf("willow log missing %q:\n%s", want, willowText)
+		}
+	}
+
+	tmuxText := readTestFile(t, tmuxLog)
+	for _, want := range []string{
+		"new-session -d -s repo/feature-new",
+		"new-session -d -s repo/scratch-copy",
+		"switch-client -t repo/scratch",
+	} {
+		if !strings.Contains(tmuxText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
+		}
+	}
+}
+
+func TestTmuxPickerActionValidationErrors(t *testing.T) {
+	setupTmuxCommandHome(t, "repo")
+	self, _ := installFakeWillowForTmux(t, filepath.Join(t.TempDir(), "worktrees"))
+	item := tmux.PickerItem{RepoName: "repo", Branch: "main", WtDirName: "main", WtPath: "/work/repo/main"}
+	selection := tmux.FormatPickerLines([]tmux.PickerItem{item})[0]
+
+	if err := tmuxPickNew(self, "", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "enter a branch name") {
+		t.Fatalf("tmuxPickNew empty query error = %v", err)
+	}
+	if err := tmuxPickDetached(self, "", selection, "repo", "", []tmux.PickerItem{item}); err == nil || !strings.Contains(err.Error(), "detached worktree name") {
+		t.Fatalf("tmuxPickDetached empty query error = %v", err)
+	}
+	if err := tmuxPickPromote(self, "feature", selection, []tmux.PickerItem{item}); err == nil || !strings.Contains(err.Error(), "already on branch") {
+		t.Fatalf("tmuxPickPromote branch error = %v", err)
+	}
+	if err := tmuxPickDispatch(self, "", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "type a prompt first") {
+		t.Fatalf("tmuxPickDispatch empty prompt error = %v", err)
+	}
+	if err := tmuxPickNewWithBase(self, "", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "enter a branch name") {
+		t.Fatalf("tmuxPickNewWithBase empty prompt error = %v", err)
+	}
+}
+
+func TestTmuxPickExistingUsesCachedBranchesAndSelectedQuery(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	if err := saveExistingBranchCache("repo", []string{"main", "remote-only"}); err != nil {
+		t.Fatalf("save cache: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=remote-only")
+
+	items := []tmux.PickerItem{{RepoName: "repo", Branch: "main", WtDirName: "main", WtPath: filepath.Join(home, ".willow", "worktrees", "repo", "main")}}
+	if err := tmuxPickExisting(self, "repo", "", items, "remote"); err != nil {
+		t.Fatalf("tmuxPickExisting: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "new -e --cd --repo repo -- remote-only") {
+		t.Fatalf("willow log missing checkout of cached branch:\n%s", willowText)
+	}
+}
+
+func TestTmuxPickNewWithBaseUsesSelectedWorktreeBranch(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+
+	if err := runApp("clone", origin, "tmuxbase"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "tmuxbase")
+	entries, err := os.ReadDir(worktreeDir)
+	if err != nil {
+		t.Fatalf("read worktrees dir: %v", err)
+	}
+	if err := os.Chdir(filepath.Join(worktreeDir, entries[0].Name())); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	if err := runApp("new", "feature-base", "--no-fetch"); err != nil {
+		t.Fatalf("new feature-base failed: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=feature-base")
+
+	if err := tmuxPickNewWithBase(self, "feature-child", "tmuxbase", "", nil); err != nil {
+		t.Fatalf("tmuxPickNewWithBase: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "new --base feature-base --cd --repo tmuxbase -- feature-child") {
+		t.Fatalf("willow log missing base new:\n%s", willowText)
+	}
+}
+
+func TestTmuxPickPRChecksOutSelectedBranch(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "gh", "#!/bin/sh\nprintf '#42  Fix picker  (raj)  [feature-pr]\\n'\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=feature-pr")
+
+	if err := tmuxPickPR(self, "repo", "", nil); err != nil {
+		t.Fatalf("tmuxPickPR: %v", err)
+	}
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "checkout --cd --repo repo -- feature-pr") {
+		t.Fatalf("willow log missing PR checkout:\n%s", willowText)
+	}
+}
+
+func TestTmuxPickPRReportsMissingCLIAndNoOpenPRs(t *testing.T) {
+	setupTmuxCommandHome(t, "repo")
+	t.Setenv("PATH", t.TempDir())
+	if err := tmuxPickPR("willow", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "gh CLI is required") {
+		t.Fatalf("tmuxPickPR missing gh error = %v", err)
+	}
+
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "gh", "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	if err := tmuxPickPR("willow", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "no open PRs found") {
+		t.Fatalf("tmuxPickPR empty list error = %v", err)
+	}
+}
+
+func TestTmuxSwCommandSwitchesToWorktreeSession(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+	wtPath := filepath.Join(home, ".willow", "worktrees", "repo", "feature")
+
+	if err := runApp("tmux", "sw", wtPath); err != nil {
+		t.Fatalf("tmux sw failed: %v", err)
+	}
+	tmuxText := readTestFile(t, tmuxLog)
+	for _, want := range []string{
+		"has-session -t repo/feature",
+		"new-session -d -s repo/feature",
+		"switch-client -t repo/feature",
+	} {
+		if !strings.Contains(tmuxText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
+		}
+	}
+}
+
+func TestTmuxPickDispatchWritesPromptAndStartsClaude(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+
+	if err := tmuxPickDispatch(self, "Fix a gnarly bug", "repo", "", nil); err != nil {
+		t.Fatalf("tmuxPickDispatch: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "new --cd --repo repo -- dispatch--fix-a-gnarly-bug") {
+		t.Fatalf("willow log missing dispatch new:\n%s", willowText)
+	}
+	promptPath := filepath.Join(home, ".willow", "prompts", "repo", "dispatch--fix-a-gnarly-bug.prompt")
+	if got := strings.TrimSpace(readTestFile(t, promptPath)); got != "Fix a gnarly bug" {
+		t.Fatalf("prompt file = %q, want original prompt", got)
+	}
+	tmuxText := readTestFile(t, tmuxLog)
+	for _, want := range []string{
+		"new-session -d -s repo/dispatch--fix-a-gnarly-bug",
+		"send-keys -t repo/dispatch--fix-a-gnarly-bug",
+		"claude \"$(cat",
+	} {
+		if !strings.Contains(tmuxText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
+		}
+	}
+}
+
+func TestTmuxPickDeleteKillsSessionAndRunsWillowRm(t *testing.T) {
+	setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(t.TempDir(), "worktrees"))
+
+	item := tmux.PickerItem{RepoName: "repo", Branch: "existing", WtDirName: "existing", WtPath: "/work/repo/existing"}
+	selection := tmux.FormatPickerLines([]tmux.PickerItem{item})[0]
+	if err := tmuxPickDelete(self, selection, []tmux.PickerItem{item}); err != nil {
+		t.Fatalf("tmuxPickDelete: %v", err)
+	}
+
+	if tmuxText := readTestFile(t, tmuxLog); !strings.Contains(tmuxText, "kill-session -t repo/existing") {
+		t.Fatalf("tmux log missing kill-session:\n%s", tmuxText)
+	}
+	if willowText := readTestFile(t, willowLog); !strings.Contains(willowText, "rm existing --force --repo repo") {
+		t.Fatalf("willow log missing rm:\n%s", willowText)
+	}
+}
+
+func TestTmuxPickDeleteMergedReportsNoCandidates(t *testing.T) {
+	self, _ := installFakeWillowForTmux(t, filepath.Join(t.TempDir(), "worktrees"))
+	if err := tmuxPickDeleteMerged(self, "", nil); err == nil || !strings.Contains(err.Error(), "no merged worktrees") {
+		t.Fatalf("tmuxPickDeleteMerged empty error = %v", err)
+	}
+	items := []tmux.PickerItem{{RepoName: "repo", Branch: "merged", WtDirName: "merged", Merged: true}}
+	if err := tmuxPickDeleteMerged(self, "repo/merged", items); err == nil || !strings.Contains(err.Error(), "current session skipped") {
+		t.Fatalf("tmuxPickDeleteMerged current-only error = %v", err)
+	}
+}
+
+func TestTmuxPickDeleteMergedConfirmsAndDeletesSafeCandidates(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+
+	if err := runApp("clone", origin, "mergeddelete"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeRoot := filepath.Join(home, ".willow", "worktrees", "mergeddelete")
+	baseDir := filepath.Join(worktreeRoot, firstWorktreeDir(t, worktreeRoot))
+	if err := os.Chdir(baseDir); err != nil {
+		t.Fatalf("chdir base: %v", err)
+	}
+	if err := runApp("new", "safe-merged", "--no-fetch"); err != nil {
+		t.Fatalf("new safe-merged failed: %v", err)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		_ = r.Close()
+	})
+	if _, err := w.WriteString("y\n"); err != nil {
+		t.Fatalf("write confirmation: %v", err)
+	}
+	_ = w.Close()
+
+	item := tmux.PickerItem{
+		RepoName:  "mergeddelete",
+		Branch:    "safe-merged",
+		WtDirName: "safe-merged",
+		WtPath:    filepath.Join(worktreeRoot, "safe-merged"),
+		Merged:    true,
+	}
+	if err := tmuxPickDeleteMerged(self, "", []tmux.PickerItem{item}); err != nil {
+		t.Fatalf("tmuxPickDeleteMerged: %v", err)
+	}
+	os.Stdin = origStdin
+
+	if willowText := readTestFile(t, willowLog); !strings.Contains(willowText, "rm safe-merged --force --repo mergeddelete") {
+		t.Fatalf("willow log missing merged delete rm:\n%s", willowText)
+	}
+}
+
+func TestResolveRepoSingleAndNoRepos(t *testing.T) {
+	setupTmuxCommandHome(t, "solo")
+	if got, err := resolveRepo("", "", nil); err != nil || got != "solo" {
+		t.Fatalf("resolveRepo single = %q, %v; want solo, nil", got, err)
+	}
+	if got, err := resolveRepo("explicit", "", nil); err != nil || got != "explicit" {
+		t.Fatalf("resolveRepo explicit = %q, %v; want explicit, nil", got, err)
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := resolveRepo("", "", nil); err == nil || !strings.Contains(err.Error(), "no repos found") {
+		t.Fatalf("resolveRepo no repos error = %v, want no repos found", err)
+	}
+}
+
+func TestResolveRepoOrdersCurrentAndActiveRepos(t *testing.T) {
+	setupTmuxCommandHome(t, "alpha", "beta", "gamma")
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=gamma")
+	items := []tmux.PickerItem{{RepoName: "gamma", Status: claude.StatusBusy}}
+
+	if got, err := resolveRepo("", "beta/current", items); err != nil || got != "gamma" {
+		t.Fatalf("resolveRepo multi = %q, %v; want gamma, nil", got, err)
+	}
+}
+
+func TestReadTrimmedStdinLine(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		_ = r.Close()
+	})
+	if _, err := w.WriteString("  y  \n"); err != nil {
+		t.Fatalf("write pipe: %v", err)
+	}
+	_ = w.Close()
+
+	if got := readTrimmedStdinLine(); got != "y" {
+		t.Fatalf("readTrimmedStdinLine() = %q, want y", got)
+	}
+}
+
 func TestTmuxExistingBranchesCommand_ListsAvailableRemoteBranches(t *testing.T) {
 	origin := setupTestEnv(t)
 	home, _ := os.UserHomeDir()
@@ -624,6 +1111,27 @@ func TestTmuxStatusBarCommand_CountsWorktreesAndAgents(t *testing.T) {
 	if !strings.Contains(out, " 1") {
 		t.Fatalf("expected one active agent in status bar, got %q", out)
 	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+func firstWorktreeDir(t *testing.T, worktreeRoot string) string {
+	t.Helper()
+	entries, err := os.ReadDir(worktreeRoot)
+	if err != nil {
+		t.Fatalf("read worktree root: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("no worktree dirs in %s", worktreeRoot)
+	}
+	return entries[0].Name()
 }
 
 func assertBranches(t *testing.T, got, want []string) {
