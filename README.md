@@ -583,6 +583,9 @@ go build -o bin/willow ./cmd/willow
 
 # Test
 go test ./...
+
+# Coverage gate
+GO_COVERAGE_MIN=70.0 scripts/check-go-coverage.sh
 ```
 
 Requires Go 1.26+. fzf is bundled into the binary — no external `fzf` install needed.

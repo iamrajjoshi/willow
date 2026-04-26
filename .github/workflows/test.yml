@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Go test (${{ matrix.os }})
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -25,6 +26,25 @@ jobs:
       - name: Test
         run: go test ./... -count=1 -v
 
+  coverage:
+    name: Go coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Coverage
-        continue-on-error: true
-        run: go test ./... -coverpkg=./... -coverprofile=coverage.out -covermode=count
+        env:
+          GO_COVERAGE_MIN: "70.0"
+          GO_COVERAGE_PROFILE: coverage.out
+        run: scripts/check-go-coverage.sh
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: go-coverage
+          path: coverage.out

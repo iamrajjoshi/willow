@@ -1,8 +1,12 @@
 package fzf
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
+
+	fzflib "github.com/junegunn/fzf/src"
 )
 
 // TestPosBinding verifies that pos() is correctly included in the fzf args
@@ -95,5 +99,157 @@ func TestBuildArgsIncludesAllOptionsInOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestRunReturnsSelectionAndHandlesCancel(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func(lines []string, extraArgs []string, cfg *config) ([]string, int, error) {
+		if !reflect.DeepEqual(lines, []string{"one", "two"}) {
+			t.Fatalf("lines = %v, want [one two]", lines)
+		}
+		if !reflect.DeepEqual(extraArgs, []string{"--no-multi"}) {
+			t.Fatalf("extraArgs = %v, want --no-multi", extraArgs)
+		}
+		return []string{"two"}, 0, nil
+	}
+	got, err := Run([]string{"one", "two"})
+	if err != nil || got != "two" {
+		t.Fatalf("Run() = %q, %v; want two, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, fzflib.ExitInterrupt, nil
+	}
+	got, err = Run([]string{"one"})
+	if err != nil || got != "" {
+		t.Fatalf("Run interrupt = %q, %v; want empty, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, fzflib.ExitNoMatch, nil
+	}
+	got, err = Run([]string{"one"})
+	if err != nil || got != "" {
+		t.Fatalf("Run no match = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestRunWrapsErrorsAndEmptyOutput(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, 0, errors.New("boom")
+	}
+	if _, err := Run([]string{"one"}); err == nil || !strings.Contains(err.Error(), "fzf failed") {
+		t.Fatalf("Run error = %v, want wrapped fzf error", err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, 0, nil
+	}
+	got, err := Run([]string{"one"})
+	if err != nil || got != "" {
+		t.Fatalf("Run empty output = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestRunExpectParsesQueryKeyAndSelection(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func(lines []string, extraArgs []string, cfg *config) ([]string, int, error) {
+		if !reflect.DeepEqual(extraArgs, []string{"--no-multi"}) {
+			t.Fatalf("extraArgs = %v, want --no-multi", extraArgs)
+		}
+		return []string{"feature", "ctrl-n", "selected"}, 0, nil
+	}
+
+	got, err := RunExpect([]string{"selected"}, WithPrintQuery(), WithExpectKeys("ctrl-n"))
+	if err != nil {
+		t.Fatalf("RunExpect: %v", err)
+	}
+	if got.Query != "feature" || got.Key != "ctrl-n" || got.Selection != "selected" {
+		t.Fatalf("RunExpect() = %+v, want parsed query/key/selection", got)
+	}
+}
+
+func TestRunExpectHandlesCancelAndErrors(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, fzflib.ExitInterrupt, nil
+	}
+	got, err := RunExpect([]string{"one"})
+	if err != nil || got != nil {
+		t.Fatalf("RunExpect interrupt = %+v, %v; want nil, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, 0, errors.New("boom")
+	}
+	got, err = RunExpect([]string{"one"})
+	if err == nil || !strings.Contains(err.Error(), "fzf failed") || got != nil {
+		t.Fatalf("RunExpect error = %+v, %v; want wrapped error", got, err)
+	}
+}
+
+func TestRunMultiReturnsSelectionsAndHandlesEmpty(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func(lines []string, extraArgs []string, cfg *config) ([]string, int, error) {
+		wantArgs := []string{"--multi", "--bind=ctrl-a:select-all"}
+		if !reflect.DeepEqual(extraArgs, wantArgs) {
+			t.Fatalf("extraArgs = %v, want %v", extraArgs, wantArgs)
+		}
+		return []string{"one", "two"}, 0, nil
+	}
+	got, err := RunMulti([]string{"one", "two"})
+	if err != nil || !reflect.DeepEqual(got, []string{"one", "two"}) {
+		t.Fatalf("RunMulti() = %v, %v; want selections, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, fzflib.ExitNoMatch, nil
+	}
+	got, err = RunMulti([]string{"one"})
+	if err != nil || got != nil {
+		t.Fatalf("RunMulti no match = %v, %v; want nil, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, 0, nil
+	}
+	got, err = RunMulti([]string{"one"})
+	if err != nil || got != nil {
+		t.Fatalf("RunMulti empty = %v, %v; want nil, nil", got, err)
+	}
+}
+
+func TestRunMultiWrapsErrors(t *testing.T) {
+	oldRunFzf := runFzf
+	t.Cleanup(func() { runFzf = oldRunFzf })
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, 0, errors.New("boom")
+	}
+	got, err := RunMulti([]string{"one"})
+	if err == nil || !strings.Contains(err.Error(), "fzf failed") || got != nil {
+		t.Fatalf("RunMulti error = %v, %v; want wrapped error", got, err)
+	}
+}
+
+func TestRunFzfWithLibReturnsParseError(t *testing.T) {
+	_, _, err := runFzfWithLib([]string{"one"}, []string{"--definitely-not-a-real-fzf-option"}, defaults())
+	if err == nil {
+		t.Fatal("runFzfWithLib should return parse error for invalid option")
+	}
+	if !strings.Contains(err.Error(), "fzf:") {
+		t.Fatalf("error = %v, want fzf parse context", err)
 	}
 }

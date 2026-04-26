@@ -3,10 +3,12 @@ package tmux
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/config"
 )
 
 // ensureWillowDir creates the ~/.willow directory so saveState can write the state file.
@@ -154,5 +156,76 @@ func TestCheckTransitions_MultipleTransitions(t *testing.T) {
 	}
 	if got[1].Key != "repo/wt2" || got[1].ToStatus != claude.StatusWait {
 		t.Errorf("transition[1]: expected repo/wt2->WAIT, got %s->%s", got[1].Key, got[1].ToStatus)
+	}
+}
+
+func TestNotifyUsesDefaultAndCustomCommands(t *testing.T) {
+	var commands []string
+	oldStart := startNotify
+	startNotify = func(command string) {
+		commands = append(commands, command)
+	}
+	t.Cleanup(func() { startNotify = oldStart })
+
+	Notify("")
+	Notify("printf custom")
+
+	want := []string{defaultNotifyCommand, "printf custom"}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %v, want %v", commands, want)
+	}
+}
+
+func TestNotifyWithContextSkipsCurrentSessionAndChoosesCommands(t *testing.T) {
+	oldCurrent := currentSession
+	oldStart := startNotify
+	currentSession = func() (string, error) { return "repo/current", nil }
+	var commands []string
+	startNotify = func(command string) {
+		commands = append(commands, command)
+	}
+	t.Cleanup(func() {
+		currentSession = oldCurrent
+		startNotify = oldStart
+	})
+
+	NotifyWithContext([]claude.Transition{
+		{Key: "repo/current", ToStatus: claude.StatusDone},
+		{Key: "repo/wait", ToStatus: claude.StatusWait},
+		{Key: "repo/done", ToStatus: claude.StatusDone},
+		{Key: "repo/busy", ToStatus: claude.StatusBusy},
+	}, &config.Config{
+		Tmux: config.TmuxConfig{
+			NotifyCommand:     "done-command",
+			NotifyWaitCommand: "wait-command",
+		},
+	})
+
+	want := []string{"wait-command", "done-command"}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %v, want %v", commands, want)
+	}
+}
+
+func TestNotifyWithContextDefaultsWaitCommand(t *testing.T) {
+	oldCurrent := currentSession
+	oldStart := startNotify
+	currentSession = func() (string, error) { return "", nil }
+	var commands []string
+	startNotify = func(command string) {
+		commands = append(commands, command)
+	}
+	t.Cleanup(func() {
+		currentSession = oldCurrent
+		startNotify = oldStart
+	})
+
+	NotifyWithContext([]claude.Transition{
+		{Key: "repo/wait", ToStatus: claude.StatusWait},
+	}, &config.Config{})
+
+	want := []string{defaultNotifyWaitCommand}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %v, want %v", commands, want)
 	}
 }
