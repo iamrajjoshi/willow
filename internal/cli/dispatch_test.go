@@ -76,6 +76,41 @@ func TestDispatchCmdRequiresPrompt(t *testing.T) {
 	}
 }
 
+func TestDispatchCmdCreatesWorktreeAndRunsForegroundClaude(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	helperLog := filepath.Join(t.TempDir(), "willow-helper.log")
+	t.Setenv("WILLOW_TEST_HELPER_PROCESS", "willow")
+	t.Setenv("WILLOW_TEST_HELPER_WT_ROOT", filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("WILLOW_TEST_HELPER_LOG", helperLog)
+
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nexit 0\n")
+	shellLog := filepath.Join(t.TempDir(), "shell.log")
+	shellPath := writeTestExecutable(t, binDir, "fake-shell", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(shellLog)+"\n"+
+		"printf 'args=%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> "+shellQuote(shellLog)+"\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("SHELL", shellPath)
+
+	if err := runApp("dispatch", "Fix dispatch command", "--repo", "repo", "--name", "dispatch-test", "--base", "main", "--no-fetch", "--yolo"); err != nil {
+		t.Fatalf("dispatch command failed: %v", err)
+	}
+
+	helperText := readTestFile(t, helperLog)
+	if !strings.Contains(helperText, "new --cd --repo repo --base main --no-fetch -- dispatch-test") {
+		t.Fatalf("helper log missing dispatch new command:\n%s", helperText)
+	}
+	shellText := readTestFile(t, shellLog)
+	for _, want := range []string{
+		filepath.Join(home, ".willow", "worktrees", "repo", "dispatch-test"),
+		"claude 'Fix dispatch command' --dangerously-skip-permissions",
+	} {
+		if !strings.Contains(shellText, want) {
+			t.Fatalf("shell log missing %q:\n%s", want, shellText)
+		}
+	}
+}
+
 func TestDispatchForegroundRunsClaudeInWorktree(t *testing.T) {
 	binDir := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "shell.log")

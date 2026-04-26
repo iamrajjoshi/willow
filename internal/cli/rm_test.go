@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,6 +20,61 @@ func TestReadGitAdminDir_Absolute(t *testing.T) {
 	}
 	if got != adminDir {
 		t.Errorf("got %q, want %q", got, adminDir)
+	}
+}
+
+func TestRmCommandPickerSingleRepoRemovesSelectedWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "rmpicker"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	worktreeRoot := filepath.Join(home, ".willow", "worktrees", "rmpicker")
+	mainDir := filepath.Join(worktreeRoot, firstWorktreeDir(t, worktreeRoot))
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir main: %v", err)
+	}
+	if err := runApp("new", "remove-picker", "--no-fetch"); err != nil {
+		t.Fatalf("new remove-picker failed: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=remove-picker")
+
+	if err := runApp("rm", "--repo", "rmpicker", "--force", "--keep-branch"); err != nil {
+		t.Fatalf("rm picker failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeRoot, "remove-picker")); !os.IsNotExist(err) {
+		t.Fatalf("remove-picker worktree still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestRmCommandPickerMultiRepoRemovesSelectedWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+	if err := runApp("clone", origin, "rmone"); err != nil {
+		t.Fatalf("clone rmone failed: %v", err)
+	}
+	if err := runApp("clone", origin, "rmtwo"); err != nil {
+		t.Fatalf("clone rmtwo failed: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=rmtwo/")
+
+	if err := runApp("rm", "--force", "--keep-branch"); err != nil {
+		t.Fatalf("multi-repo rm picker failed: %v", err)
+	}
+	rmtwoRoot := filepath.Join(home, ".willow", "worktrees", "rmtwo")
+	entries, err := os.ReadDir(rmtwoRoot)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read rmtwo worktree root: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("rmtwo worktree root entries = %s, want selected worktree removed", strings.Join(names, ", "))
 	}
 }
 

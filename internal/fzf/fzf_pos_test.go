@@ -253,3 +253,30 @@ func TestRunFzfWithLibReturnsParseError(t *testing.T) {
 		t.Fatalf("error = %v, want fzf parse context", err)
 	}
 }
+
+func TestRunFzfWithLibFilterMode(t *testing.T) {
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=two")
+
+	results, code, err := runFzfWithLib([]string{"one", "two"}, []string{"--no-multi"}, defaults())
+	if err != nil {
+		t.Fatalf("runFzfWithLib filter mode error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("runFzfWithLib filter mode code = %d, want 0", code)
+	}
+	if !reflect.DeepEqual(results, []string{"two"}) {
+		t.Fatalf("runFzfWithLib filter mode results = %v, want [two]", results)
+	}
+}
+
+func TestRunExpectFilterModeReportsFilterOutput(t *testing.T) {
+	t.Setenv("FZF_DEFAULT_OPTS", "--filter=two")
+
+	result, err := RunExpect([]string{"one", "two"}, WithPrintQuery(), WithExpectKeys("ctrl-n"))
+	if err != nil {
+		t.Fatalf("RunExpect filter mode error = %v", err)
+	}
+	if result == nil || result.Query != "two" || result.Key != "two" || result.Selection != "" {
+		t.Fatalf("RunExpect filter mode = %+v, want query and filter output", result)
+	}
+}

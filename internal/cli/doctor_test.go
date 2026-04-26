@@ -61,6 +61,33 @@ func TestDoctorCmd(t *testing.T) {
 	}
 }
 
+func TestDoctorCommandRunsChecks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "git", "#!/bin/sh\nprintf 'git version 2.45.0\\n'\n")
+	writeTestExecutable(t, binDir, "gh", "#!/bin/sh\nexit 0\n")
+	writeTestExecutable(t, binDir, "tmux", "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	for _, dir := range []string{config.WillowHome(), config.ReposDir(), config.WorktreesDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("doctor")
+	})
+	if err != nil {
+		t.Fatalf("doctor command failed: %v", err)
+	}
+	for _, want := range []string{"git 2.45.0", "gh CLI installed", "tmux installed", "config valid"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestCheckGitVersion(t *testing.T) {
 	tests := []struct {
 		name       string
