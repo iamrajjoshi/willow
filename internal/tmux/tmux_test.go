@@ -1,8 +1,34 @@
 package tmux
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/iamrajjoshi/willow/internal/config"
 )
+
+func installFakeTmux(t *testing.T) string {
+	t.Helper()
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + logPath + "\n" +
+		"case \"$1\" in\n" +
+		"  list-sessions) printf 'alpha\\nbeta\\n' ;;\n" +
+		"  display-message) printf 'current-session\\n' ;;\n" +
+		"  capture-pane) printf 'pane output\\n' ;;\n" +
+		"  list-panes) printf '%%1\\n%%2\\n' ;;\n" +
+		"  has-session) [ \"$3\" = \"exists\" ] ;;\n" +
+		"  *) exit 0 ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	return logPath
+}
 
 func TestPrepareLayoutCmd_InjectsSessionTarget(t *testing.T) {
 	args := prepareLayoutCmd([]string{"split-window", "-h"}, "mysession", "/tmp/dir")
@@ -87,5 +113,99 @@ func TestPrepareLayoutCmd_EmptyArgs(t *testing.T) {
 	args := prepareLayoutCmd([]string{}, "sess", "/work")
 	if len(args) != 0 {
 		t.Errorf("expected empty args, got %v", args)
+	}
+}
+
+func TestTmuxCommandWrappersUseTmuxCLI(t *testing.T) {
+	logPath := installFakeTmux(t)
+
+	t.Setenv("TMUX", "")
+	if InTmux() {
+		t.Fatal("InTmux() = true with empty TMUX")
+	}
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+	if !InTmux() {
+		t.Fatal("InTmux() = false with TMUX set")
+	}
+
+	if !SessionExists("exists") {
+		t.Fatal("SessionExists(exists) = false")
+	}
+	if SessionExists("missing") {
+		t.Fatal("SessionExists(missing) = true")
+	}
+
+	sessions := ListSessions()
+	if !sessions["alpha"] || !sessions["beta"] || len(sessions) != 2 {
+		t.Fatalf("ListSessions() = %v, want alpha and beta", sessions)
+	}
+	if err := SendKeys("target", "echo hi", "Enter"); err != nil {
+		t.Fatalf("SendKeys: %v", err)
+	}
+	if err := KillSession("target"); err != nil {
+		t.Fatalf("KillSession: %v", err)
+	}
+	if err := RenameSession("old", "new"); err != nil {
+		t.Fatalf("RenameSession: %v", err)
+	}
+	if err := SwitchClient("target"); err != nil {
+		t.Fatalf("SwitchClient in tmux: %v", err)
+	}
+	t.Setenv("TMUX", "")
+	if err := SwitchClient("target"); err != nil {
+		t.Fatalf("SwitchClient outside tmux: %v", err)
+	}
+	if got, err := CurrentSession(); err != nil || got != "current-session" {
+		t.Fatalf("CurrentSession() = %q, %v; want current-session", got, err)
+	}
+	if got, err := CapturePane("target"); err != nil || got != "pane output" {
+		t.Fatalf("CapturePane() = %q, %v; want pane output", got, err)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux log: %v", err)
+	}
+	logText := string(logData)
+	for _, want := range []string{
+		"send-keys -t target echo hi Enter",
+		"kill-session -t target",
+		"rename-session -t old new",
+		"switch-client -t target",
+		"attach-session -t target",
+		"capture-pane -ept target -S -",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, logText)
+		}
+	}
+}
+
+func TestNewSessionRunsLayoutAndPaneCommands(t *testing.T) {
+	logPath := installFakeTmux(t)
+
+	err := NewSession("sess", "/work", []string{"split-window -h"}, []config.PaneConfig{
+		{Command: "echo one"},
+		{Command: "echo two"},
+	})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux log: %v", err)
+	}
+	logText := string(logData)
+	for _, want := range []string{
+		"new-session -d -s sess -c /work",
+		"split-window -t sess -h -c /work",
+		"list-panes -t sess -s -F #{pane_id}",
+		"send-keys -t %1 echo one Enter",
+		"send-keys -t %2 echo two Enter",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, logText)
+		}
 	}
 }

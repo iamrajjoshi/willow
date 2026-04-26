@@ -1,6 +1,14 @@
 package cli
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/iamrajjoshi/willow/internal/ui"
+)
 
 func TestSlugify(t *testing.T) {
 	tests := []struct {
@@ -37,5 +45,79 @@ func TestTruncatePrompt(t *testing.T) {
 	}
 	if got[77:] != "..." {
 		t.Errorf("truncatePrompt(long) should end with '...', got %q", got[77:])
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"simple", "'simple'"},
+		{"two words", "'two words'"},
+		{"don't panic", "'don'\\''t panic'"},
+		{"", "''"},
+	}
+
+	for _, tt := range tests {
+		if got := shellQuote(tt.input); got != tt.want {
+			t.Errorf("shellQuote(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestDispatchCmdRequiresPrompt(t *testing.T) {
+	err := runApp("dispatch")
+	if err == nil {
+		t.Fatal("dispatch without prompt should fail")
+	}
+	if !strings.Contains(err.Error(), "prompt is required") {
+		t.Fatalf("error = %v, want prompt required", err)
+	}
+}
+
+func TestDispatchForegroundRunsClaudeInWorktree(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "shell.log")
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nexit 0\n")
+	shellPath := writeTestExecutable(t, binDir, "fake-shell", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+logPath+"\n"+
+		"printf 'args=%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> "+logPath+"\n")
+	t.Setenv("PATH", binDir)
+	t.Setenv("SHELL", shellPath)
+
+	wtPath := t.TempDir()
+	var buf bytes.Buffer
+	u := &ui.UI{Out: &buf}
+	if err := dispatchForeground(u, wtPath, "dispatch--thing", "fix don't panic", true); err != nil {
+		t.Fatalf("dispatchForeground: %v", err)
+	}
+
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read shell log: %v", err)
+	}
+	logText := string(logData)
+	if !strings.Contains(logText, "cwd="+wtPath) {
+		t.Fatalf("shell log missing cwd %q:\n%s", wtPath, logText)
+	}
+	for _, want := range []string{"-l", "-c", "claude 'fix don'\\''t panic'", "--dangerously-skip-permissions"} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("shell log missing %q:\n%s", want, logText)
+		}
+	}
+	if !strings.Contains(buf.String(), "Dispatched agent") {
+		t.Fatalf("UI output missing dispatch success:\n%s", buf.String())
+	}
+}
+
+func TestDispatchForegroundMissingClaude(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	err := dispatchForeground(&ui.UI{}, t.TempDir(), "branch", "prompt", false)
+	if err == nil {
+		t.Fatal("dispatchForeground should fail without claude in PATH")
+	}
+	if !strings.Contains(err.Error(), "'claude' CLI not found") {
+		t.Fatalf("error = %v, want missing claude message", err)
 	}
 }

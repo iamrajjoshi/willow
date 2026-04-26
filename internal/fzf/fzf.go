@@ -120,7 +120,9 @@ func buildArgs(cfg *config) []string {
 	return args
 }
 
-func runFzf(lines []string, extraArgs []string, cfg *config) ([]string, int, error) {
+var runFzf = runFzfWithLib
+
+func runFzfWithLib(lines []string, extraArgs []string, cfg *config) ([]string, int, error) {
 	args := append(extraArgs, buildArgs(cfg)...)
 
 	opts, err := fzflib.ParseOptions(true, args)

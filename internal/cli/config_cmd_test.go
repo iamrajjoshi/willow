@@ -117,6 +117,91 @@ func TestConfigEditCreatesFileAndRunsEditor(t *testing.T) {
 	}
 }
 
+func TestConfigInitCreatesGlobalConfigAndRejectsExisting(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	if _, err := w.WriteString("n\n"); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdin writer: %v", err)
+	}
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin })
+
+	out, err := captureStdout(t, func() error {
+		return runApp("config", "init")
+	})
+	if err != nil {
+		t.Fatalf("config init failed: %v", err)
+	}
+	if !strings.Contains(out, "Created config") {
+		t.Fatalf("config init output missing success:\n%s", out)
+	}
+	cfg, err := config.LoadFile(config.GlobalConfigPath())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Telemetry == nil || *cfg.Telemetry {
+		t.Fatalf("Telemetry = %v, want false", cfg.Telemetry)
+	}
+
+	os.Stdin = origStdin
+	err = runApp("config", "init")
+	if err == nil {
+		t.Fatal("config init should reject existing config")
+	}
+	if !strings.Contains(err.Error(), "config already exists") {
+		t.Fatalf("error = %v, want already exists", err)
+	}
+}
+
+func TestConfigInitForceOverwritesConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeGlobalConfigFile(t, `{"branchPrefix":"old","telemetry":false}`)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	if _, err := w.WriteString("y\n"); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdin writer: %v", err)
+	}
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin })
+
+	out, err := captureStdout(t, func() error {
+		return runApp("config", "init", "--force")
+	})
+	if err != nil {
+		t.Fatalf("config init --force failed: %v", err)
+	}
+	if !strings.Contains(out, "Created config") {
+		t.Fatalf("config init --force output missing success:\n%s", out)
+	}
+	cfg, err := config.LoadFile(config.GlobalConfigPath())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.BranchPrefix != "" {
+		t.Fatalf("BranchPrefix = %q, want overwritten default", cfg.BranchPrefix)
+	}
+	if cfg.Telemetry == nil || !*cfg.Telemetry {
+		t.Fatalf("Telemetry = %v, want true", cfg.Telemetry)
+	}
+}
+
 func TestFieldSource_String(t *testing.T) {
 	tests := []struct {
 		name    string

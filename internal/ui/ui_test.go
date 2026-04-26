@@ -2,6 +2,8 @@ package ui
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -97,6 +99,72 @@ func TestUI_CustomOutDoesNotWriteToStdout(t *testing.T) {
 	// Verify output went to buf, not stdout
 	if !strings.Contains(buf.String(), "redirected") {
 		t.Error("output should go to custom Out")
+	}
+}
+
+func TestUI_ErrorfWritesToStderr(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	u := &UI{}
+	u.Errorf("failed: %s", "boom")
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	os.Stderr = origStderr
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "error:") || !strings.Contains(out, "failed: boom") {
+		t.Fatalf("stderr = %q, want formatted error", out)
+	}
+}
+
+func TestUI_ConfirmReadsYesOnly(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"y\n", true},
+		{"Y\n", true},
+		{"n\n", false},
+		{"\n", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(strings.TrimSpace(tt.input), func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe stdin: %v", err)
+			}
+			if _, err := w.WriteString(tt.input); err != nil {
+				t.Fatalf("write stdin: %v", err)
+			}
+			if err := w.Close(); err != nil {
+				t.Fatalf("close stdin writer: %v", err)
+			}
+			origStdin := os.Stdin
+			os.Stdin = r
+			t.Cleanup(func() { os.Stdin = origStdin })
+
+			var buf bytes.Buffer
+			u := &UI{Out: &buf}
+			if got := u.Confirm("continue?"); got != tt.want {
+				t.Fatalf("Confirm(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+			if !strings.Contains(buf.String(), "continue? [y/N]") {
+				t.Fatalf("prompt output = %q, want prompt", buf.String())
+			}
+			os.Stdin = origStdin
+		})
 	}
 }
 
