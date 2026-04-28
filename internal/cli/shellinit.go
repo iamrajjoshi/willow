@@ -77,6 +77,18 @@ ww() {
     fi
     return
   fi
+  if [ "$1" = "promote" ]; then
+    local dir
+    dir="$(command willow promote "${@:2}" --cd)" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
+    if [ -n "$dir" ]; then
+      cd "$dir" || return
+    fi
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -201,6 +213,18 @@ ww() {
     fi
     return
   fi
+  if [ "$1" = "promote" ]; then
+    local dir
+    dir="$(command willow promote "${@:2}" --cd)" || return
+    if [ -n "$TMUX" ] && [ -n "$dir" ]; then
+      command willow tmux sw "$dir"
+      return
+    fi
+    if [ -n "$dir" ]; then
+      cd "$dir" || return
+    fi
+    return
+  fi
   if [ "$1" = "rm" ]; then
     local cwd="$PWD"
     command willow "$@"
@@ -309,6 +333,18 @@ function ww
   if test (count $argv) -gt 0; and test "$argv[1]" = "rename" -o "$argv[1]" = "mv"
     set -l dir (command willow rename $argv[2..] --cd)
     or return
+    if test -n "$dir"
+      cd $dir
+    end
+    return
+  end
+  if test (count $argv) -gt 0; and test "$argv[1]" = "promote"
+    set -l dir (command willow promote $argv[2..] --cd)
+    or return
+    if test -n "$TMUX"; and test -n "$dir"
+      command willow tmux sw "$dir"
+      return
+    end
     if test -n "$dir"
       cd $dir
     end

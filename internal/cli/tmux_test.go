@@ -75,7 +75,7 @@ func installFakeWillowForTmux(t *testing.T, wtRoot string) (string, string) {
 		"  prev=\"$arg\"\n" +
 		"done\n" +
 		"case \"$1\" in\n" +
-		"  new|checkout) path=" + shellQuote(wtRoot) + "/\"$repo\"/\"$last\"; mkdir -p \"$path\"; printf '%s\\n' \"$path\" ;;\n" +
+		"  new|checkout|promote) path=" + shellQuote(wtRoot) + "/\"$repo\"/\"$last\"; mkdir -p \"$path\"; printf '%s\\n' \"$path\" ;;\n" +
 		"  *) exit 0 ;;\n" +
 		"esac\n"
 	path := writeTestExecutable(t, binDir, "willow-test", script)
@@ -306,6 +306,12 @@ func TestTmuxPickDetachedArgs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args without ref = %v, want %v", got, want)
 	}
+
+	got = tmuxPickDetachedArgs("", "repo", "abcdef123")
+	want = []string{"new", "--detach", "--cd", "--repo", "repo", "--ref", "abcdef123"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args without name = %v, want %v", got, want)
+	}
 }
 
 func TestTmuxPickPromoteArgsUsesDetachedName(t *testing.T) {
@@ -317,7 +323,7 @@ func TestTmuxPickPromoteArgsUsesDetachedName(t *testing.T) {
 	}
 
 	got := tmuxPickPromoteArgs(item, "feature/repro")
-	want := []string{"promote", "--repo", "repo", "scratch-repro", "feature/repro"}
+	want := []string{"promote", "--cd", "--repo", "repo", "scratch-repro", "feature/repro"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
@@ -705,7 +711,7 @@ func TestTmuxPickerCreateActionsRunWillowAndEnsureSession(t *testing.T) {
 	for _, want := range []string{
 		"new --cd --repo repo -- feature-new",
 		"new --detach --cd --repo repo --ref abcdef1234567890 -- scratch-copy",
-		"promote --repo repo scratch feature-promoted",
+		"promote --cd --repo repo scratch feature-promoted",
 		"sync --repo repo feature-new",
 	} {
 		if !strings.Contains(willowText, want) {
@@ -717,7 +723,8 @@ func TestTmuxPickerCreateActionsRunWillowAndEnsureSession(t *testing.T) {
 	for _, want := range []string{
 		"new-session -d -s repo/feature-new",
 		"new-session -d -s repo/scratch-copy",
-		"switch-client -t repo/scratch",
+		"new-session -d -s repo/feature-promoted",
+		"switch-client -t repo/feature-promoted",
 	} {
 		if !strings.Contains(tmuxText, want) {
 			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
@@ -734,11 +741,13 @@ func TestTmuxPickerActionValidationErrors(t *testing.T) {
 	if err := tmuxPickNew(self, "", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "enter a branch name") {
 		t.Fatalf("tmuxPickNew empty query error = %v", err)
 	}
-	if err := tmuxPickDetached(self, "", selection, "repo", "", []tmux.PickerItem{item}); err == nil || !strings.Contains(err.Error(), "detached worktree name") {
-		t.Fatalf("tmuxPickDetached empty query error = %v", err)
-	}
 	if err := tmuxPickPromote(self, "feature", selection, []tmux.PickerItem{item}); err == nil || !strings.Contains(err.Error(), "already on branch") {
 		t.Fatalf("tmuxPickPromote branch error = %v", err)
+	}
+	generated := tmux.PickerItem{RepoName: "repo", Branch: worktree.DetachedBranch, Detached: true, WtDirName: "detached-abcdef1", WtPath: "/work/repo/detached-abcdef1"}
+	generatedSelection := tmux.FormatPickerLines([]tmux.PickerItem{generated})[0]
+	if err := tmuxPickPromote(self, "", generatedSelection, []tmux.PickerItem{generated}); err == nil || !strings.Contains(err.Error(), "enter a branch name") {
+		t.Fatalf("tmuxPickPromote generated empty query error = %v", err)
 	}
 	if err := tmuxPickDispatch(self, "", "repo", "", nil); err == nil || !strings.Contains(err.Error(), "type a prompt first") {
 		t.Fatalf("tmuxPickDispatch empty prompt error = %v", err)

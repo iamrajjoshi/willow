@@ -22,6 +22,19 @@ func TestDetachedWorktreeDirNameValidation(t *testing.T) {
 	}
 }
 
+func TestGeneratedDetachedDirNamePattern(t *testing.T) {
+	for _, name := range []string{"detached-abcdef1", "detached-0123abc-2", "detached-9999999-42"} {
+		if !isGeneratedDetachedDirName(name) {
+			t.Fatalf("isGeneratedDetachedDirName(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"scratch", "detached-abcdef", "detached-abcdef12", "detached-zzzzzzz", "detached-abcdef1-copy"} {
+		if isGeneratedDetachedDirName(name) {
+			t.Fatalf("isGeneratedDetachedDirName(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestRunHooksRunsCommandsInDirectory(t *testing.T) {
 	dir := t.TempDir()
 	stdoutPath := filepath.Join(t.TempDir(), "stdout.log")

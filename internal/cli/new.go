@@ -143,7 +143,7 @@ func newCmd() *cli.Command {
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "branch",
-				UsageText: "<branch>",
+				UsageText: "[branch]",
 			},
 		},
 		Flags: []cli.Flag{
@@ -165,7 +165,7 @@ func newCmd() *cli.Command {
 			&cli.BoolFlag{
 				Name:    "detach",
 				Aliases: []string{"detached"},
-				Usage:   "Create a detached HEAD worktree named <branch>",
+				Usage:   "Create a detached HEAD worktree with an optional name",
 			},
 			&cli.StringFlag{
 				Name:  "ref",
@@ -232,18 +232,26 @@ func newCmd() *cli.Command {
 				if cmd.String("pr") != "" {
 					return errors.Userf("--detach cannot be used with --pr")
 				}
-				if branch == "" {
-					return errors.Userf("worktree name is required\n\nUsage: ww new <name> --detach [--ref <commit-ish>]")
-				}
 
-				name := branch
-				dirName, err := detachedWorktreeDirName(name)
-				if err != nil {
-					return err
-				}
 				ref, refLabel, err := resolveDetachedRef(ctx, tr, cmd, cfg, repoGit, u, cdOnly)
 				if err != nil {
 					return err
+				}
+
+				name := branch
+				var dirName string
+				if name == "" {
+					head, err := resolveDetachedCommit(repoGit, ref)
+					if err != nil {
+						return err
+					}
+					dirName = generatedDetachedWorktreeDirName(repoName, head)
+					name = dirName
+				} else {
+					dirName, err = detachedWorktreeDirName(name)
+					if err != nil {
+						return err
+					}
 				}
 
 				wtPath := filepath.Join(config.WorktreesDir(), repoName, dirName)
