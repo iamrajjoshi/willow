@@ -32,7 +32,7 @@ The right panel shows a live preview of the tmux pane content (Claude Code outpu
 |-----|--------|
 | `Enter` | Switch to worktree (creates tmux session if needed) |
 | `Ctrl-N` | Create new worktree from typed query (also accepts PR URLs) |
-| `Ctrl-T` | Create a named detached worktree from the selected HEAD |
+| `Ctrl-T` | Create a detached worktree from the selected HEAD |
 | `Ctrl-U` | Promote the selected detached worktree to a branch |
 | `Ctrl-B` | Create new worktree stacked on a base branch (opens branch picker) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
@@ -55,9 +55,9 @@ You can also paste a PR URL into the query field and press `Ctrl-N` for quick on
 
 ### Detached worktrees
 
-Type a name in the query field and press `Ctrl-T` to create a detached worktree from the currently selected row's HEAD. The name becomes both the worktree directory and tmux session name, so it is easy to come back to even before you create a branch.
+Press `Ctrl-T` to create a detached worktree from the currently selected row's HEAD. If the query field is empty, Willow generates a label like `detached-a13f09c`; if the query has text, that text becomes the worktree directory and tmux session name.
 
-To keep the work, select the detached worktree and press `Ctrl-U`. If the query field has text, Willow uses it as the new branch name; otherwise it reuses the detached worktree name. Promotion happens in place, so the tmux session and agent status stay attached to the same directory.
+To keep the work, select the detached worktree, type a branch name, and press `Ctrl-U`. Explicitly named detached worktrees can still promote with an empty query and reuse their detached name. Generated detached worktrees require a branch name; promotion moves their tmux session and agent status to the promoted branch identity.
 
 ### Renaming worktrees
 

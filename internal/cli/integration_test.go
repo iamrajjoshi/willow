@@ -525,6 +525,56 @@ func TestNew_DetachedCreatesNamedWorktree(t *testing.T) {
 	}
 }
 
+func TestNew_DetachedCreatesGeneratedWorktree(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	mainDir := filepath.Join(worktreeDir, firstWorktreeDir(t, worktreeDir))
+	os.Chdir(mainDir)
+
+	head, err := (&git.Git{Dir: mainDir}).Run("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	wantFirst := "detached-" + worktree.ShortHead(head)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("new", "--detach", "--ref", "HEAD", "--no-fetch", "--cd")
+	})
+	if err != nil {
+		t.Fatalf("new nameless --detach failed: %v", err)
+	}
+	firstPath := strings.TrimSpace(out)
+	if got := filepath.Base(firstPath); got != wantFirst {
+		t.Fatalf("generated dir = %q, want %q", got, wantFirst)
+	}
+
+	out, err = captureStdout(t, func() error {
+		return runApp("new", "--detach", "--ref", "HEAD", "--no-fetch", "--cd")
+	})
+	if err != nil {
+		t.Fatalf("second nameless --detach failed: %v", err)
+	}
+	secondPath := strings.TrimSpace(out)
+	if got := filepath.Base(secondPath); got != wantFirst+"-2" {
+		t.Fatalf("second generated dir = %q, want %q", got, wantFirst+"-2")
+	}
+
+	wtGit := &git.Git{Dir: firstPath}
+	branch, err := wtGit.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse detached HEAD: %v", err)
+	}
+	if branch != "HEAD" {
+		t.Fatalf("generated detached branch = %q, want HEAD", branch)
+	}
+}
+
 func TestPromote_DetachedWorktreeInPlace(t *testing.T) {
 	origin := setupTestEnv(t)
 	home, _ := os.UserHomeDir()
@@ -583,6 +633,81 @@ func TestPromote_DetachedWorktreeInPlace(t *testing.T) {
 		}
 	}
 	t.Fatalf("promoted worktree missing from git worktree list")
+}
+
+func TestPromote_GeneratedDetachedWorktreeMovesToBranchName(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "testrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "testrepo")
+	mainDir := filepath.Join(worktreeDir, firstWorktreeDir(t, worktreeDir))
+	os.Chdir(mainDir)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("new", "--detach", "--ref", "HEAD", "--no-fetch", "--cd")
+	})
+	if err != nil {
+		t.Fatalf("new nameless --detach failed: %v", err)
+	}
+	detachedDir := strings.TrimSpace(out)
+	oldDir := filepath.Base(detachedDir)
+	if !isGeneratedDetachedDirName(oldDir) {
+		t.Fatalf("generated dir = %q, want generated detached name", oldDir)
+	}
+
+	if err := runApp("promote", oldDir); err == nil || !strings.Contains(err.Error(), "branch name is required for generated detached worktree") {
+		t.Fatalf("promote generated without branch error = %v", err)
+	}
+
+	writeActiveSessionFile(t, "testrepo", oldDir, "s1", claude.StatusDone)
+	binDir := t.TempDir()
+	tmuxLog := filepath.Join(t.TempDir(), "tmux.log")
+	installFakeTmuxForRename(t, binDir, tmuxLog, "testrepo/"+oldDir, "")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := os.Chdir(detachedDir); err != nil {
+		t.Fatalf("chdir detached: %v", err)
+	}
+	out, err = captureStdout(t, func() error {
+		return runApp("promote", "feature/generated", "--cd")
+	})
+	if err != nil {
+		t.Fatalf("promote generated failed: %v", err)
+	}
+
+	finalPath := strings.TrimSpace(out)
+	wantPath := filepath.Join(worktreeDir, "feature-generated")
+	if comparablePath(finalPath) != comparablePath(wantPath) {
+		t.Fatalf("promote --cd path = %q, want %q", finalPath, wantPath)
+	}
+	if _, err := os.Stat(detachedDir); !os.IsNotExist(err) {
+		t.Fatalf("old generated path should be gone, err=%v", err)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("promoted path missing: %v", err)
+	}
+
+	branch, err := (&git.Git{Dir: wantPath}).Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse promoted branch: %v", err)
+	}
+	if branch != "feature/generated" {
+		t.Fatalf("branch = %q, want feature/generated", branch)
+	}
+
+	if _, err := os.Stat(claude.StatusWorktreeDir("testrepo", oldDir)); !os.IsNotExist(err) {
+		t.Fatalf("old status dir should be gone, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(claude.StatusWorktreeDir("testrepo", "feature-generated"), "s1.json")); err != nil {
+		t.Fatalf("new status file missing: %v", err)
+	}
+	if !strings.Contains(readTestFile(t, tmuxLog), "rename-session|-t|testrepo/"+oldDir+"|testrepo/feature-generated") {
+		t.Fatalf("tmux rename not recorded:\n%s", readTestFile(t, tmuxLog))
+	}
 }
 
 func TestPromote_DetachedByNameFromAnotherWorktree(t *testing.T) {

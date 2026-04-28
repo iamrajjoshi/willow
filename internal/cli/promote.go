@@ -3,14 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -41,6 +44,10 @@ func promoteCmd() *cli.Command {
 				Aliases: []string{"b"},
 				Usage:   "Record a stack parent for the promoted branch",
 			},
+			&cli.BoolFlag{
+				Name:  "cd",
+				Usage: "Print the final worktree path to stdout",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			flags := parseFlags(cmd)
@@ -48,8 +55,12 @@ func promoteCmd() *cli.Command {
 			defer tr.Total()
 			g := flags.NewGit()
 			u := flags.NewUI()
+			cdOnly := cmd.Bool("cd")
+			if cdOnly {
+				u.Out = os.Stderr
+			}
 
-			target, branch := promotionArgs(g, cmd.StringArg("target"), cmd.StringArg("branch"))
+			target, branch, explicitBranch := promotionArgs(g, cmd.StringArg("target"), cmd.StringArg("branch"))
 			if branch == "" {
 				return errors.Userf("branch name is required\n\nUsage: ww promote [worktree] <branch>")
 			}
@@ -64,6 +75,10 @@ func promoteCmd() *cli.Command {
 			if !rwt.Worktree.Detached {
 				return errors.Userf("worktree %q is already on branch %q", rwt.Worktree.MatchName(), rwt.Worktree.Branch)
 			}
+			generatedDetached := isGeneratedDetachedDirName(rwt.Worktree.DirName())
+			if generatedDetached && !explicitBranch {
+				return errors.Userf("branch name is required for generated detached worktree %q\n\nUsage: ww promote %s <branch>", rwt.Worktree.MatchName(), rwt.Worktree.MatchName())
+			}
 
 			done = tr.StartCtx(ctx, "load config")
 			cfg := config.Load(rwt.Repo.BareDir)
@@ -76,6 +91,17 @@ func promoteCmd() *cli.Command {
 			repoGit := &git.Git{Dir: rwt.Repo.BareDir, Verbose: g.Verbose}
 			if repoGit.LocalBranchExists(branch) {
 				return errors.Userf("branch %q already exists", branch)
+			}
+
+			finalPath := rwt.Worktree.Path
+			oldDir := rwt.Worktree.DirName()
+			newDir := oldDir
+			if generatedDetached {
+				newDir = worktreeDirName(branch)
+				if err := checkGeneratedPromotionCollisions(rwt.Repo.Name, oldDir, newDir, finalPath, filepath.Join(filepath.Dir(finalPath), newDir)); err != nil {
+					return err
+				}
+				finalPath = filepath.Join(filepath.Dir(rwt.Worktree.Path), newDir)
 			}
 
 			done = tr.StartCtx(ctx, "git checkout branch")
@@ -93,6 +119,30 @@ func promoteCmd() *cli.Command {
 			}
 			done()
 
+			if generatedDetached && comparablePath(rwt.Worktree.Path) != comparablePath(finalPath) {
+				done = tr.StartCtx(ctx, "git worktree move promoted")
+				if _, err := repoGit.Run("worktree", "move", rwt.Worktree.Path, finalPath); err != nil {
+					return fmt.Errorf("failed to move promoted worktree: %w", err)
+				}
+				done()
+
+				done = tr.StartCtx(ctx, "move promoted status dir")
+				if err := claude.MoveStatusDir(rwt.Repo.Name, oldDir, newDir); err != nil {
+					return fmt.Errorf("failed to move status directory: %w", err)
+				}
+				done()
+
+				done = tr.StartCtx(ctx, "rename promoted tmux session")
+				oldSession := tmux.SessionNameForWorktree(rwt.Repo.Name, oldDir)
+				newSession := tmux.SessionNameForWorktree(rwt.Repo.Name, newDir)
+				if tmux.SessionExists(oldSession) {
+					if err := tmux.RenameSession(oldSession, newSession); err != nil {
+						return fmt.Errorf("failed to rename tmux session: %w", err)
+					}
+				}
+				done()
+			}
+
 			baseBranch := cmd.String("base")
 			if baseBranch != "" {
 				done = tr.StartCtx(ctx, "record stack parent")
@@ -106,15 +156,23 @@ func promoteCmd() *cli.Command {
 
 			meta := map[string]string{
 				"from": rwt.Worktree.MatchName(),
-				"path": rwt.Worktree.Path,
+				"path": finalPath,
+			}
+			if finalPath != rwt.Worktree.Path {
+				meta["old_path"] = rwt.Worktree.Path
 			}
 			if baseBranch != "" {
 				meta["base"] = baseBranch
 			}
 			_ = log.Append(log.Event{Action: "promote", Repo: rwt.Repo.Name, Branch: branch, Metadata: meta})
 
+			if cdOnly {
+				fmt.Println(finalPath)
+				return nil
+			}
+
 			u.Success(fmt.Sprintf("Promoted %s to branch %s", u.Bold(rwt.Worktree.MatchName()), u.Bold(branch)))
-			u.Info(fmt.Sprintf("  path:   %s", u.Dim(rwt.Worktree.Path)))
+			u.Info(fmt.Sprintf("  path:   %s", u.Dim(finalPath)))
 			if baseBranch != "" {
 				u.Info(fmt.Sprintf("  base:   %s", u.Dim(baseBranch)))
 			}
@@ -123,17 +181,37 @@ func promoteCmd() *cli.Command {
 	}
 }
 
-func promotionArgs(g *git.Git, first, second string) (target, branch string) {
+func promotionArgs(g *git.Git, first, second string) (target, branch string, explicitBranch bool) {
 	if second != "" {
-		return first, second
+		return first, second, true
 	}
 	if first == "" {
-		return "", ""
+		return "", "", false
 	}
 	if current, err := currentManagedWorktree(g); err == nil && current.Worktree.Detached {
-		return "", first
+		return "", first, true
 	}
-	return first, first
+	return first, first, false
+}
+
+func checkGeneratedPromotionCollisions(repoName, oldDir, newDir, oldPath, newPath string) error {
+	if oldDir == newDir {
+		return nil
+	}
+	if comparablePath(oldPath) != comparablePath(newPath) && pathExists(newPath) {
+		return errors.Userf("worktree path already exists: %s", newPath)
+	}
+	oldStatus := claude.StatusWorktreeDir(repoName, oldDir)
+	newStatus := claude.StatusWorktreeDir(repoName, newDir)
+	if comparablePath(oldStatus) != comparablePath(newStatus) && pathExists(newStatus) {
+		return errors.Userf("status directory already exists: %s", newStatus)
+	}
+	oldSession := tmux.SessionNameForWorktree(repoName, oldDir)
+	newSession := tmux.SessionNameForWorktree(repoName, newDir)
+	if oldSession != newSession && tmux.SessionExists(newSession) {
+		return errors.Userf("tmux session already exists: %s", newSession)
+	}
+	return nil
 }
 
 func resolvePromotionTarget(g *git.Git, repoFlag, target string) (*repoWorktree, error) {

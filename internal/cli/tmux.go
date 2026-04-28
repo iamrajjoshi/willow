@@ -316,9 +316,6 @@ func tmuxPickNew(self, query, repoFilter, sessionName string, items []tmux.Picke
 
 func tmuxPickDetached(self, query, selection, repoFilter, sessionName string, items []tmux.PickerItem) error {
 	name := strings.TrimSpace(query)
-	if name == "" {
-		return errors.Userf("enter a detached worktree name first")
-	}
 
 	repo := ""
 	ref := ""
@@ -356,7 +353,10 @@ func tmuxPickDetachedArgs(name, repo, ref string) []string {
 	if ref != "" {
 		args = append(args, "--ref", ref)
 	}
-	return append(args, "--", name)
+	if name != "" {
+		args = append(args, "--", name)
+	}
+	return args
 }
 
 func tmuxPickPromote(self, query, selection string, items []tmux.PickerItem) error {
@@ -371,21 +371,29 @@ func tmuxPickPromote(self, query, selection string, items []tmux.PickerItem) err
 
 	branch := strings.TrimSpace(query)
 	if branch == "" {
+		if isGeneratedDetachedDirName(item.WtDirName) {
+			return errors.Userf("enter a branch name to promote generated detached worktree %s", item.WtDirName)
+		}
 		branch = item.WtDirName
 	}
 
 	cmd := exec.Command(self, tmuxPickPromoteArgs(*item, branch)...)
-	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	out, err := cmd.Output()
+	if err != nil {
 		return fmt.Errorf("failed to promote detached worktree: %w", err)
 	}
 
-	return ensureTmuxSession(item.RepoName, item.WtDirName, item.WtPath)
+	wtPath = strings.TrimSpace(string(out))
+	if wtPath == "" {
+		return fmt.Errorf("no path returned from willow promote")
+	}
+
+	return ensureTmuxSessionFromPath(wtPath)
 }
 
 func tmuxPickPromoteArgs(item tmux.PickerItem, branch string) []string {
-	return []string{"promote", "--repo", item.RepoName, item.WtDirName, branch}
+	return []string{"promote", "--cd", "--repo", item.RepoName, item.WtDirName, branch}
 }
 
 func tmuxPickNewWithBase(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
