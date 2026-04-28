@@ -207,7 +207,13 @@ func tmuxPickCmd() *cli.Command {
 					if result.Selection == "" {
 						return nil
 					}
-					return tmuxPickSwitch(result.Selection, items)
+					if err := tmuxPickSwitch(result.Selection, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "\nPress Enter to return to picker...\n")
+						fmt.Fscanln(os.Stdin)
+						continue
+					}
+					return nil
 				}
 			}
 		},
