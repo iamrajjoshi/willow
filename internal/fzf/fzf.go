@@ -193,7 +193,7 @@ func RunExpect(lines []string, opts ...Option) (*ExpectResult, error) {
 	}
 
 	results, code, err := runFzf(lines, []string{"--no-multi"}, cfg)
-	if code == fzflib.ExitInterrupt {
+	if code == fzflib.ExitInterrupt || code == fzflib.ExitNoMatch {
 		return nil, nil
 	}
 	if err != nil {

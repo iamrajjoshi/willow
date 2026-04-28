@@ -190,6 +190,14 @@ func TestRunExpectHandlesCancelAndErrors(t *testing.T) {
 	}
 
 	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return nil, fzflib.ExitNoMatch, nil
+	}
+	got, err = RunExpect([]string{"one"})
+	if err != nil || got != nil {
+		t.Fatalf("RunExpect no match = %+v, %v; want nil, nil", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
 		return nil, 0, errors.New("boom")
 	}
 	got, err = RunExpect([]string{"one"})
