@@ -198,6 +198,14 @@ func TestRunExpectHandlesCancelAndErrors(t *testing.T) {
 	}
 
 	runFzf = func([]string, []string, *config) ([]string, int, error) {
+		return []string{"new-branch", "ctrl-n"}, fzflib.ExitNoMatch, nil
+	}
+	got, err = RunExpect([]string{"one"}, WithPrintQuery(), WithExpectKeys("ctrl-n"))
+	if err != nil || got == nil || got.Query != "new-branch" || got.Key != "ctrl-n" || got.Selection != "" {
+		t.Fatalf("RunExpect no match with expect key = %+v, %v; want query/key result", got, err)
+	}
+
+	runFzf = func([]string, []string, *config) ([]string, int, error) {
 		return nil, 0, errors.New("boom")
 	}
 	got, err = RunExpect([]string{"one"})
