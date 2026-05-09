@@ -25,6 +25,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Defaults.AutoSetupRemote == nil || !*cfg.Defaults.AutoSetupRemote {
 		t.Error("Defaults.AutoSetupRemote should be true")
 	}
+	if cfg.Tmux.SwitcherPreview == nil || !*cfg.Tmux.SwitcherPreview {
+		t.Error("Tmux.SwitcherPreview should be true")
+	}
 }
 
 func TestMerge_StringOverride(t *testing.T) {
@@ -99,6 +102,27 @@ func TestMerge_BoolPointerOverride(t *testing.T) {
 	}
 	if *base.Defaults.AutoSetupRemote != true {
 		t.Error("Defaults.AutoSetupRemote should remain true (not overridden)")
+	}
+}
+
+func TestMerge_TmuxSwitcherPreviewFalseOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"tmux": {"switcherPreview": false}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	overlay, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile() error: %v", err)
+	}
+	base := DefaultConfig()
+	base.Tmux.SwitcherPreview = BoolPtr(true)
+
+	merge(base, overlay)
+
+	if base.Tmux.SwitcherPreview == nil || *base.Tmux.SwitcherPreview {
+		t.Fatalf("Tmux.SwitcherPreview = %v, want explicit false", base.Tmux.SwitcherPreview)
 	}
 }
 

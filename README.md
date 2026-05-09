@@ -527,6 +527,7 @@ Config merges two tiers (local wins):
     "autoSetupRemote": true
   },
   "tmux": {
+    "switcherPreview": true,
     "layout": ["split-window -h", "select-layout even-horizontal"],
     "panes": [
       { "command": "cd website" },
@@ -536,6 +537,8 @@ Config merges two tiers (local wins):
   "telemetry": true
 }
 ```
+
+Set `"tmux": {"switcherPreview": false}` to hide the right-side live preview in the tmux picker and give the fzf list the full popup width. Leaving it unset keeps the preview enabled. When preview is disabled, `ww tmux install` prints a compact `70%` by `70%` popup binding instead of the default `90%` by `80%` binding.
 
 ## Telemetry
 

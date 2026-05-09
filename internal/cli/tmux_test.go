@@ -576,16 +576,33 @@ func TestBuildStackChain(t *testing.T) {
 }
 
 func TestTmuxInstallCommand_PrintsConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	out, err := captureStdout(t, func() error {
 		return runApp("tmux", "install")
 	})
 	if err != nil {
 		t.Fatalf("tmux install failed: %v", err)
 	}
-	for _, want := range []string{"bind w run-shell", "tmux pick", "status-right", "status-interval 3"} {
+	for _, want := range []string{"bind w run-shell", "-w 90% -h 80%", "tmux pick", "status-right", "status-interval 3"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("tmux install output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestTmuxInstallCommand_UsesCompactPopupWithoutPreview(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	writeGlobalConfigFile(t, `{"tmux":{"switcherPreview":false}}`)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("tmux", "install")
+	})
+	if err != nil {
+		t.Fatalf("tmux install failed: %v", err)
+	}
+	if !strings.Contains(out, "-w 70% -h 70%") {
+		t.Fatalf("tmux install output = %q, want compact popup size", out)
 	}
 }
 

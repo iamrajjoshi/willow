@@ -55,6 +55,9 @@ func DefaultConfig() *Config {
 			Fetch:           BoolPtr(true),
 			AutoSetupRemote: BoolPtr(true),
 		},
+		Tmux: TmuxConfig{
+			SwitcherPreview: BoolPtr(true),
+		},
 	}
 }
 

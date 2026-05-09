@@ -605,6 +605,7 @@ ww tmux install           # print tmux.conf lines to add
 
 Setup: `ww tmux install` prints the config to add to `~/.tmux.conf`, including a `prefix + w` keybinding for the picker popup.
 Inside the picker, `Ctrl-T` creates a detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree, `Ctrl-D` deletes the selected worktree, and `Ctrl-X` bulk-deletes safe merged worktrees currently shown, skipping the active tmux session plus any merged worktrees with local changes, unpushed commits, or stacked children.
+By default, the picker shows a right-side live preview. Set `"tmux": {"switcherPreview": false}` in config to hide it, use the full popup for fzf, and make `ww tmux install` emit a compact `70%` by `70%` popup binding.
 
 ### Aliases
 
