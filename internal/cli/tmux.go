@@ -1429,14 +1429,22 @@ func tmuxInstallCmd() *cli.Command {
 			if err != nil {
 				self = "willow"
 			}
+			popupWidth, popupHeight := tmuxPickerPopupSize(config.Load(""))
 
 			fmt.Println("# Willow tmux integration")
 			fmt.Println("# Add these lines to your tmux.conf:")
 			fmt.Println()
-			fmt.Printf("bind w run-shell -b 'tmux display-popup -E -w 90%% -h 80%% \"%s tmux pick --session #S\"'\n", self)
+			fmt.Printf("bind w run-shell -b 'tmux display-popup -E -w %s -h %s \"%s tmux pick --session #S\"'\n", popupWidth, popupHeight, self)
 			fmt.Printf("set -g status-right '#(%s tmux status-bar) %%l:%%M %%a'\n", self)
 			fmt.Println("set -g status-interval 3")
 			return nil
 		},
 	}
+}
+
+func tmuxPickerPopupSize(cfg *config.Config) (string, string) {
+	if cfg.Tmux.SwitcherPreview != nil && !*cfg.Tmux.SwitcherPreview {
+		return "70%", "70%"
+	}
+	return "90%", "80%"
 }

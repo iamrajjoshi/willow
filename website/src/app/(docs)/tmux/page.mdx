@@ -20,11 +20,18 @@ set -g status-interval 3
 
 Then reload: `tmux source ~/.tmux.conf`
 
+If `"tmux": {"switcherPreview": false}` is set before running `ww tmux install`, Willow prints a compact `70%` by `70%` popup binding instead:
+
+```bash
+bind w run-shell -b 'tmux display-popup -E -w 70% -h 70% "/path/to/willow tmux pick --session #S"'
+```
+
 ## Picker (`prefix + w`)
 
 Press `prefix + w` to open the worktree picker in a popup.
 
 The right panel shows a live preview of the tmux pane content (Claude Code output).
+Set `"tmux": {"switcherPreview": false}` in config to hide that panel, use the full popup for the fzf picker, and make `ww tmux install` emit the smaller popup binding.
 
 ### Keybindings
 

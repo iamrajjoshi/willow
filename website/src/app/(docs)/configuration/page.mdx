@@ -42,6 +42,7 @@ The local config lives inside the bare repo directory, so it's private to your m
   "tmux": {
     "notification": true,
     "notifyCommand": "afplay /System/Library/Sounds/Glass.aiff",
+    "switcherPreview": true,
     "layout": ["split-window -h"],
     "panes": [
       {},
@@ -66,6 +67,7 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
 | `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
+| `tmux.switcherPreview` | `boolean` | Show the right-side live preview in the tmux picker. Set to `false` for an fzf-only picker and compact `ww tmux install` popup binding (default: `true`) |
 | `tmux.layout` | `string[]` | Raw tmux subcommands to run after session creation (e.g. `["split-window -h", "select-layout even-horizontal"]`) |
 | `tmux.panes` | `PaneConfig[]` | Per-pane commands, indexed by pane order. Pane 0 is the initial pane, pane 1 is the first split, etc. Each entry: `{ "command": "..." }` |
 | `telemetry` | `boolean` | Enable/disable anonymous error telemetry. Willow is opt-in by default. Also controllable via `WILLOW_TELEMETRY=off` env var |
