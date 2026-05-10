@@ -187,7 +187,7 @@ ww new feature/auth -r myrepo          # target a specific repo
 ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
-From the tmux picker, `Ctrl-T` creates a detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree to a branch, and `Ctrl-E` opens the existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+From the tmux picker, `Ctrl-T` creates a detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree to a branch, `Ctrl-B` creates a stacked worktree from a picked base branch, and `Ctrl-E` opens the existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
 
 | Flag | Description |
 |------|-------------|
