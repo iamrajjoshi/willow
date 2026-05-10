@@ -288,7 +288,7 @@ func TestMoveToFrontWithStack_DetachedOnlyMovesSelectedWorktree(t *testing.T) {
 }
 
 func TestTmuxPickerHeaderActions(t *testing.T) {
-	want := "^N new ^T detach ^U promote ^B rebase ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
+	want := "^N new ^T detach ^U promote ^B stack ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
 	if tmuxPickerHeader != want {
 		t.Fatalf("tmux picker header = %q, want %q", tmuxPickerHeader, want)
 	}
