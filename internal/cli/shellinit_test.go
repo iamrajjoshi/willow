@@ -146,6 +146,73 @@ func TestShellInitScriptsHandlePromoteCd(t *testing.T) {
 	}
 }
 
+func TestShellInitCompletionsBypassWwFunction(t *testing.T) {
+	// The ww shell function captures stdout from `ww sw` / `ww co` / etc. and
+	// passes it to `cd`. If the completion script invokes the function (rather
+	// than the binary), the completion list is fed to `cd` instead of the
+	// completion engine. Make sure each shell's completion section calls the
+	// willow binary directly — checking only the completion block, since the
+	// rest of the script also contains `command willow` for unrelated reasons.
+	tests := []struct {
+		name    string
+		script  string
+		marker  string // line that begins the completion section
+		want    []string
+		notWant []string
+	}{
+		{
+			name:   "bash",
+			script: renderBashInitScript(),
+			marker: "__willow_bash_autocomplete()",
+			want:   []string{"command willow"},
+			notWant: []string{
+				`requestComp="${words[*]} ${cur} --generate-shell-completion"`,
+				`requestComp="${words[*]} --generate-shell-completion"`,
+			},
+		},
+		{
+			name:   "zsh",
+			script: renderZshInitScript(),
+			marker: "_willow()",
+			want:   []string{"command willow"},
+			notWant: []string{
+				`${words[@]:0:#words[@]-1} ${current} --generate-shell-completion`,
+				`${words[@]:0:#words[@]-1} --generate-shell-completion`,
+			},
+		},
+		{
+			name:   "fish",
+			script: renderFishInitScript(),
+			marker: "function __fish_willow_complete",
+			want:   []string{"command willow"},
+			notWant: []string{
+				`$tokens $cur --generate-shell-completion`,
+				`$tokens --generate-shell-completion 2>/dev/null`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			idx := strings.Index(tt.script, tt.marker)
+			if idx < 0 {
+				t.Fatalf("completion marker %q not found in script", tt.marker)
+			}
+			section := tt.script[idx:]
+			for _, w := range tt.want {
+				if !strings.Contains(section, w) {
+					t.Fatalf("completion section must contain %q:\n%s", w, section)
+				}
+			}
+			for _, bad := range tt.notWant {
+				if strings.Contains(section, bad) {
+					t.Fatalf("completion section must not invoke the ww shell function via %q:\n%s", bad, section)
+				}
+			}
+		})
+	}
+}
+
 func TestDetectShell(t *testing.T) {
 	tests := []struct {
 		shell string

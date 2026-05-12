@@ -132,12 +132,14 @@ __willow_bash_autocomplete() {
       __willow_init_completion -n "=:" || return
     fi
     words=("${words[@]:0:$cword}")
+    # Always invoke the willow binary directly so the ww shell function
+    # (which captures stdout to cd into a worktree) doesn't swallow completions.
+    local args=("${words[@]:1}")
     if [[ "$cur" == "-"* ]]; then
-      requestComp="${words[*]} ${cur} --generate-shell-completion"
+      opts=$(command willow "${args[@]}" "${cur}" --generate-shell-completion 2>/dev/null)
     else
-      requestComp="${words[*]} --generate-shell-completion"
+      opts=$(command willow "${args[@]}" --generate-shell-completion 2>/dev/null)
     fi
-    opts=$(eval "${requestComp}" 2>/dev/null)
     COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
     return 0
   fi
@@ -256,10 +258,14 @@ _willow() {
   local -a opts
   local current
   current=${words[-1]}
+  # Always invoke the willow binary directly so the ww shell function
+  # (which captures stdout to cd into a worktree) doesn't swallow completions.
+  local -a args
+  args=("${words[2,-2]}")
   if [[ "$current" == "-"* ]]; then
-    opts=("${(@f)$(${words[@]:0:#words[@]-1} ${current} --generate-shell-completion)}")
+    opts=("${(@f)$(command willow "${args[@]}" "${current}" --generate-shell-completion)}")
   else
-    opts=("${(@f)$(${words[@]:0:#words[@]-1} --generate-shell-completion)}")
+    opts=("${(@f)$(command willow "${args[@]}" --generate-shell-completion)}")
   fi
 
   if [[ "${opts[1]}" != "" ]]; then
@@ -384,10 +390,13 @@ end
 function __fish_willow_complete
   set -l tokens (commandline -opc)
   set -l cur (commandline -ct)
+  # Always invoke the willow binary directly so the ww shell function
+  # (which captures stdout to cd into a worktree) doesn't swallow completions.
+  set -l args command willow $tokens[2..]
   if string match -q -- '-*' $cur
-    $tokens $cur --generate-shell-completion 2>/dev/null
+    $args $cur --generate-shell-completion 2>/dev/null
   else
-    $tokens --generate-shell-completion 2>/dev/null
+    $args --generate-shell-completion 2>/dev/null
   end
 end
 
