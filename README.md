@@ -612,6 +612,10 @@ Deployed automatically to GitHub Pages on push to `main` when `website/` changes
 
 Releases are automated via [GoReleaser](https://goreleaser.com/) and GitHub Actions.
 
+## Credits
+
+Logo by [@galenzip](https://github.com/galenzip).
+
 ## License
 
 [MIT](LICENSE)
