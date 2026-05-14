@@ -45,6 +45,48 @@ func setupRemoteAndClone(t *testing.T, defaultBranch string) string {
 	return work
 }
 
+func TestParseShortstat(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{
+			name: "full output",
+			out:  " 3 files changed, 42 insertions(+), 12 deletions(-)",
+			want: "3f +42 -12",
+		},
+		{
+			name: "insertions only",
+			out:  " 1 file changed, 10 insertions(+)",
+			want: "1f +10",
+		},
+		{
+			name: "deletions only",
+			out:  " 2 files changed, 5 deletions(-)",
+			want: "2f -5",
+		},
+		{
+			name: "empty string",
+			out:  "",
+			want: "--",
+		},
+		{
+			name: "single file single insertion and deletion",
+			out:  " 1 file changed, 1 insertion(+), 1 deletion(-)",
+			want: "1f +1 -1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ParseShortstat(tt.out); got != tt.want {
+				t.Errorf("ParseShortstat(%q) = %q, want %q", tt.out, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveBaseBranch(t *testing.T) {
 	work := setupRemoteAndClone(t, "master")
 	g := &Git{Dir: work}

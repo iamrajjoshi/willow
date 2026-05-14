@@ -379,21 +379,14 @@ Rich view of Claude Code agent status. Shows per-session rows when multiple agen
 
 ### `ww dashboard` (alias: `dash`, `d`)
 
-Live-refreshing TUI showing active Claude Code sessions across all repos. Includes short session IDs, diff stats, unread counts, per-session activity, and a timeline sparkline showing agent status transitions over the last 60 minutes.
+Live-refreshing TUI showing every worktree across all repos. Uses the same stacked-branch tree grouping as the tmux picker, with aggregate agent status, unread counts, merged markers, and worktree paths.
 
 ```bash
 ww dashboard              # default 2s refresh
 ww dash -i 5              # 5s refresh interval
-ww dash --no-timeline     # hide the timeline column
 ```
 
-| Key | Action |
-|-----|--------|
-| `j/k` | Navigate rows |
-| `Enter` | Switch to tmux session |
-| `t` | Toggle timeline column |
-| `r` | Refresh |
-| `q` | Quit |
+Press `Ctrl-C` to quit.
 
 ![ww dashboard](screenshots/demo-dashboard.gif)
 

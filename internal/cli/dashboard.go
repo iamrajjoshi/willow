@@ -13,7 +13,7 @@ func dashboardCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "dashboard",
 		Aliases: []string{"dash", "d"},
-		Usage:   "Live overview of all Claude Code sessions across repos",
+		Usage:   "Live overview of all worktrees across repos",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:    "interval",
@@ -21,17 +21,12 @@ func dashboardCmd() *cli.Command {
 				Usage:   "Refresh interval in seconds",
 				Value:   2,
 			},
-			&cli.BoolFlag{
-				Name:  "no-timeline",
-				Usage: "Hide the timeline column",
-			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			defer trace.Span(ctx, "cli.dashboard")()
 			interval := time.Duration(cmd.Int("interval")) * time.Second
 			return dashboard.Run(ctx, dashboard.Config{
 				RefreshInterval: interval,
-				ShowTimeline:    !cmd.Bool("no-timeline"),
 			})
 		},
 	}

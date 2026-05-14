@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -11,224 +12,112 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 )
 
-func TestParseShortstatFromGit(t *testing.T) {
-	tests := []struct {
-		name string
-		out  string
-		want string
-	}{
-		{
-			name: "full output",
-			out:  " 3 files changed, 42 insertions(+), 12 deletions(-)",
-			want: "3f +42 -12",
-		},
-		{
-			name: "insertions only",
-			out:  " 1 file changed, 10 insertions(+)",
-			want: "1f +10",
-		},
-		{
-			name: "deletions only",
-			out:  " 2 files changed, 5 deletions(-)",
-			want: "2f -5",
-		},
-		{
-			name: "empty string",
-			out:  "",
-			want: "--",
-		},
-		{
-			name: "single file single insertion and deletion",
-			out:  " 1 file changed, 1 insertion(+), 1 deletion(-)",
-			want: "1f +1 -1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := git.ParseShortstat(tt.out)
-			if got != tt.want {
-				t.Errorf("git.ParseShortstat(%q) = %q, want %q", tt.out, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRenderNoSessions(t *testing.T) {
-	out := render(nil, summary{Repos: 2, Agents: 0, Unread: 0}, 120, 0, false, 0, nil)
-	if !strings.Contains(out, "no active sessions") {
-		t.Errorf("expected 'no active sessions' empty-state copy, got:\n%s", out)
+func TestRenderNoWorktrees(t *testing.T) {
+	out := render(nil, summary{Repos: 2, Worktrees: 0, Active: 0, Unread: 0}, 120, 0, nil)
+	if !strings.Contains(out, "no worktrees yet") {
+		t.Errorf("expected 'no worktrees yet' empty-state copy, got:\n%s", out)
 	}
 	if !strings.Contains(out, "willow new") {
 		t.Errorf("expected 'willow new' hint in empty state, got:\n%s", out)
 	}
 }
 
-func TestRenderSingleSession(t *testing.T) {
-	sessions := []session{
+func TestRenderWorktreeRows(t *testing.T) {
+	rows := []row{
 		{
 			Repo:      "myrepo",
 			Branch:    "feat--thing",
-			SessionID: "abc12345rest",
 			Status:    claude.StatusBusy,
-			Tool:      "",
-			DiffStats: "2f +10 -3",
-			Age:       "5m",
-			Unread:    false,
+			Path:      "/tmp/worktrees/myrepo/feat--thing",
 			WtDirName: "feat--thing",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, 0, nil)
+	out := render(rows, summary{Repos: 1, Worktrees: 1, Active: 1, Unread: 0}, 120, 0, nil)
 
-	if !strings.Contains(out, "myrepo") {
-		t.Errorf("expected 'myrepo' in output, got:\n%s", out)
+	for _, want := range []string{"WORKTREE", "PATH", "myrepo", "feat--thing", "/tmp/worktrees/myrepo/feat--thing"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, out)
+		}
 	}
-	if !strings.Contains(out, "feat--thing") {
-		t.Errorf("expected 'feat--thing' in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "2f +10 -3") {
-		t.Errorf("expected diff stats in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "SESSION") {
-		t.Errorf("expected SESSION column header, got:\n%s", out)
-	}
-	if !strings.Contains(out, "abc12345") {
-		t.Errorf("expected shortened session id in output, got:\n%s", out)
+	for _, removed := range []string{"SESSION", "DIFF", "TIMELINE", "j/k: navigate"} {
+		if strings.Contains(out, removed) {
+			t.Errorf("did not expect %q in passive dashboard output, got:\n%s", removed, out)
+		}
 	}
 }
 
 func TestRenderUnreadMarker(t *testing.T) {
-	sessions := []session{
+	rows := []row{
 		{
 			Repo:      "myrepo",
 			Branch:    "feat--done",
-			SessionID: "abc123",
 			Status:    claude.StatusDone,
-			DiffStats: "--",
-			Age:       "2m",
 			Unread:    true,
+			Path:      "/tmp/worktrees/myrepo/feat--done",
 			WtDirName: "feat--done",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 1}, 120, 0, false, 0, nil)
+	out := render(rows, summary{Repos: 1, Worktrees: 1, Active: 1, Unread: 1}, 120, 0, nil)
 
-	if !strings.Contains(out, "\u25CF") {
-		t.Errorf("expected unread marker (bullet) in output, got:\n%s", out)
+	if !strings.Contains(out, "DONE \u25cf") {
+		t.Errorf("expected spaced unread marker in output, got:\n%s", out)
 	}
 }
 
-func TestRenderBusyWithTool(t *testing.T) {
-	sessions := []session{
+func TestRenderStackPrefixAndMergedMarker(t *testing.T) {
+	rows := []row{
 		{
-			Repo:      "myrepo",
-			Branch:    "feat--edit",
-			SessionID: "abc123",
-			Status:    claude.StatusBusy,
-			Tool:      "Edit",
-			DiffStats: "1f +5",
-			Age:       "1m",
-			Unread:    false,
-			WtDirName: "feat--edit",
+			Repo:      "repo",
+			Branch:    "parent",
+			Status:    claude.StatusIdle,
+			Path:      "/tmp/worktrees/repo/parent",
+			WtDirName: "parent",
+		},
+		{
+			Repo:        "repo",
+			Branch:      "child",
+			Status:      claude.StatusDone,
+			Path:        "/tmp/worktrees/repo/child",
+			WtDirName:   "child",
+			Merged:      true,
+			StackPrefix: "\u2514\u2500 ",
 		},
 	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, 0, nil)
+	out := render(rows, summary{Repos: 1, Worktrees: 2, Active: 1, Unread: 0}, 120, 0, nil)
 
-	if !strings.Contains(out, "(Edit)") {
-		t.Errorf("expected '(Edit)' tool label in output, got:\n%s", out)
+	if !strings.Contains(out, "\u2514\u2500 child") {
+		t.Errorf("expected stack prefix before child branch, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[merged]") {
+		t.Errorf("expected merged marker in output, got:\n%s", out)
 	}
 }
 
-func TestRenderSelectedRow(t *testing.T) {
-	sessions := []session{
+func TestRenderMultiRepoStackNameMatchesPickerStyle(t *testing.T) {
+	rows := []row{
 		{
 			Repo:      "repo-a",
-			Branch:    "branch-a",
-			Status:    claude.StatusBusy,
-			DiffStats: "--",
-			Age:       "3m",
-			WtDirName: "branch-a",
-		},
-		{
-			Repo:      "repo-b",
-			Branch:    "branch-b",
-			Status:    claude.StatusDone,
-			DiffStats: "1f +2",
-			Age:       "8m",
-			WtDirName: "branch-b",
-		},
-	}
-	out := render(sessions, summary{Repos: 2, Agents: 2, Unread: 0}, 120, 1, false, 0, nil)
-
-	if !strings.Contains(out, "\033[7m") {
-		t.Errorf("expected inverse video escape sequence for selected row, got:\n%s", out)
-	}
-}
-
-func TestRenderKeybindingHint(t *testing.T) {
-	sessions := []session{
-		{
-			Repo:      "myrepo",
 			Branch:    "main",
-			Status:    claude.StatusBusy,
-			DiffStats: "--",
-			Age:       "1m",
+			Status:    claude.StatusOffline,
+			Path:      "/tmp/worktrees/repo-a/main",
 			WtDirName: "main",
 		},
-	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, false, 0, nil)
-
-	if !strings.Contains(out, "j/k: navigate") {
-		t.Errorf("expected keybinding hint 'j/k: navigate' in output, got:\n%s", out)
-	}
-}
-
-func TestRenderTimelineColumn(t *testing.T) {
-	sparkline := strings.Repeat("\033[32m\u2588\033[0m", 30)
-	sessions := []session{
 		{
-			Repo:      "myrepo",
-			Branch:    "feat--thing",
-			Status:    claude.StatusBusy,
-			DiffStats: "--",
-			Age:       "2m",
-			WtDirName: "feat--thing",
-			Timeline:  sparkline,
+			Repo:        "repo-b",
+			Branch:      "stack-child",
+			Status:      claude.StatusWait,
+			Path:        "/tmp/worktrees/repo-b/stack-child",
+			WtDirName:   "stack-child",
+			StackPrefix: "\u2514\u2500 ",
 		},
 	}
+	out := render(rows, summary{Repos: 2, Worktrees: 2, Active: 1, Unread: 0}, 120, 0, nil)
 
-	// With timeline enabled
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, true, 0, nil)
-	if !strings.Contains(out, "TIMELINE") {
-		t.Errorf("expected 'TIMELINE' header when showTimeline=true, got:\n%s", out)
-	}
-	if !strings.Contains(out, "\u2588") {
-		t.Errorf("expected sparkline blocks in output when showTimeline=true")
-	}
-
-	// With timeline disabled
-	out = render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 200, 0, false, 0, nil)
-	if strings.Contains(out, "TIMELINE") {
-		t.Errorf("expected no 'TIMELINE' header when showTimeline=false, got:\n%s", out)
-	}
-}
-
-func TestRenderTimelineKeybindingHint(t *testing.T) {
-	sessions := []session{
-		{
-			Repo:      "myrepo",
-			Branch:    "main",
-			Status:    claude.StatusBusy,
-			DiffStats: "--",
-			Age:       "1m",
-			WtDirName: "main",
-		},
-	}
-	out := render(sessions, summary{Repos: 1, Agents: 1, Unread: 0}, 120, 0, true, 0, nil)
-	if !strings.Contains(out, "t: timeline") {
-		t.Errorf("expected 't: timeline' in keybinding hint, got:\n%s", out)
+	if !strings.Contains(out, "\u2514\u2500 repo-b/stack-child") {
+		t.Errorf("expected multi-repo stack label to match picker style, got:\n%s", out)
 	}
 }
 
@@ -281,6 +170,15 @@ func setupDashboardRepo(t *testing.T) string {
 	return wtPath
 }
 
+func addDashboardWorktree(t *testing.T, bareDir, branch, base string) string {
+	t.Helper()
+
+	wtPath := filepath.Join(config.WorktreesDir(), "dashrepo", branch)
+	runDashboardGit(t, bareDir, "branch", branch, base)
+	runDashboardGit(t, bareDir, "worktree", "add", wtPath, branch)
+	return wtPath
+}
+
 func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status claude.Status, tool string, ts time.Time) {
 	t.Helper()
 
@@ -302,98 +200,85 @@ func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status c
 	}
 }
 
-func resetDiffCache() {
-	diffCacheMu.Lock()
-	defer diffCacheMu.Unlock()
-	diffCache = map[string]cachedDiff{}
-}
+func TestCollectDataIncludesAllWorktreesUnreadAndStackPrefixes(t *testing.T) {
+	setupDashboardRepo(t)
+	bareDir := filepath.Join(config.ReposDir(), "dashrepo.git")
+	addDashboardWorktree(t, bareDir, "feature-a", "main")
+	addDashboardWorktree(t, bareDir, "feature-b", "feature-a")
 
-func TestCollectDataIncludesActiveSessionsUnreadAndDiffStats(t *testing.T) {
-	resetDiffCache()
-	wtPath := setupDashboardRepo(t)
-	if err := os.WriteFile(filepath.Join(wtPath, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
-		t.Fatalf("write feature: %v", err)
+	st := &stack.Stack{Parents: map[string]string{
+		"feature-a": "main",
+		"feature-b": "feature-a",
+	}}
+	if err := st.Save(bareDir); err != nil {
+		t.Fatalf("save stack: %v", err)
 	}
-	runDashboardGit(t, wtPath, "add", "feature.txt")
-	runDashboardGit(t, wtPath, "commit", "-m", "feature")
 
 	now := time.Now()
-	writeDashboardSession(t, "dashrepo", "main", "busy-session", claude.StatusBusy, "Edit", now)
-	writeDashboardSession(t, "dashrepo", "main", "done-session", claude.StatusDone, "", now)
+	writeDashboardSession(t, "dashrepo", "feature-a", "done-session", claude.StatusDone, "", now)
+	writeDashboardSession(t, "dashrepo", "feature-b", "busy-session", claude.StatusBusy, "Edit", now)
+	writeDashboardSession(t, "dashrepo", "feature-b", "done-session", claude.StatusDone, "", now)
 
-	sessions, sum := collectData()
+	rows, sum := collectData(context.Background())
 	if sum.Repos != 1 {
 		t.Fatalf("Repos = %d, want 1", sum.Repos)
 	}
-	if sum.Agents != 2 {
-		t.Fatalf("Agents = %d, want 2 active busy/done sessions", sum.Agents)
+	if sum.Worktrees != 3 {
+		t.Fatalf("Worktrees = %d, want 3", sum.Worktrees)
 	}
-	if sum.Unread != 1 {
-		t.Fatalf("Unread = %d, want 1 done unread session", sum.Unread)
+	if sum.Active != 2 {
+		t.Fatalf("Active = %d, want 2", sum.Active)
 	}
-	if len(sessions) != 2 {
-		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	if sum.Unread != 2 {
+		t.Fatalf("Unread = %d, want 2", sum.Unread)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3: %+v", len(rows), rows)
 	}
 
-	var sawBusy, sawDone bool
-	for _, s := range sessions {
-		if s.Repo != "dashrepo" || s.Branch != "main" || s.WtDirName != "main" {
-			t.Fatalf("unexpected session row: %+v", s)
-		}
-		if s.DiffStats != "1f +1" {
-			t.Fatalf("DiffStats = %q, want 1f +1", s.DiffStats)
-		}
-		if s.Status == claude.StatusBusy && s.Tool == "Edit" {
-			sawBusy = true
-		}
-		if s.Status == claude.StatusDone && s.Unread {
-			sawDone = true
+	var sawMain, sawFeatureA, sawFeatureB bool
+	for _, r := range rows {
+		switch r.Branch {
+		case "main":
+			sawMain = true
+			if r.Status != claude.StatusOffline {
+				t.Fatalf("main status = %s, want offline", r.Status)
+			}
+		case "feature-a":
+			sawFeatureA = true
+			if !r.Unread {
+				t.Fatalf("feature-a should carry unread marker: %+v", r)
+			}
+		case "feature-b":
+			sawFeatureB = true
+			if r.Status != claude.StatusBusy {
+				t.Fatalf("feature-b status = %s, want BUSY", r.Status)
+			}
+			if !r.Unread {
+				t.Fatalf("feature-b should show unread marker despite BUSY aggregate status: %+v", r)
+			}
+			if r.StackPrefix == "" {
+				t.Fatalf("feature-b should have stack prefix: %+v", r)
+			}
 		}
 	}
-	if !sawBusy || !sawDone {
-		t.Fatalf("expected busy and unread done rows, got %+v", sessions)
+	if !sawMain || !sawFeatureA || !sawFeatureB {
+		t.Fatalf("missing expected rows: %+v", rows)
 	}
 }
 
-func TestGetDiffStatsCachesByWorktreePath(t *testing.T) {
-	resetDiffCache()
-	wtPath := setupDashboardRepo(t)
-	if err := os.WriteFile(filepath.Join(wtPath, "first.txt"), []byte("first\n"), 0o644); err != nil {
-		t.Fatalf("write first: %v", err)
-	}
-	runDashboardGit(t, wtPath, "add", "first.txt")
-	runDashboardGit(t, wtPath, "commit", "-m", "first")
-
-	first := getDiffStats(wtPath, "main")
-	if first != "1f +1" {
-		t.Fatalf("first diff stats = %q, want 1f +1", first)
-	}
-
-	if err := os.WriteFile(filepath.Join(wtPath, "second.txt"), []byte("second\n"), 0o644); err != nil {
-		t.Fatalf("write second: %v", err)
-	}
-	runDashboardGit(t, wtPath, "add", "second.txt")
-	runDashboardGit(t, wtPath, "commit", "-m", "second")
-
-	second := getDiffStats(wtPath, "main")
-	if second != first {
-		t.Fatalf("cached diff stats changed before TTL expiry: got %q, want %q", second, first)
-	}
-}
-
-func TestUpdateFlashesRecordsBusyToDoneAndPrunesMissingSessions(t *testing.T) {
-	doneSession := session{
+func TestUpdateFlashesRecordsBusyToDoneAndPrunesMissingRows(t *testing.T) {
+	doneRow := row{
 		Repo:      "repo",
 		Branch:    "feature",
-		SessionID: "s1",
 		Status:    claude.StatusDone,
 		WtDirName: "feature",
 	}
-	key := sessionKey(doneSession)
+	key := rowKey(doneRow)
 	prev := map[string]claude.Status{key: claude.StatusBusy}
 	flashUntil := map[string]time.Time{}
 
-	updateFlashes([]session{doneSession}, prev, flashUntil)
+	updateFlashes([]row{doneRow}, prev, flashUntil)
 	if prev[key] != claude.StatusDone {
 		t.Fatalf("prev[%q] = %s, want DONE", key, prev[key])
 	}
@@ -403,10 +288,10 @@ func TestUpdateFlashesRecordsBusyToDoneAndPrunesMissingSessions(t *testing.T) {
 
 	updateFlashes(nil, prev, flashUntil)
 	if _, ok := prev[key]; ok {
-		t.Fatalf("expected missing session to be pruned from prev: %v", prev)
+		t.Fatalf("expected missing row to be pruned from prev: %v", prev)
 	}
 	if _, ok := flashUntil[key]; ok {
-		t.Fatalf("expected missing session to be pruned from flashUntil: %v", flashUntil)
+		t.Fatalf("expected missing row to be pruned from flashUntil: %v", flashUntil)
 	}
 }
 

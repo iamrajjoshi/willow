@@ -6,17 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/git"
-	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -24,78 +21,26 @@ import (
 
 type Config struct {
 	RefreshInterval time.Duration
-	ShowTimeline    bool
 }
 
-type session struct {
-	Repo      string
-	Branch    string
-	SessionID string
-	Status    claude.Status
-	Tool      string
-	DiffStats string
-	Age       string
-	Unread    bool
-	WtDirName string
-	Timeline  string
+type row struct {
+	Repo        string
+	Branch      string
+	Head        string
+	Detached    bool
+	WtDirName   string
+	Path        string
+	Status      claude.Status
+	Unread      bool
+	Merged      bool
+	StackPrefix string
 }
 
 type summary struct {
-	Repos  int
-	Agents int
-	Unread int
-}
-
-type repoData struct {
-	sessions []session
-	agents   int
-	unread   int
-}
-
-type cachedDiff struct {
-	stats string
-	at    time.Time
-}
-
-var (
-	diffCache    = map[string]cachedDiff{}
-	diffCacheMu  sync.Mutex
-	diffCacheTTL = 10 * time.Second
-)
-
-func readKey(tty *os.File) chan byte {
-	ch := make(chan byte, 1)
-	go func() {
-		buf := make([]byte, 3)
-		for {
-			n, err := tty.Read(buf)
-			if err != nil {
-				return
-			}
-			if n == 1 {
-				ch <- buf[0]
-			} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-				// Arrow keys: ESC [ A/B
-				ch <- buf[2]
-			}
-		}
-	}()
-	return ch
-}
-
-func setRawMode(tty *os.File) {
-	// Use -icanon instead of raw so output post-processing (ONLCR) stays enabled.
-	// stty raw also sets -opost which turns \n into bare LF, breaking ANSI cursor
-	// positioning that relies on \n returning the cursor to column 0.
-	cmd := exec.Command("stty", "-echo", "-icanon", "min", "1", "time", "0")
-	cmd.Stdin = tty
-	cmd.Run()
-}
-
-func restoreMode(tty *os.File) {
-	cmd := exec.Command("stty", "echo", "icanon")
-	cmd.Stdin = tty
-	cmd.Run()
+	Repos     int
+	Worktrees int
+	Active    int
+	Unread    int
 }
 
 func Run(ctx context.Context, cfg Config) error {
@@ -105,18 +50,8 @@ func Run(ctx context.Context, cfg Config) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	tty, err := os.Open("/dev/tty")
-	if err != nil {
-		return fmt.Errorf("open /dev/tty: %w", err)
-	}
-	defer tty.Close()
-
-	setRawMode(tty)
-	defer restoreMode(tty)
-
 	fmt.Print(ui.AltScreenOn())
 	fmt.Print(ui.HideCursor())
-
 	defer func() {
 		fmt.Print(ui.ShowCursor())
 		fmt.Print(ui.AltScreenOff())
@@ -126,20 +61,20 @@ func Run(ctx context.Context, cfg Config) error {
 	signal.Notify(winchCh, syscall.SIGWINCH)
 
 	cols := termWidth()
-	ticker := time.NewTicker(cfg.RefreshInterval)
+	interval := cfg.RefreshInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	selectedIdx := 0
-	showTimeline := cfg.ShowTimeline
-	keyCh := readKey(tty)
 
 	frame := 0
 	prevStatus := map[string]claude.Status{}
 	flashUntil := map[string]time.Time{}
 
-	sessions, sum := collectData()
-	updateFlashes(sessions, prevStatus, flashUntil)
-	output := render(sessions, sum, cols, selectedIdx, showTimeline, frame, flashUntil)
+	rows, sum := collectData(ctx)
+	updateFlashes(rows, prevStatus, flashUntil)
+	output := render(rows, sum, cols, frame, flashUntil)
 	fmt.Print(ui.CursorHome())
 	fmt.Print(output)
 	fmt.Print(ui.ClearToEnd())
@@ -154,47 +89,9 @@ func Run(ctx context.Context, cfg Config) error {
 			cols = termWidth()
 		case <-ticker.C:
 			frame++
-			sessions, sum = collectData()
-			updateFlashes(sessions, prevStatus, flashUntil)
-			if selectedIdx >= len(sessions) && len(sessions) > 0 {
-				selectedIdx = len(sessions) - 1
-			}
-			output = render(sessions, sum, cols, selectedIdx, showTimeline, frame, flashUntil)
-			fmt.Print(ui.CursorHome())
-			fmt.Print(output)
-			fmt.Print(ui.ClearToEnd())
-		case key := <-keyCh:
-			switch key {
-			case 'j', 'B': // down: j or arrow-down (ESC[B)
-				if selectedIdx < len(sessions)-1 {
-					selectedIdx++
-				}
-			case 'k', 'A': // up: k or arrow-up (ESC[A)
-				if selectedIdx > 0 {
-					selectedIdx--
-				}
-			case 'q', 3: // q or Ctrl+C
-				return nil
-			case 'r': // refresh
-				sessions, sum = collectData()
-				updateFlashes(sessions, prevStatus, flashUntil)
-				if selectedIdx >= len(sessions) && len(sessions) > 0 {
-					selectedIdx = len(sessions) - 1
-				}
-			case 't': // toggle timeline
-				showTimeline = !showTimeline
-			case 13: // Enter — switch to tmux session
-				if selectedIdx < len(sessions) {
-					s := sessions[selectedIdx]
-					sessionName := tmux.SessionNameForWorktree(s.Repo, s.WtDirName)
-					restoreMode(tty)
-					fmt.Print(ui.ShowCursor())
-					fmt.Print(ui.AltScreenOff())
-					tmux.SwitchClient(sessionName)
-					return nil
-				}
-			}
-			output = render(sessions, sum, cols, selectedIdx, showTimeline, frame, flashUntil)
+			rows, sum = collectData(ctx)
+			updateFlashes(rows, prevStatus, flashUntil)
+			output = render(rows, sum, cols, frame, flashUntil)
 			fmt.Print(ui.CursorHome())
 			fmt.Print(output)
 			fmt.Print(ui.ClearToEnd())
@@ -202,28 +99,20 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 }
 
-// sessionKey uniquely identifies a dashboard row across refreshes. Sessions
-// without an ID (bare worktree status) key by repo+worktree so they still
-// participate in transition tracking.
-func sessionKey(s session) string {
-	if s.SessionID != "" {
-		return s.Repo + "/" + s.WtDirName + "/" + s.SessionID
-	}
-	return s.Repo + "/" + s.WtDirName
+func rowKey(r row) string {
+	return r.Repo + "/" + r.WtDirName
 }
 
-// updateFlashes records a 2-second flash whenever a session transitions from
-// BUSY → DONE, so the row visibly highlights on the next render.
-func updateFlashes(sessions []session, prev map[string]claude.Status, flashUntil map[string]time.Time) {
+func updateFlashes(rows []row, prev map[string]claude.Status, flashUntil map[string]time.Time) {
 	seen := map[string]struct{}{}
 	now := time.Now()
-	for _, s := range sessions {
-		key := sessionKey(s)
+	for _, r := range rows {
+		key := rowKey(r)
 		seen[key] = struct{}{}
-		if p, ok := prev[key]; ok && p == claude.StatusBusy && s.Status == claude.StatusDone {
+		if p, ok := prev[key]; ok && p == claude.StatusBusy && r.Status == claude.StatusDone {
 			flashUntil[key] = now.Add(2 * time.Second)
 		}
-		prev[key] = s.Status
+		prev[key] = r.Status
 	}
 	for key := range prev {
 		if _, ok := seen[key]; !ok {
@@ -238,112 +127,53 @@ func updateFlashes(sessions []session, prev map[string]claude.Status, flashUntil
 	}
 }
 
-func collectData() ([]session, summary) {
+func collectData(ctx context.Context) ([]row, summary) {
 	repos, err := config.ListRepos()
 	if err != nil {
 		return nil, summary{}
 	}
 
 	sum := summary{Repos: len(repos)}
-	results := parallel.Map(repos, func(_ int, repoName string) repoData {
-		return collectRepoData(repoName)
-	})
-
-	var sessions []session
-	for _, result := range results {
-		sessions = append(sessions, result.sessions...)
-		sum.Agents += result.agents
-		sum.Unread += result.unread
-	}
-
-	return sessions, sum
-}
-
-func collectRepoData(repoName string) repoData {
-	bareDir, err := config.ResolveRepo(repoName)
+	items, err := tmux.BuildPickerItemsWithOptions(ctx, "", tmux.PickerBuildOptions{RefreshGitHubMerged: false})
 	if err != nil {
-		return repoData{}
+		return nil, sum
 	}
 
-	repoGit := &git.Git{Dir: bareDir}
-	wts, err := worktree.List(repoGit)
-	if err != nil {
-		return repoData{}
-	}
-
-	cfg := config.Load(bareDir)
-	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-	timelineSince := time.Now().Add(-60 * time.Minute)
-	var result repoData
-
-	for _, wt := range wts {
-		if wt.IsBare {
-			continue
+	rows := make([]row, 0, len(items))
+	for _, item := range items {
+		unread := claude.CountUnreadIn(item.RepoName, item.WtDirName, item.Sessions) > 0
+		r := row{
+			Repo:        item.RepoName,
+			Branch:      item.Branch,
+			Head:        item.Head,
+			Detached:    item.Detached,
+			WtDirName:   item.WtDirName,
+			Path:        item.WtPath,
+			Status:      item.Status,
+			Unread:      unread,
+			Merged:      item.Merged,
+			StackPrefix: item.StackPrefix,
 		}
-		wtDir := filepath.Base(wt.Path)
-		allSessions := claude.ReadAllSessions(repoName, wtDir)
-		unread := claude.CountUnreadIn(repoName, wtDir, allSessions) > 0
-
+		rows = append(rows, r)
+		sum.Worktrees++
+		if claude.IsActive(item.Status) {
+			sum.Active++
+		}
 		if unread {
-			result.unread++
-		}
-
-		diff := getDiffStats(wt.Path, baseBranch)
-
-		if len(allSessions) > 0 {
-			for _, ss := range allSessions {
-				effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
-				if effective == claude.StatusIdle || effective == claude.StatusOffline {
-					continue
-				}
-				timeline, _ := claude.ReadTimeline(repoName, wtDir, ss.SessionID, timelineSince)
-				s := session{
-					Repo:      repoName,
-					Branch:    wt.DisplayName(),
-					SessionID: ss.SessionID,
-					Status:    effective,
-					Tool:      ss.Tool,
-					DiffStats: diff,
-					Age:       claude.TimeSince(ss.Timestamp),
-					Unread:    effective == claude.StatusDone && unread,
-					WtDirName: wtDir,
-					Timeline:  claude.Sparkline(timeline, 30, 60*time.Minute),
-				}
-				result.sessions = append(result.sessions, s)
-				if claude.IsActive(effective) {
-					result.agents++
-				}
-			}
-		} else {
-			ws := claude.AggregateStatus(allSessions)
-			if ws.Status == claude.StatusOffline || ws.Status == claude.StatusIdle {
-				continue
-			}
-			s := session{
-				Repo:      repoName,
-				Branch:    wt.DisplayName(),
-				Status:    ws.Status,
-				DiffStats: diff,
-				Age:       claude.TimeSince(ws.Timestamp),
-				Unread:    ws.Status == claude.StatusDone && unread,
-				WtDirName: wtDir,
-				Timeline:  strings.Repeat("\033[2m\u00b7\033[0m", 30),
-			}
-			result.sessions = append(result.sessions, s)
-			result.agents++
+			sum.Unread++
 		}
 	}
 
-	return result
+	return rows, sum
 }
 
-func render(sessions []session, sum summary, width int, selectedIdx int, showTimeline bool, frame int, flashUntil map[string]time.Time) string {
+func render(rows []row, sum summary, width int, frame int, flashUntil map[string]time.Time) string {
 	var b strings.Builder
 	u := &ui.UI{}
 
-	if len(sessions) == 0 {
+	if len(rows) == 0 {
 		title := "willow dashboard"
-		stats := fmt.Sprintf("%d repos | %d agents | %d unread", sum.Repos, sum.Agents, sum.Unread)
+		stats := fmt.Sprintf("%d repos | %d worktrees | %d active | %d unread", sum.Repos, sum.Worktrees, sum.Active, sum.Unread)
 		headerText := title + "  " + stats
 		pad := 0
 		if width > len(headerText) {
@@ -352,59 +182,54 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 		b.WriteString(strings.Repeat(" ", pad))
 		b.WriteString(u.Bold(headerText))
 		b.WriteString("\n\n")
-		b.WriteString(u.Dim("  no active sessions yet"))
+		b.WriteString(u.Dim("  no worktrees yet"))
 		b.WriteString("\n\n")
-		b.WriteString("  start one with  ")
+		b.WriteString("  create one with  ")
 		b.WriteString(u.Cyan("willow new <branch>"))
 		b.WriteString("\n")
 		return b.String()
 	}
 
-	type rowLabel struct {
-		status  string
-		session string
+	multiRepo := hasMultipleRepos(rows)
+	home, _ := os.UserHomeDir()
+
+	type labels struct {
+		status string
+		name   string
+		path   string
 	}
-	labels := make([]rowLabel, len(sessions))
+	rowLabels := make([]labels, len(rows))
 	statusW := len("STATUS")
-	repoW := len("REPO")
-	branchW := len("BRANCH")
-	sessionW := len("SESSION")
-	diffW := len("DIFF")
-	for i, s := range sessions {
-		statusText := string(s.Status)
-		if s.Unread {
-			statusText += "\u25CF"
+	nameW := len("WORKTREE")
+	pathW := len("PATH")
+
+	for i, r := range rows {
+		statusText := string(r.Status)
+		if r.Unread {
+			statusText += " \u25cf"
 		}
-		if s.Status == claude.StatusBusy && s.Tool != "" {
-			statusText += " (" + s.Tool + ")"
+		name := displayName(r, multiRepo)
+		namePlain := name
+		if r.Merged {
+			namePlain += " [merged]"
 		}
-		sessionText := claude.ShortSessionID(s.SessionID)
-		labels[i] = rowLabel{status: statusText, session: sessionText}
-		if len(statusText) > statusW {
-			statusW = len(statusText)
+		path := shortenPathWithHome(r.Path, home)
+		rowLabels[i] = labels{status: statusText, name: name, path: path}
+
+		if utf8.RuneCountInString(statusText) > statusW {
+			statusW = utf8.RuneCountInString(statusText)
 		}
-		if len(s.Repo) > repoW {
-			repoW = len(s.Repo)
+		if utf8.RuneCountInString(namePlain) > nameW {
+			nameW = utf8.RuneCountInString(namePlain)
 		}
-		if len(s.Branch) > branchW {
-			branchW = len(s.Branch)
-		}
-		if len(sessionText) > sessionW {
-			sessionW = len(sessionText)
-		}
-		if len(s.DiffStats) > diffW {
-			diffW = len(s.DiffStats)
+		if utf8.RuneCountInString(path) > pathW {
+			pathW = utf8.RuneCountInString(path)
 		}
 	}
 
-	timelineW := 30
-	tableW := 2 + 2 + 1 + statusW + 2 + repoW + 2 + branchW + 2 + sessionW + 2 + diffW + 2 + 8
-	if showTimeline {
-		tableW += 2 + timelineW // 2 for gap + column width
-	}
-
+	tableW := 2 + 2 + 1 + statusW + 2 + nameW + 2 + pathW
 	title := "willow dashboard"
-	stats := fmt.Sprintf("%d repos | %d agents | %d unread", sum.Repos, sum.Agents, sum.Unread)
+	stats := fmt.Sprintf("%d repos | %d worktrees | %d active | %d unread", sum.Repos, sum.Worktrees, sum.Active, sum.Unread)
 	headerText := title + "  " + stats
 	pad := 0
 	if tableW > len(headerText) {
@@ -414,12 +239,8 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString(u.Bold(headerText))
 	b.WriteString("\n\n")
 
-	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s  %-*s  %-*s",
-		"", statusW, "STATUS", repoW, "REPO", branchW, "BRANCH", sessionW, "SESSION", diffW, "DIFF")
-	headerLine += "  AGE"
-	if showTimeline {
-		headerLine += fmt.Sprintf("  %-*s", timelineW, "TIMELINE")
-	}
+	headerLine := fmt.Sprintf("  %-2s %-*s  %-*s  %-*s",
+		"", statusW, "STATUS", nameW, "WORKTREE", pathW, "PATH")
 	b.WriteString(u.Bold(headerLine))
 	b.WriteString("\n")
 
@@ -432,70 +253,94 @@ func render(sessions []session, sum summary, width int, selectedIdx int, showTim
 	b.WriteString("\n")
 
 	now := time.Now()
-	for i, s := range sessions {
-		icon := claude.StatusIcon(s.Status)
-		if s.Status == claude.StatusBusy {
+	for i, r := range rows {
+		icon := claude.StatusIcon(r.Status)
+		if r.Status == claude.StatusBusy {
 			icon = u.Cyan(u.SpinnerFrame(frame))
 		}
-		line := fmt.Sprintf("  %s %-*s  %-*s  %-*s  %-*s  %-*s",
-			icon, statusW, labels[i].status,
-			repoW, s.Repo,
-			branchW, s.Branch,
-			sessionW, labels[i].session,
-			diffW, s.DiffStats)
-		line += "  " + u.Dim(s.Age)
-		if showTimeline {
-			line += "  " + s.Timeline
-		}
 
-		flashing := false
-		if until, ok := flashUntil[sessionKey(s)]; ok && now.Before(until) {
-			flashing = true
-		}
+		statusCol := fmt.Sprintf("%-*s", statusW, rowLabels[i].status)
+		statusCol = colorStatus(u, r.Status, statusCol)
 
-		switch {
-		case i == selectedIdx:
-			b.WriteString("\033[7m") // inverse video
+		nameDisplay := rowLabels[i].name
+		namePlain := nameDisplay
+		if r.Merged {
+			namePlain += " [merged]"
+			nameDisplay += " " + u.Dim("[merged]")
+		}
+		namePadding := nameW - utf8.RuneCountInString(namePlain)
+		if namePadding < 0 {
+			namePadding = 0
+		}
+		nameCol := nameDisplay + strings.Repeat(" ", namePadding)
+
+		pathCol := fmt.Sprintf("%-*s", pathW, rowLabels[i].path)
+		line := fmt.Sprintf("  %s %s  %s  %s", icon, statusCol, nameCol, u.Dim(pathCol))
+
+		if until, ok := flashUntil[rowKey(r)]; ok && now.Before(until) {
+			b.WriteString("\033[48;5;30m")
 			b.WriteString(line)
 			b.WriteString("\033[0m")
-		case flashing:
-			b.WriteString("\033[48;5;30m") // teal background
-			b.WriteString(line)
-			b.WriteString("\033[0m")
-		default:
+		} else {
 			b.WriteString(line)
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString(u.Dim("  j/k: navigate | Enter: switch | t: timeline | r: refresh | q: quit"))
-	b.WriteString("\n")
-
 	return b.String()
 }
 
-func getDiffStats(wtPath, baseBranch string) string {
-	diffCacheMu.Lock()
-	if cached, ok := diffCache[wtPath]; ok && time.Since(cached.at) < diffCacheTTL {
-		diffCacheMu.Unlock()
-		return cached.stats
+func displayName(r row, multiRepo bool) string {
+	name := r.Branch
+	if r.Detached {
+		if r.Head == "" {
+			name = fmt.Sprintf("%s [detached]", r.WtDirName)
+		} else {
+			name = fmt.Sprintf("%s [detached %s]", r.WtDirName, worktree.ShortHead(r.Head))
+		}
 	}
-	diffCacheMu.Unlock()
-
-	g := &git.Git{Dir: wtPath}
-	out, err := g.Run("diff", "--shortstat", fmt.Sprintf("origin/%s...HEAD", baseBranch))
-	if err != nil {
-		return "--"
+	if multiRepo {
+		name = r.Repo + "/" + name
 	}
+	if r.StackPrefix != "" && !r.Detached {
+		name = r.StackPrefix + name
+	}
+	return name
+}
 
-	stats := git.ParseShortstat(out)
+func hasMultipleRepos(rows []row) bool {
+	if len(rows) <= 1 {
+		return false
+	}
+	first := rows[0].Repo
+	for _, r := range rows[1:] {
+		if r.Repo != first {
+			return true
+		}
+	}
+	return false
+}
 
-	diffCacheMu.Lock()
-	diffCache[wtPath] = cachedDiff{stats: stats, at: time.Now()}
-	diffCacheMu.Unlock()
+func colorStatus(u *ui.UI, status claude.Status, text string) string {
+	switch status {
+	case claude.StatusBusy:
+		return u.Green(text)
+	case claude.StatusWait:
+		return u.Red(text)
+	case claude.StatusDone:
+		return u.Cyan(text)
+	case claude.StatusIdle:
+		return u.Yellow(text)
+	default:
+		return u.Dim(text)
+	}
+}
 
-	return stats
+func shortenPathWithHome(path, home string) string {
+	if home != "" && strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 func termWidth() int {
