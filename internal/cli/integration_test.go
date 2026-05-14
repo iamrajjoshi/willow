@@ -2078,16 +2078,6 @@ func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 	}
 	installMergedStatusGH(t, baseBranch, "feature-merged", strings.TrimSpace(headOID))
 
-	lsOut, err := captureStdout(t, func() error {
-		return runApp("ls", "mergedrepo")
-	})
-	if err != nil {
-		t.Fatalf("ls failed: %v", err)
-	}
-	if !strings.Contains(lsOut, "feature-merged") || !strings.Contains(lsOut, "[merged]") {
-		t.Fatalf("expected ls output to include merged feature worktree, got:\n%s", lsOut)
-	}
-
 	gcOut, err := captureStdout(t, func() error {
 		return runApp("gc")
 	})
@@ -2098,6 +2088,16 @@ func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 		t.Fatalf("expected gc output to include merged feature worktree, got:\n%s", gcOut)
 	}
 
+	lsOut, err := captureStdout(t, func() error {
+		return runApp("ls", "mergedrepo")
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+	if !strings.Contains(lsOut, "feature-merged") || !strings.Contains(lsOut, "[merged]") {
+		t.Fatalf("expected ls output to include cached merged feature worktree, got:\n%s", lsOut)
+	}
+
 	wts, err := worktree.List(repoGit)
 	if err != nil {
 		t.Fatalf("list worktrees: %v", err)
@@ -2105,6 +2105,49 @@ func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 	mergedSet := mergedBranchSetForRepo("mergedrepo", bareDir, filterBareWorktrees(wts))
 	if !mergedSet["feature-merged"] {
 		t.Fatalf("expected sw merged helper to include feature-merged, got %v", mergedSet)
+	}
+}
+
+func TestLSDoesNotRefreshGitHubMergedStatus(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "lsfast"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "lsfast")
+	entries, _ := os.ReadDir(worktreeDir)
+	mainDir := filepath.Join(worktreeDir, entries[0].Name())
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-fast", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	binDir := t.TempDir()
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("find git: %v", err)
+	}
+	if err := os.Symlink(gitPath, filepath.Join(binDir, "git")); err != nil {
+		t.Fatalf("symlink git: %v", err)
+	}
+	logPath := filepath.Join(binDir, "gh.log")
+	ghScript := fmt.Sprintf("#!/bin/sh\nprintf 'gh invoked\\n' >> %q\nexit 1\n", logPath)
+	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(ghScript), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	if _, err := captureStdout(t, func() error {
+		return runApp("ls", "lsfast")
+	}); err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+
+	if lines := readLogLines(t, logPath); len(lines) > 0 {
+		t.Fatalf("ls should not invoke gh, got log lines %v", lines)
 	}
 }
 
