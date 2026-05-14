@@ -358,7 +358,7 @@ ww rm auth-refactor --prune      # also run git worktree prune
 
 ### `ww ls [repo]`
 
-List worktrees with status. Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom.
+List worktrees with status. Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom. GitHub-backed merged markers use cached data so `ww ls` stays fast in large repos.
 
 ![ww ls](screenshots/demo-ls.gif)
 

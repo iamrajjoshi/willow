@@ -221,7 +221,7 @@ List worktrees with status.
   old-feature          --      <willow-base>/worktrees/myrepo/old-feature  5m
 ```
 
-Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom.
+Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom. GitHub-backed merged markers use cached data so `ww ls` does not refresh GitHub on the hot path.
 
 When run outside a willow repo, lists all repos and their worktree counts.
 

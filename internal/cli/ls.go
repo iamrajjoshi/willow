@@ -224,9 +224,12 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 			branchHeads[wt.Branch] = wt.Head
 		}
 	}
-	done := trace.Span(ctx, "MergedBranchSet")
+	done := trace.Span(ctx, "git.MergedBranchSet")
 	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-	for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
+	done()
+
+	done = trace.Span(ctx, "gh.CachedMergedWorktreeSet")
+	for branch := range gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads) {
 		mergedSet[branch] = true
 	}
 	done()
