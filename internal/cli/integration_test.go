@@ -343,7 +343,16 @@ func captureStderr(t *testing.T, fn func() error) (string, error) {
 }
 
 func installMergedStatusGH(t *testing.T, baseBranch, branch, headOID string) string {
+	return installPRStatusGH(t, baseBranch, branch, headOID, "MERGED")
+}
+
+func installPRStatusGH(t *testing.T, baseBranch, branch, headOID, state string) string {
 	t.Helper()
+
+	mergedAt := ""
+	if state == "MERGED" {
+		mergedAt = "2026-04-21T18:08:47Z"
+	}
 
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu
@@ -368,7 +377,7 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
 
   case "$search" in
     *"head:%s"*)
-      printf '[{"number":42,"title":"Merged PR","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"MERGED","mergedAt":"2026-04-21T18:08:47Z","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"https://github.com/test/repo/pull/42","statusCheckRollup":[]}]\n'
+      printf '[{"number":42,"title":"Test PR","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s","mergedAt":"%s","reviewDecision":"","mergeable":"MERGEABLE","additions":0,"deletions":0,"url":"https://github.com/test/repo/pull/42","statusCheckRollup":[]}]\n'
       ;;
     *)
       printf '[]\n'
@@ -379,7 +388,7 @@ fi
 
 printf 'unsupported gh invocation: %%s\n' "$*" >&2
 exit 1
-`, branch, branch, headOID, baseBranch)
+`, branch, branch, headOID, baseBranch, state, mergedAt)
 
 	_, logPath := installTestCLIPath(t, script)
 	return logPath
@@ -2105,6 +2114,101 @@ func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 	mergedSet := mergedBranchSetForRepo("mergedrepo", bareDir, filterBareWorktrees(wts))
 	if !mergedSet["feature-merged"] {
 		t.Fatalf("expected sw merged helper to include feature-merged, got %v", mergedSet)
+	}
+}
+
+func TestMergedWorktrees_OpenPRDoesNotMarkMergedAcrossCLI(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "openprrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "openprrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	baseBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, baseBranch)
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "feature-open", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "feature-open")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+
+	headOID, err := (&git.Git{Dir: featureDir}).Run("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	installPRStatusGH(t, baseBranch, "feature-open", strings.TrimSpace(headOID), "OPEN")
+
+	gcOut, err := captureStdout(t, func() error {
+		return runApp("gc")
+	})
+	if err != nil {
+		t.Fatalf("gc failed: %v", err)
+	}
+	if strings.Contains(gcOut, "feature-open (repo: openprrepo)") {
+		t.Fatalf("open PR worktree should not be offered as merged, got:\n%s", gcOut)
+	}
+
+	bareDir := filepath.Join(home, ".willow", "repos", "openprrepo.git")
+	wts, err := worktree.List(&git.Git{Dir: bareDir})
+	if err != nil {
+		t.Fatalf("list worktrees: %v", err)
+	}
+	mergedSet := mergedBranchSetForRepo("openprrepo", bareDir, filterBareWorktrees(wts))
+	if mergedSet["feature-open"] {
+		t.Fatalf("open PR worktree should not be merged, got %v", mergedSet)
+	}
+}
+
+func TestMergedWorktrees_GitMergedBranchWithoutPRIsNotMerged(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "gitmergedrepo"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	worktreeDir := filepath.Join(home, ".willow", "worktrees", "gitmergedrepo")
+	entries, _ := os.ReadDir(worktreeDir)
+	baseBranch := entries[0].Name()
+	mainDir := filepath.Join(worktreeDir, baseBranch)
+	os.Chdir(mainDir)
+
+	if err := runApp("new", "manual-merged", "--no-fetch"); err != nil {
+		t.Fatalf("new failed: %v", err)
+	}
+
+	featureDir := filepath.Join(worktreeDir, "manual-merged")
+	commitFile(t, featureDir, "feature.txt", "feature\n", "add feature")
+	os.Chdir(mainDir)
+	if _, err := (&git.Git{Dir: mainDir}).Run("merge", "--no-ff", "manual-merged", "-m", "merge manual"); err != nil {
+		t.Fatalf("merge manual-merged: %v", err)
+	}
+	if _, err := (&git.Git{Dir: mainDir}).Run("push", "origin", baseBranch); err != nil {
+		t.Fatalf("push merged base: %v", err)
+	}
+
+	bareDir := filepath.Join(home, ".willow", "repos", "gitmergedrepo.git")
+	repoGit := &git.Git{Dir: bareDir}
+	gitMerged := repoGit.MergedBranchSet(baseBranch, []string{"manual-merged"})
+	if !gitMerged["manual-merged"] {
+		t.Fatalf("manual-merged should be git-merged in this regression setup, got %v", gitMerged)
+	}
+
+	installTestCLIPath(t, "")
+	gcOut, err := captureStdout(t, func() error {
+		return runApp("gc")
+	})
+	if err != nil {
+		t.Fatalf("gc failed: %v", err)
+	}
+	if strings.Contains(gcOut, "manual-merged (repo: gitmergedrepo)") {
+		t.Fatalf("git-only merged worktree should not be offered as PR-merged, got:\n%s", gcOut)
 	}
 }
 

@@ -91,11 +91,129 @@ func TestMergedWorktreeSet_MergeEligibility(t *testing.T) {
 
 			got := MergedWorktreeSet("/fake/repo", tt.base, map[string]string{
 				tt.branch: tt.head,
-			})
+			}, nil)
 			if got[tt.branch] != tt.wantMerged {
 				t.Fatalf("MergedWorktreeSet()[%q] = %v, want %v", tt.branch, got[tt.branch], tt.wantMerged)
 			}
 		})
+	}
+}
+
+func TestMergedWorktreeSet_ExactOpenPRBeatsOlderMergedPR(t *testing.T) {
+	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
+
+	prepareMergedWorktreeTestEnv(t, now, func(_ string, branches []string) ([]*PRInfo, error) {
+		if len(branches) != 1 || branches[0] != "feature" {
+			t.Fatalf("search branches = %v, want [feature]", branches)
+		}
+		return []*PRInfo{
+			{
+				Number:      101,
+				Branch:      "feature",
+				HeadRefOID:  "abc123",
+				BaseRefName: "master",
+				State:       "MERGED",
+				MergedAt:    "2026-04-21T18:08:47Z",
+			},
+			{
+				Number:      102,
+				Branch:      "feature",
+				HeadRefOID:  "def456",
+				BaseRefName: "master",
+				State:       "OPEN",
+			},
+		}, nil
+	})
+
+	got := MergedWorktreeSet("/fake/repo", "master", map[string]string{
+		"feature": "def456",
+	}, nil)
+	if got["feature"] {
+		t.Fatalf("open current-head PR should not be marked merged, got %v", got)
+	}
+}
+
+func TestMergedWorktreeSet_ExactNonMergedPRBeatsSameHeadMergedPR(t *testing.T) {
+	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
+
+	prepareMergedWorktreeTestEnv(t, now, func(_ string, _ []string) ([]*PRInfo, error) {
+		return []*PRInfo{
+			{
+				Number:      101,
+				Branch:      "feature",
+				HeadRefOID:  "abc123",
+				BaseRefName: "master",
+				State:       "MERGED",
+				MergedAt:    "2026-04-21T18:08:47Z",
+			},
+			{
+				Number:      102,
+				Branch:      "feature",
+				HeadRefOID:  "abc123",
+				BaseRefName: "master",
+				State:       "OPEN",
+			},
+		}, nil
+	})
+
+	got := MergedWorktreeSet("/fake/repo", "master", map[string]string{
+		"feature": "abc123",
+	}, nil)
+	if got["feature"] {
+		t.Fatalf("exact non-merged PR should win over older merged PR, got %v", got)
+	}
+}
+
+func TestMergedWorktreeSet_NewerMergedPRBeatsOlderClosedPR(t *testing.T) {
+	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
+
+	prepareMergedWorktreeTestEnv(t, now, func(_ string, _ []string) ([]*PRInfo, error) {
+		return []*PRInfo{
+			{
+				Number:      101,
+				Branch:      "feature",
+				HeadRefOID:  "abc123",
+				BaseRefName: "master",
+				State:       "CLOSED",
+			},
+			{
+				Number:      102,
+				Branch:      "feature",
+				HeadRefOID:  "abc123",
+				BaseRefName: "master",
+				State:       "MERGED",
+				MergedAt:    "2026-04-21T18:08:47Z",
+			},
+		}, nil
+	})
+
+	got := MergedWorktreeSet("/fake/repo", "master", map[string]string{
+		"feature": "abc123",
+	}, nil)
+	if !got["feature"] {
+		t.Fatalf("newer exact merged PR should win over older closed PR, got %v", got)
+	}
+}
+
+func TestMergedWorktreeSet_UsesBranchSpecificBase(t *testing.T) {
+	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
+
+	prepareMergedWorktreeTestEnv(t, now, func(_ string, _ []string) ([]*PRInfo, error) {
+		return []*PRInfo{{
+			Number:      101,
+			Branch:      "feature-b",
+			HeadRefOID:  "sha-b",
+			BaseRefName: "feature-a",
+			State:       "MERGED",
+			MergedAt:    "2026-04-21T18:08:47Z",
+		}}, nil
+	})
+
+	got := MergedWorktreeSet("/fake/repo", "master", map[string]string{
+		"feature-b": "sha-b",
+	}, map[string]string{"feature-b": "feature-a"})
+	if !got["feature-b"] {
+		t.Fatalf("expected branch-specific base to match merged PR, got %v", got)
 	}
 }
 
@@ -112,8 +230,8 @@ func TestMergedWorktreeSet_NegativeResultsAreCached(t *testing.T) {
 	})
 
 	heads := map[string]string{"feature": "abc123"}
-	first := MergedWorktreeSet("/fake/repo", "master", heads)
-	second := MergedWorktreeSet("/fake/repo", "master", heads)
+	first := MergedWorktreeSet("/fake/repo", "master", heads, nil)
+	second := MergedWorktreeSet("/fake/repo", "master", heads, nil)
 
 	if len(first) != 0 || len(second) != 0 {
 		t.Fatalf("expected no merged branches, got first=%v second=%v", first, second)
@@ -141,7 +259,7 @@ func TestMergedWorktreeSet_FreshCacheIsReused(t *testing.T) {
 
 	heads := map[string]string{"feature": "abc123"}
 	for i := 0; i < 2; i++ {
-		got := MergedWorktreeSet("/fake/repo", "master", heads)
+		got := MergedWorktreeSet("/fake/repo", "master", heads, nil)
 		if !got["feature"] {
 			t.Fatalf("call %d: expected feature to be merged, got %v", i+1, got)
 		}
@@ -175,12 +293,12 @@ func TestMergedWorktreeSet_StaleCacheRefreshes(t *testing.T) {
 	mergedWorktreeNow = func() time.Time { return current }
 	heads := map[string]string{"feature": "abc123"}
 
-	if got := MergedWorktreeSet("/fake/repo", "master", heads); got["feature"] {
+	if got := MergedWorktreeSet("/fake/repo", "master", heads, nil); got["feature"] {
 		t.Fatalf("first call unexpectedly marked feature merged: %v", got)
 	}
 
 	current = start.Add(mergedWorktreeCacheTTL + time.Second)
-	got := MergedWorktreeSet("/fake/repo", "master", heads)
+	got := MergedWorktreeSet("/fake/repo", "master", heads, nil)
 	if !got["feature"] {
 		t.Fatalf("expected stale cache refresh to mark feature merged, got %v", got)
 	}
@@ -229,7 +347,7 @@ func TestMergedWorktreeSet_MissingBranchEntriesRefreshIndividually(t *testing.T)
 
 	first := MergedWorktreeSet("/fake/repo", "master", map[string]string{
 		"feature-a": "sha-a",
-	})
+	}, nil)
 	if !first["feature-a"] {
 		t.Fatalf("expected feature-a to be merged, got %v", first)
 	}
@@ -237,7 +355,7 @@ func TestMergedWorktreeSet_MissingBranchEntriesRefreshIndividually(t *testing.T)
 	second := MergedWorktreeSet("/fake/repo", "master", map[string]string{
 		"feature-a": "sha-a",
 		"feature-b": "sha-b",
-	})
+	}, nil)
 	if !second["feature-a"] || !second["feature-b"] {
 		t.Fatalf("expected both branches merged after refresh, got %v", second)
 	}
@@ -246,7 +364,7 @@ func TestMergedWorktreeSet_MissingBranchEntriesRefreshIndividually(t *testing.T)
 	}
 }
 
-func TestCachedMergedWorktreeSet_UsesStalePositiveCacheWithoutRefreshing(t *testing.T) {
+func TestCachedMergedWorktreeSet_IgnoresStalePositiveCacheWithoutRefreshing(t *testing.T) {
 	now := time.Date(2026, 4, 21, 18, 30, 0, 0, time.UTC)
 	calls := 0
 
@@ -272,9 +390,9 @@ func TestCachedMergedWorktreeSet_UsesStalePositiveCacheWithoutRefreshing(t *test
 		t.Fatalf("save cache: %v", err)
 	}
 
-	got := CachedMergedWorktreeSet("/fake/repo", "master", map[string]string{"feature": "abc123"})
-	if !got["feature"] {
-		t.Fatalf("expected cached merged branch, got %v", got)
+	got := CachedMergedWorktreeSet("/fake/repo", "master", map[string]string{"feature": "abc123"}, nil)
+	if got["feature"] {
+		t.Fatalf("stale cached merged branch should be ignored, got %v", got)
 	}
 	if calls != 0 {
 		t.Fatalf("search calls = %d, want 0", calls)

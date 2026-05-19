@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	mergedWorktreeCacheTTL  = 30 * time.Second
-	mergedWorktreeBatchSize = 20
-	mergedWorktreeCacheDir  = "merged-worktrees"
-	mergedWorktreeSearchCap = 100
-	detachedBranchName      = "(detached)"
+	mergedWorktreeCacheVersion = 2
+	mergedWorktreeCacheTTL     = 30 * time.Second
+	mergedWorktreeBatchSize    = 20
+	mergedWorktreeCacheDir     = "merged-worktrees"
+	mergedWorktreeSearchCap    = 100
+	detachedBranchName         = "(detached)"
 )
 
 type mergedWorktreeCacheEntry struct {
@@ -33,7 +34,14 @@ type mergedWorktreeCacheEntry struct {
 }
 
 type mergedWorktreeCache struct {
+	Version int                                 `json:"version"`
 	Entries map[string]mergedWorktreeCacheEntry `json:"entries"`
+}
+
+type mergeCandidate struct {
+	branch string
+	head   string
+	base   string
 }
 
 var (
@@ -46,139 +54,160 @@ var (
 	mergedWorktreeRepoKey   = repoCacheKey
 )
 
-// MergedWorktreeSet returns branches whose worktrees are safe to treat as
-// merged based on GitHub PR state. It is designed to augment git ancestry-
-// based merged detection and silently falls back to an empty set when `gh`
-// is unavailable or GitHub lookup fails.
-func MergedWorktreeSet(dir, base string, branchHeads map[string]string) map[string]bool {
+// MergedWorktreeSet returns branches whose current worktree heads have exact
+// merged PRs on GitHub. It deliberately does not use git ancestry: in Willow,
+// `[merged]` is a PR lifecycle signal, not a reachability signal.
+func MergedWorktreeSet(dir, defaultBase string, branchHeads, branchBases map[string]string) map[string]bool {
+	return mergedWorktreeSet(dir, defaultBase, branchHeads, branchBases, true)
+}
+
+// CachedMergedWorktreeSet returns fresh merged branches from the on-disk
+// GitHub lookup cache only. It never shells out to gh, so interactive pickers
+// can use it without putting network-backed PR lookups on their initial render
+// path. Stale positives are ignored rather than risk showing a false
+// `[merged]` tag for a reused branch.
+func CachedMergedWorktreeSet(dir, defaultBase string, branchHeads, branchBases map[string]string) map[string]bool {
+	return mergedWorktreeSet(dir, defaultBase, branchHeads, branchBases, false)
+}
+
+func mergedWorktreeSet(dir, defaultBase string, branchHeads, branchBases map[string]string, refresh bool) map[string]bool {
 	set := make(map[string]bool)
-	if dir == "" || len(branchHeads) == 0 || !mergedWorktreeCLI() {
+	candidates := mergedCandidates(defaultBase, branchHeads, branchBases)
+	if dir == "" || len(candidates) == 0 {
 		return set
 	}
 
 	now := mergedWorktreeNow()
-	cachePath := mergedWorktreeCachePath(dir, base)
+	cachePath := mergedWorktreeCachePath(dir, defaultBase)
 	cache := loadMergedWorktreeCache(cachePath)
 
-	eligibleHeads := make(map[string]string, len(branchHeads))
-	var pending []string
-	for branch, head := range branchHeads {
-		if branch == "" || branch == base || branch == detachedBranchName || head == "" {
-			continue
-		}
-
-		eligibleHeads[branch] = head
-		entry, ok := cache.Entries[branch]
-		if ok && now.Sub(entry.CheckedAt) < mergedWorktreeCacheTTL {
-			if entry.isMerged(base, head) {
-				set[branch] = true
+	var pending []mergeCandidate
+	for _, candidate := range candidates {
+		entry, ok := cache.Entries[candidate.branch]
+		if ok && entry.isFreshFor(candidate, now) {
+			if entry.isMerged(candidate) {
+				set[candidate.branch] = true
 			}
 			continue
 		}
 
-		pending = append(pending, branch)
+		pending = append(pending, candidate)
 	}
 
-	if len(pending) == 0 {
+	if !refresh || len(pending) == 0 || !mergedWorktreeCLI() {
 		return set
 	}
 
-	sort.Strings(pending)
+	sort.Slice(pending, func(i, j int) bool {
+		return pending[i].branch < pending[j].branch
+	})
 	updated, _ := refreshMergedWorktreeCache(cache, dir, pending, now)
 	_ = saveMergedWorktreeCache(cachePath, updated)
 
-	for branch, head := range eligibleHeads {
-		entry, ok := updated.Entries[branch]
-		if !ok || now.Sub(entry.CheckedAt) >= mergedWorktreeCacheTTL {
+	for _, candidate := range candidates {
+		entry, ok := updated.Entries[candidate.branch]
+		if !ok || !entry.isFreshFor(candidate, now) {
 			continue
 		}
-		if entry.isMerged(base, head) {
-			set[branch] = true
+		if entry.isMerged(candidate) {
+			set[candidate.branch] = true
 		}
 	}
 
 	return set
 }
 
-// CachedMergedWorktreeSet returns merged branches from the on-disk GitHub
-// lookup cache only. It never shells out to gh, so interactive pickers can use
-// it without putting network-backed PR lookups on their initial render path.
-func CachedMergedWorktreeSet(dir, base string, branchHeads map[string]string) map[string]bool {
-	set := make(map[string]bool)
-	if dir == "" || len(branchHeads) == 0 {
-		return set
-	}
-
-	cache := loadMergedWorktreeCache(mergedWorktreeCachePath(dir, base))
+func mergedCandidates(defaultBase string, branchHeads, branchBases map[string]string) []mergeCandidate {
+	candidates := make([]mergeCandidate, 0, len(branchHeads))
 	for branch, head := range branchHeads {
-		if branch == "" || branch == base || branch == detachedBranchName || head == "" {
+		base := defaultBase
+		if branchBases != nil && branchBases[branch] != "" {
+			base = branchBases[branch]
+		}
+		if branch == "" || branch == base || branch == detachedBranchName || head == "" || base == "" {
 			continue
 		}
-		entry, ok := cache.Entries[branch]
-		if ok && entry.isMerged(base, head) {
-			set[branch] = true
-		}
+		candidates = append(candidates, mergeCandidate{branch: branch, head: head, base: base})
 	}
-	return set
+	return candidates
 }
 
-func (e mergedWorktreeCacheEntry) isMerged(base, head string) bool {
+func (e mergedWorktreeCacheEntry) isFreshFor(candidate mergeCandidate, now time.Time) bool {
+	return now.Sub(e.CheckedAt) < mergedWorktreeCacheTTL &&
+		e.BaseRefName == candidate.base &&
+		e.HeadRefOID == candidate.head
+}
+
+func (e mergedWorktreeCacheEntry) isMerged(candidate mergeCandidate) bool {
 	return e.Found &&
 		e.State == "MERGED" &&
-		e.BaseRefName == base &&
-		e.HeadRefOID == head
+		e.BaseRefName == candidate.base &&
+		e.HeadRefOID == candidate.head
 }
 
-func refreshMergedWorktreeCache(cache mergedWorktreeCache, dir string, branches []string, now time.Time) (mergedWorktreeCache, error) {
+func refreshMergedWorktreeCache(cache mergedWorktreeCache, dir string, candidates []mergeCandidate, now time.Time) (mergedWorktreeCache, error) {
 	updated := cache.clone()
 
-	for start := 0; start < len(branches); start += mergedWorktreeBatchSize {
+	for start := 0; start < len(candidates); start += mergedWorktreeBatchSize {
 		end := start + mergedWorktreeBatchSize
-		if end > len(branches) {
-			end = len(branches)
+		if end > len(candidates) {
+			end = len(candidates)
 		}
 
-		batch := branches[start:end]
-		prs, err := mergedWorktreeSearchPRs(dir, batch)
+		batch := candidates[start:end]
+		prs, err := mergedWorktreeSearchPRs(dir, candidateBranches(batch))
 		if err != nil {
 			return updated, err
 		}
 
-		latest := latestPRsByBranch(batch, prs)
-		for _, branch := range batch {
-			entry := mergedWorktreeCacheEntry{CheckedAt: now}
-			if pr := latest[branch]; pr != nil {
+		for _, candidate := range batch {
+			entry := mergedWorktreeCacheEntry{
+				CheckedAt:   now,
+				BaseRefName: candidate.base,
+				HeadRefOID:  candidate.head,
+			}
+			if pr := selectExactPR(candidate, prs); pr != nil {
 				entry.Found = true
 				entry.Number = pr.Number
 				entry.State = pr.State
-				entry.BaseRefName = pr.BaseRefName
-				entry.HeadRefOID = pr.HeadRefOID
 				entry.MergedAt = pr.MergedAt
 			}
-			updated.Entries[branch] = entry
+			updated.Entries[candidate.branch] = entry
 		}
 	}
 
 	return updated, nil
 }
 
-func latestPRsByBranch(branches []string, prs []*PRInfo) map[string]*PRInfo {
-	branchSet := make(map[string]bool, len(branches))
-	for _, branch := range branches {
-		branchSet[branch] = true
+func candidateBranches(candidates []mergeCandidate) []string {
+	branches := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		branches = append(branches, candidate.branch)
 	}
+	return branches
+}
 
-	latest := make(map[string]*PRInfo, len(branches))
+func selectExactPR(candidate mergeCandidate, prs []*PRInfo) *PRInfo {
+	var selected *PRInfo
 	for _, pr := range prs {
-		if pr == nil || !branchSet[pr.Branch] {
+		if pr == nil ||
+			pr.Branch != candidate.branch ||
+			pr.HeadRefOID != candidate.head ||
+			pr.BaseRefName != candidate.base {
 			continue
 		}
-		if current := latest[pr.Branch]; current == nil || pr.Number > current.Number {
-			latest[pr.Branch] = pr
+		if betterExactPR(pr, selected) {
+			selected = pr
 		}
 	}
+	return selected
+}
 
-	return latest
+func betterExactPR(candidate, current *PRInfo) bool {
+	if current == nil {
+		return true
+	}
+	return candidate.Number > current.Number
 }
 
 func searchPRsByBranches(dir string, branches []string) ([]*PRInfo, error) {
@@ -234,7 +263,8 @@ func headSearchTerm(branch string) string {
 }
 
 func mergedWorktreeCachePath(dir, base string) string {
-	sum := sha256.Sum256([]byte(mergedWorktreeRepoKey(dir) + "\x00" + base))
+	key := fmt.Sprintf("v%d\x00%s\x00%s", mergedWorktreeCacheVersion, mergedWorktreeRepoKey(dir), base)
+	sum := sha256.Sum256([]byte(key))
 	return filepath.Join(config.WillowHome(), "cache", mergedWorktreeCacheDir, fmt.Sprintf("%x.json", sum[:]))
 }
 
@@ -259,12 +289,15 @@ func repoCacheKey(dir string) string {
 func loadMergedWorktreeCache(path string) mergedWorktreeCache {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return mergedWorktreeCache{Entries: make(map[string]mergedWorktreeCacheEntry)}
+		return emptyMergedWorktreeCache()
 	}
 
 	var cache mergedWorktreeCache
 	if err := json.Unmarshal(data, &cache); err != nil {
-		return mergedWorktreeCache{Entries: make(map[string]mergedWorktreeCacheEntry)}
+		return emptyMergedWorktreeCache()
+	}
+	if cache.Version != mergedWorktreeCacheVersion {
+		return emptyMergedWorktreeCache()
 	}
 	if cache.Entries == nil {
 		cache.Entries = make(map[string]mergedWorktreeCacheEntry)
@@ -277,6 +310,7 @@ func saveMergedWorktreeCache(path string, cache mergedWorktreeCache) error {
 		return err
 	}
 
+	cache.Version = mergedWorktreeCacheVersion
 	data, err := json.Marshal(cache)
 	if err != nil {
 		return err
@@ -305,10 +339,18 @@ func saveMergedWorktreeCache(path string, cache mergedWorktreeCache) error {
 
 func (c mergedWorktreeCache) clone() mergedWorktreeCache {
 	cloned := mergedWorktreeCache{
+		Version: mergedWorktreeCacheVersion,
 		Entries: make(map[string]mergedWorktreeCacheEntry, len(c.Entries)),
 	}
 	for branch, entry := range c.Entries {
 		cloned.Entries[branch] = entry
 	}
 	return cloned
+}
+
+func emptyMergedWorktreeCache() mergedWorktreeCache {
+	return mergedWorktreeCache{
+		Version: mergedWorktreeCacheVersion,
+		Entries: make(map[string]mergedWorktreeCacheEntry),
+	}
 }
