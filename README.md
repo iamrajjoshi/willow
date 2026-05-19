@@ -71,7 +71,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 
 - [git](https://git-scm.com/)
 - [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
-- [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, `ww pr create`, and GitHub-aware merged worktree detection
+- [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, `ww pr create`, and PR-state merged worktree detection
 
 ## Setup
 
@@ -236,7 +236,7 @@ Willow refuses to overwrite existing branches, worktree paths, status directorie
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Merged worktrees show a `[merged]` indicator in `ww ls` and the tmux picker. When `gh` is installed, willow also marks branches whose latest PR was merged on GitHub via squash/rebase, even if the branch tip is not an ancestor of the base branch. The tmux picker uses cached GitHub merge results on open so slow PR lookups don't block rendering.
+Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Worktrees whose exact current-head PR is merged show a `[merged]` indicator in `ww ls` and the tmux picker. The tmux picker uses cached GitHub PR-state results on open so slow PR lookups don't block rendering.
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
@@ -358,7 +358,7 @@ ww rm auth-refactor --prune      # also run git worktree prune
 
 ### `ww ls [repo]`
 
-List worktrees with status. Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and merged worktrees at the bottom. GitHub-backed merged markers use cached data so `ww ls` stays fast in large repos.
+List worktrees with status. Uses the same urgency ordering as `ww sw`, while keeping stacked branches together and PR-merged worktrees at the bottom. GitHub-backed merged markers use cached exact PR-state data so `ww ls` stays fast in large repos.
 
 ![ww ls](screenshots/demo-ls.gif)
 

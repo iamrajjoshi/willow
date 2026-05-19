@@ -122,31 +122,27 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, sessionSet ma
 
 	cfg := config.Load(bareDir)
 	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-	branches := make([]string, 0, len(wts))
 	branchHeads := make(map[string]string, len(wts))
+	branchBases := make(map[string]string, len(wts))
 	repoDir := ""
 	for _, wt := range wts {
 		if !wt.IsBare && !wt.Detached && wt.Branch != "" {
 			if repoDir == "" {
 				repoDir = wt.Path
 			}
-			branches = append(branches, wt.Branch)
 			branchHeads[wt.Branch] = wt.Head
+			if parent := result.stack.Parent(wt.Branch); parent != "" {
+				branchBases[wt.Branch] = parent
+			}
 		}
 	}
-	done = trace.Span(ctx, "git.MergedBranchSet/"+repoName)
-	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-	done()
 
 	done = trace.Span(ctx, "gh.MergedWorktreeSet/"+repoName)
-	var githubMerged map[string]bool
+	var mergedSet map[string]bool
 	if opts.RefreshGitHubMerged {
-		githubMerged = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads)
+		mergedSet = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
 	} else {
-		githubMerged = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads)
-	}
-	for branch := range githubMerged {
-		mergedSet[branch] = true
+		mergedSet = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
 	}
 	done()
 

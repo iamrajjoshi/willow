@@ -212,26 +212,22 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
 
 	st := stack.Load(repoGit.Dir)
-	branches := make([]string, 0, len(worktrees))
 	branchHeads := make(map[string]string, len(worktrees))
+	branchBases := make(map[string]string, len(worktrees))
 	repoDir := ""
 	for _, wt := range worktrees {
 		if repoDir == "" {
 			repoDir = wt.Path
 		}
 		if wt.Branch != "" && !wt.Detached {
-			branches = append(branches, wt.Branch)
 			branchHeads[wt.Branch] = wt.Head
+			if parent := st.Parent(wt.Branch); parent != "" {
+				branchBases[wt.Branch] = parent
+			}
 		}
 	}
-	done := trace.Span(ctx, "git.MergedBranchSet")
-	mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-	done()
-
-	done = trace.Span(ctx, "gh.CachedMergedWorktreeSet")
-	for branch := range gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads) {
-		mergedSet[branch] = true
-	}
+	done := trace.Span(ctx, "gh.CachedMergedWorktreeSet")
+	mergedSet := gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
 	done()
 
 	var rows []lsRow

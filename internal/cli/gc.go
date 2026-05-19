@@ -10,6 +10,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
+	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -85,9 +86,10 @@ func gcCmd() *cli.Command {
 				}
 
 				baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-				branches := make([]string, 0, len(wts))
 				branchHeads := make(map[string]string, len(wts))
+				branchBases := make(map[string]string, len(wts))
 				repoDir := ""
+				st := stack.Load(bareDir)
 				for _, wt := range wts {
 					if wt.IsBare || wt.Detached || wt.Branch == "" {
 						continue
@@ -95,14 +97,13 @@ func gcCmd() *cli.Command {
 					if repoDir == "" {
 						repoDir = wt.Path
 					}
-					branches = append(branches, wt.Branch)
 					branchHeads[wt.Branch] = wt.Head
+					if parent := st.Parent(wt.Branch); parent != "" {
+						branchBases[wt.Branch] = parent
+					}
 				}
 
-				mergedSet := repoGit.MergedBranchSet(baseBranch, branches)
-				for branch := range gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads) {
-					mergedSet[branch] = true
-				}
+				mergedSet := gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
 				if len(mergedSet) == 0 {
 					continue
 				}
