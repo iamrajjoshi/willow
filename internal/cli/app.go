@@ -2,6 +2,8 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
@@ -31,6 +33,65 @@ func resolveRepoFromCwd() (string, bool) {
 		return "", false
 	}
 	return config.ResolveRepoFromDir(cwd)
+}
+
+func resolveRepoFromGitMetadataCwd() (bareDir string, isWillow bool, foundGit bool) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", false, false
+	}
+
+	for {
+		if commonDir, ok := commonDirFromGitMetadata(cwd); ok {
+			return commonDir, config.IsWillowRepo(commonDir), true
+		}
+
+		parent := filepath.Dir(cwd)
+		if parent == cwd {
+			return "", false, false
+		}
+		cwd = parent
+	}
+}
+
+func commonDirFromGitMetadata(dir string) (string, bool) {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return "", false
+	}
+
+	gitDir := gitPath
+	if !info.IsDir() {
+		data, err := os.ReadFile(gitPath)
+		if err != nil {
+			return "", false
+		}
+		line := strings.TrimSpace(string(data))
+		rawGitDir, ok := strings.CutPrefix(line, "gitdir:")
+		if !ok {
+			return "", false
+		}
+		gitDir = strings.TrimSpace(rawGitDir)
+		if gitDir == "" {
+			return "", false
+		}
+		if !filepath.IsAbs(gitDir) {
+			gitDir = filepath.Join(dir, gitDir)
+		}
+	}
+
+	commonDir := gitDir
+	if data, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		value := strings.TrimSpace(string(data))
+		if value != "" {
+			commonDir = value
+			if !filepath.IsAbs(commonDir) {
+				commonDir = filepath.Join(gitDir, commonDir)
+			}
+		}
+	}
+	return filepath.Clean(commonDir), true
 }
 
 var version = "dev"

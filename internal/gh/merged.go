@@ -269,6 +269,10 @@ func mergedWorktreeCachePath(dir, base string) string {
 }
 
 func repoCacheKey(dir string) string {
+	if key, ok := repoCacheKeyFromGitMetadata(dir); ok {
+		return key
+	}
+
 	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
 	cmd.Dir = dir
 	out, err := cmd.Output()
@@ -284,6 +288,63 @@ func repoCacheKey(dir string) string {
 		key = filepath.Join(dir, key)
 	}
 	return filepath.Clean(key)
+}
+
+func repoCacheKeyFromGitMetadata(dir string) (string, bool) {
+	dir = filepath.Clean(dir)
+	if isGitDir(dir) {
+		return commonDirFromGitDir(dir)
+	}
+
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	if err == nil && info.IsDir() {
+		return commonDirFromGitDir(gitPath)
+	}
+
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return "", false
+	}
+	line := strings.TrimSpace(string(data))
+	gitDir, ok := strings.CutPrefix(line, "gitdir:")
+	if !ok {
+		return "", false
+	}
+	gitDir = strings.TrimSpace(gitDir)
+	if gitDir == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(dir, gitDir)
+	}
+	return commonDirFromGitDir(gitDir)
+}
+
+func commonDirFromGitDir(gitDir string) (string, bool) {
+	gitDir = filepath.Clean(gitDir)
+	data, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return filepath.Clean(gitDir), true
+	}
+	commonDir := strings.TrimSpace(string(data))
+	if commonDir == "" {
+		return filepath.Clean(gitDir), true
+	}
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(gitDir, commonDir)
+	}
+	return filepath.Clean(commonDir), true
+}
+
+func isGitDir(dir string) bool {
+	if !strings.HasSuffix(filepath.Base(dir), ".git") {
+		return false
+	}
+	if info, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil || info.IsDir() {
+		return false
+	}
+	return true
 }
 
 func loadMergedWorktreeCache(path string) mergedWorktreeCache {

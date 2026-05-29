@@ -73,10 +73,8 @@ func BuildPickerItemsWithOptions(ctx context.Context, repoFilter string, opts Pi
 		}
 	}
 
-	sessionSet := ListSessions()
-
 	results := parallel.Map(repoNames, func(_ int, repoName string) pickerRepoResult {
-		return buildPickerItemsForRepo(ctx, repoName, sessionSet, opts)
+		return buildPickerItemsForRepo(ctx, repoName, opts)
 	})
 
 	var items []PickerItem
@@ -104,7 +102,7 @@ type pickerRepoResult struct {
 	stack    *stack.Stack
 }
 
-func buildPickerItemsForRepo(ctx context.Context, repoName string, sessionSet map[string]bool, opts PickerBuildOptions) pickerRepoResult {
+func buildPickerItemsForRepo(ctx context.Context, repoName string, opts PickerBuildOptions) pickerRepoResult {
 	result := pickerRepoResult{repoName: repoName}
 	bareDir, err := config.ResolveRepo(repoName)
 	if err != nil {
@@ -154,19 +152,17 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, sessionSet ma
 		wtDir := filepath.Base(wt.Path)
 		sessions := claude.ReadAllSessions(repoName, wtDir)
 		ws := claude.AggregateStatus(sessions)
-		sessName := SessionNameForWorktree(repoName, wtDir)
 		result.items = append(result.items, PickerItem{
-			RepoName:   repoName,
-			Branch:     wt.Branch,
-			Head:       wt.Head,
-			Detached:   wt.Detached,
-			WtDirName:  wtDir,
-			WtPath:     wt.Path,
-			Status:     ws.Status,
-			Unread:     ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
-			HasSession: sessionSet[sessName],
-			Sessions:   sessions,
-			Merged:     !wt.Detached && mergedSet[wt.Branch],
+			RepoName:  repoName,
+			Branch:    wt.Branch,
+			Head:      wt.Head,
+			Detached:  wt.Detached,
+			WtDirName: wtDir,
+			WtPath:    wt.Path,
+			Status:    ws.Status,
+			Unread:    ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			Sessions:  sessions,
+			Merged:    !wt.Detached && mergedSet[wt.Branch],
 		})
 	}
 	done()

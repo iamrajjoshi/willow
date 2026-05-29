@@ -38,7 +38,7 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
 		sessions := claude.ReadAllSessions(repoName, wtDir)
-		unread := claude.CountUnreadIn(repoName, wtDir, sessions) > 0
+		unread := hasDoneSession(sessions) && claude.CountUnreadIn(repoName, wtDir, sessions) > 0
 		if unread {
 			rs.UnreadCount++
 		}
@@ -86,6 +86,15 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 	return rs
 }
 
+func hasDoneSession(sessions []*claude.SessionStatus) bool {
+	for _, ss := range sessions {
+		if ss.Status == claude.StatusDone {
+			return true
+		}
+	}
+	return false
+}
+
 func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
 	type result struct {
 		status repoStatus
@@ -94,7 +103,7 @@ func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
 
 	results := parallel.Map(repos, func(_ int, r repoInfo) result {
 		repoGit := &git.Git{Dir: r.BareDir, Verbose: verbose}
-		wts, err := worktree.List(repoGit)
+		wts, err := worktree.ListWithOptions(repoGit, worktree.ListOptions{ResolveHeads: false})
 		if err != nil {
 			return result{}
 		}

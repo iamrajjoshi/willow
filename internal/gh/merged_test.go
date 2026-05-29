@@ -399,6 +399,52 @@ func TestCachedMergedWorktreeSet_IgnoresStalePositiveCacheWithoutRefreshing(t *t
 	}
 }
 
+func TestRepoCacheKeyFromLinkedWorktreeMetadata(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	root := t.TempDir()
+	bareDir := filepath.Join(root, "repos", "repo.git")
+	gitDir := filepath.Join(bareDir, "worktrees", "feature")
+	wtDir := filepath.Join(root, "worktrees", "repo", "feature")
+
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatalf("mkdir git dir: %v", err)
+	}
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatalf("mkdir worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bareDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatalf("write commondir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtDir, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	if got := repoCacheKey(wtDir); got != filepath.Clean(bareDir) {
+		t.Fatalf("repoCacheKey() = %q, want %q", got, filepath.Clean(bareDir))
+	}
+}
+
+func TestRepoCacheKeyFromGitDirectory(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	root := t.TempDir()
+	gitDir := filepath.Join(root, "repo", ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatalf("mkdir git dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
+	}
+
+	if got := repoCacheKey(filepath.Dir(gitDir)); got != filepath.Clean(gitDir) {
+		t.Fatalf("repoCacheKey() = %q, want %q", got, filepath.Clean(gitDir))
+	}
+}
+
 func prepareMergedWorktreeTestEnv(t *testing.T, now time.Time, search func(dir string, branches []string) ([]*PRInfo, error)) {
 	t.Helper()
 
