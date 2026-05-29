@@ -1,7 +1,9 @@
 package worktree
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -47,11 +49,137 @@ func ShortHead(head string) string {
 }
 
 func List(g *git.Git) ([]Worktree, error) {
+	if g.Dir != "" && !g.Verbose {
+		if worktrees, ok := listFromGitMetadata(g.Dir); ok {
+			return worktrees, nil
+		}
+	}
+
 	out, err := g.Run("worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
 	return parsePorcelain(out), nil
+}
+
+func listFromGitMetadata(commonDir string) ([]Worktree, bool) {
+	commonDir = filepath.Clean(commonDir)
+	if !isBareCommonDir(commonDir) {
+		return nil, false
+	}
+
+	worktrees := []Worktree{{Path: commonDir, IsBare: true}}
+	entries, err := os.ReadDir(filepath.Join(commonDir, "worktrees"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return worktrees, true
+		}
+		return nil, false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		wt, ok := readLinkedWorktree(commonDir, filepath.Join(commonDir, "worktrees", entry.Name()))
+		if !ok {
+			return nil, false
+		}
+		worktrees = append(worktrees, wt)
+	}
+	return worktrees, true
+}
+
+func isBareCommonDir(dir string) bool {
+	if info, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil || info.IsDir() {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config"))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.EqualFold(line, "bare = true") {
+			return true
+		}
+	}
+	return false
+}
+
+func readLinkedWorktree(commonDir, adminDir string) (Worktree, bool) {
+	gitDirData, err := os.ReadFile(filepath.Join(adminDir, "gitdir"))
+	if err != nil {
+		return Worktree{}, false
+	}
+	gitDir := strings.TrimSpace(string(gitDirData))
+	if gitDir == "" {
+		return Worktree{}, false
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(adminDir, gitDir)
+	}
+
+	wtPath := filepath.Clean(gitDir)
+	if filepath.Base(wtPath) == ".git" {
+		wtPath = filepath.Dir(wtPath)
+	}
+	wt := Worktree{Path: wtPath}
+
+	headData, err := os.ReadFile(filepath.Join(adminDir, "HEAD"))
+	if err != nil {
+		return Worktree{}, false
+	}
+	head := strings.TrimSpace(string(headData))
+	if head == "" {
+		return Worktree{}, false
+	}
+	if ref, ok := strings.CutPrefix(head, "ref:"); ok {
+		ref = strings.TrimSpace(ref)
+		branch, ok := strings.CutPrefix(ref, "refs/heads/")
+		if !ok || branch == "" {
+			return Worktree{}, false
+		}
+		resolved, ok := resolveRef(commonDir, ref)
+		if !ok {
+			return Worktree{}, false
+		}
+		wt.Branch = branch
+		wt.Head = resolved
+		return wt, true
+	}
+
+	wt.Branch = DetachedBranch
+	wt.Head = head
+	wt.Detached = true
+	return wt, true
+}
+
+func resolveRef(commonDir, ref string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(commonDir, filepath.FromSlash(ref)))
+	if err == nil {
+		value := strings.TrimSpace(string(data))
+		return value, value != ""
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", false
+	}
+
+	data, err = os.ReadFile(filepath.Join(commonDir, "packed-refs"))
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "^") {
+			continue
+		}
+		sha, name, ok := strings.Cut(line, " ")
+		if ok && name == ref && sha != "" {
+			return sha, true
+		}
+	}
+	return "", false
 }
 
 func parsePorcelain(output string) []Worktree {
