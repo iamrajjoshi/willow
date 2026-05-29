@@ -57,11 +57,19 @@ func lsCmd() *cli.Command {
 				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
-			bareDir, err := g.BareRepoDir()
-			if err == nil && config.IsWillowRepo(bareDir) {
+			if bareDir, ok := resolveRepoFromCwd(); ok {
 				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
-			if bareDir, ok := resolveRepoFromCwd(); ok {
+			if !g.Verbose {
+				if bareDir, isWillow, foundGit := resolveRepoFromGitMetadataCwd(); isWillow {
+					return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
+				} else if foundGit {
+					return printRepoList(flags)
+				}
+			}
+
+			bareDir, err := g.BareRepoDir()
+			if err == nil && config.IsWillowRepo(bareDir) {
 				return listWorktrees(ctx, flags, cmd, &git.Git{Dir: bareDir, Verbose: g.Verbose})
 			}
 
