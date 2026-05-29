@@ -103,7 +103,7 @@ func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
 
 	results := parallel.Map(repos, func(_ int, r repoInfo) result {
 		repoGit := &git.Git{Dir: r.BareDir, Verbose: verbose}
-		wts, err := worktree.List(repoGit)
+		wts, err := worktree.ListWithOptions(repoGit, worktree.ListOptions{ResolveHeads: false})
 		if err != nil {
 			return result{}
 		}

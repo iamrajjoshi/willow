@@ -20,6 +20,10 @@ type Worktree struct {
 	IsBare   bool   `json:"-"`
 }
 
+type ListOptions struct {
+	ResolveHeads bool
+}
+
 func (wt Worktree) DirName() string {
 	return filepath.Base(wt.Path)
 }
@@ -49,8 +53,12 @@ func ShortHead(head string) string {
 }
 
 func List(g *git.Git) ([]Worktree, error) {
+	return ListWithOptions(g, ListOptions{ResolveHeads: true})
+}
+
+func ListWithOptions(g *git.Git, opts ListOptions) ([]Worktree, error) {
 	if g.Dir != "" && !g.Verbose {
-		if worktrees, ok := listFromGitMetadata(g.Dir); ok {
+		if worktrees, ok := listFromGitMetadata(g.Dir, opts); ok {
 			return worktrees, nil
 		}
 	}
@@ -62,7 +70,7 @@ func List(g *git.Git) ([]Worktree, error) {
 	return parsePorcelain(out), nil
 }
 
-func listFromGitMetadata(commonDir string) ([]Worktree, bool) {
+func listFromGitMetadata(commonDir string, opts ListOptions) ([]Worktree, bool) {
 	commonDir = filepath.Clean(commonDir)
 	if !isBareCommonDir(commonDir) {
 		return nil, false
@@ -82,7 +90,7 @@ func listFromGitMetadata(commonDir string) ([]Worktree, bool) {
 		if !entry.IsDir() {
 			continue
 		}
-		wt, ok := readLinkedWorktree(filepath.Join(commonDir, "worktrees", entry.Name()), &resolver)
+		wt, ok := readLinkedWorktree(filepath.Join(commonDir, "worktrees", entry.Name()), &resolver, opts)
 		if !ok {
 			return nil, false
 		}
@@ -115,7 +123,7 @@ type refResolver struct {
 	packedRefsSet bool
 }
 
-func readLinkedWorktree(adminDir string, refs *refResolver) (Worktree, bool) {
+func readLinkedWorktree(adminDir string, refs *refResolver, opts ListOptions) (Worktree, bool) {
 	gitDirData, err := os.ReadFile(filepath.Join(adminDir, "gitdir"))
 	if err != nil {
 		return Worktree{}, false
@@ -148,12 +156,14 @@ func readLinkedWorktree(adminDir string, refs *refResolver) (Worktree, bool) {
 		if !ok || branch == "" {
 			return Worktree{}, false
 		}
-		resolved, ok := refs.resolve(ref)
-		if !ok {
-			return Worktree{}, false
-		}
 		wt.Branch = branch
-		wt.Head = resolved
+		if opts.ResolveHeads {
+			resolved, ok := refs.resolve(ref)
+			if !ok {
+				return Worktree{}, false
+			}
+			wt.Head = resolved
+		}
 		return wt, true
 	}
 

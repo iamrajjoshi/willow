@@ -127,7 +127,7 @@ func TestListFromGitMetadata(t *testing.T) {
 	writeTestFile(t, filepath.Join(commonDir, "worktrees", "detached", "gitdir"), filepath.Join(detachedPath, ".git")+"\n")
 	writeTestFile(t, filepath.Join(commonDir, "worktrees", "detached", "HEAD"), "cccccccccccccccccccccccccccccccccccccccc\n")
 
-	wts, ok := listFromGitMetadata(commonDir)
+	wts, ok := listFromGitMetadata(commonDir, ListOptions{ResolveHeads: true})
 	if !ok {
 		t.Fatal("listFromGitMetadata returned ok=false")
 	}
@@ -145,6 +145,31 @@ func TestListFromGitMetadata(t *testing.T) {
 	}
 }
 
+func TestListFromGitMetadataCanSkipBranchHeads(t *testing.T) {
+	root := t.TempDir()
+	commonDir := filepath.Join(root, "repo.git")
+	adminDir := filepath.Join(commonDir, "worktrees", "feature")
+	wtDir := filepath.Join(root, "worktrees", "feature")
+	if err := os.MkdirAll(adminDir, 0o755); err != nil {
+		t.Fatalf("mkdir admin dir: %v", err)
+	}
+	writeTestFile(t, filepath.Join(commonDir, "HEAD"), "ref: refs/heads/main\n")
+	writeTestFile(t, filepath.Join(commonDir, "config"), "[core]\n\tbare = true\n")
+	writeTestFile(t, filepath.Join(adminDir, "gitdir"), filepath.Join(wtDir, ".git")+"\n")
+	writeTestFile(t, filepath.Join(adminDir, "HEAD"), "ref: refs/heads/feature\n")
+
+	wts, ok := listFromGitMetadata(commonDir, ListOptions{ResolveHeads: false})
+	if !ok {
+		t.Fatal("listFromGitMetadata returned ok=false")
+	}
+	if len(wts) != 2 {
+		t.Fatalf("len(worktrees) = %d, want 2: %+v", len(wts), wts)
+	}
+	if wts[1].Branch != "feature" || wts[1].Head != "" {
+		t.Fatalf("worktree = %+v, want branch without resolved head", wts[1])
+	}
+}
+
 func TestListFromGitMetadataRequiresBareRepo(t *testing.T) {
 	root := t.TempDir()
 	gitDir := filepath.Join(root, "repo", ".git")
@@ -154,7 +179,7 @@ func TestListFromGitMetadataRequiresBareRepo(t *testing.T) {
 	writeTestFile(t, filepath.Join(gitDir, "HEAD"), "ref: refs/heads/main\n")
 	writeTestFile(t, filepath.Join(gitDir, "config"), "[core]\n\tbare = false\n")
 
-	if wts, ok := listFromGitMetadata(gitDir); ok {
+	if wts, ok := listFromGitMetadata(gitDir, ListOptions{ResolveHeads: true}); ok {
 		t.Fatalf("listFromGitMetadata() = %+v, true; want fallback for non-bare repo", wts)
 	}
 }
