@@ -535,9 +535,9 @@ Editor resolution: `$VISUAL` > `$EDITOR` > `vi`.
 Move willow's base directory to a new path, repair Git worktree metadata, and persist the new global `baseDir`.
 
 ```bash
-ww migrate-base ~/code/evergreen/worktrees/willow
-ww migrate-base ~/code/evergreen/worktrees/willow --dry-run
-ww migrate-base ~/code/evergreen/worktrees/willow --yes
+ww migrate-base ~/code/worktrees/willow
+ww migrate-base ~/code/worktrees/willow --dry-run
+ww migrate-base ~/code/worktrees/willow --yes
 ```
 
 | Flag | Description | Default |
@@ -616,3 +616,5 @@ By default, the picker shows a right-side live preview. Set `"tmux": {"switcherP
 --verbose       Show git commands being executed
 --trace         Print timing trace to stderr for performance debugging (env: WILLOW_TRACE)
 ```
+
+`skills/willow-autoresearch/scripts/bench_willow.py` consumes `--trace` output while running with `WILLOW_TELEMETRY=off`, so performance measurements stay focused on the local CLI path.

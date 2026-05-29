@@ -123,7 +123,18 @@ git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
 
 `-g` installs to `~/.claude/skills/`, `-a claude-code` targets Claude Code specifically, and `--skill willow` avoids installing everything in the repo. Once installed, Claude Code will reach for `ww checkout`, `ww sync`, `ww dispatch`, and other willow commands automatically when you ask it to work on branches, PRs, or parallel tasks.
 
-### 3. Claude Code status tracking (optional)
+### 3. Autoresearch performance skill (optional)
+
+Willow also ships `skills/willow-autoresearch/`, a trace-guided benchmark loop for making the CLI faster without Sentry in the measurement path. The harness builds Willow, creates an isolated fixture, runs commands with `WILLOW_TELEMETRY=off` and `WILLOW_TRACE=1`, and writes local results under `.autoresearch/`.
+
+```bash
+python3 skills/willow-autoresearch/scripts/bench_willow.py --runs 7 --json
+python3 skills/willow-autoresearch/scripts/bench_willow.py --reference-repo ~/code/myrepo --runs 7 --json
+```
+
+`--reference-repo` accepts a local repo path, an existing Willow repo name, or a git URL. The source repo is only used as a read-only fixture template.
+
+### 4. Claude Code status tracking (optional)
 
 ```bash
 ww cc-setup
@@ -471,9 +482,9 @@ The global `baseDir` setting controls `<willow-base>` for the whole machine. It 
 Move willow's base directory to a new path, repair Git worktree metadata, and persist the new global `baseDir`.
 
 ```bash
-ww migrate-base ~/code/evergreen/worktrees/willow
-ww migrate-base ~/code/evergreen/worktrees/willow --dry-run
-ww migrate-base ~/code/evergreen/worktrees/willow --yes
+ww migrate-base ~/code/worktrees/willow
+ww migrate-base ~/code/worktrees/willow --dry-run
+ww migrate-base ~/code/worktrees/willow --yes
 ```
 
 ### `ww shell-init [flags]`

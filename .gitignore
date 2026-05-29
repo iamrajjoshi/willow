@@ -31,6 +31,9 @@ go.work.sum
 bin/
 dist/
 
+# Autoresearch benchmark artifacts
+.autoresearch/
+
 # Website
 website/node_modules/
 website/.next/

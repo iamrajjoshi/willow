@@ -30,6 +30,7 @@ export const DOCS_NAV: DocNavGroup[] = [
           { id: "shell-integration-recommended", text: "Shell integration (recommended)", level: 2 },
           { id: "terminal-tab-titles-optional", text: "Terminal tab titles (optional)", level: 3 },
           { id: "claude-code-skill", text: "Claude Code skill", level: 2 },
+          { id: "autoresearch-performance-skill", text: "Autoresearch performance skill", level: 2 },
           { id: "claude-code-status-tracking", text: "Claude Code status tracking", level: 2 },
           { id: "quick-start", text: "Quick start", level: 2 },
           { id: "tmux-integration", text: "Tmux integration", level: 2 },

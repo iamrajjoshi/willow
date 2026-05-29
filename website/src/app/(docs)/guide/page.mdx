@@ -95,6 +95,17 @@ git clone https://github.com/iamrajjoshi/willow ~/.claude/skills/willow
 
 The skill is non-invocable by design (`user_invocable: false`) — Claude auto-triggers it when it sees worktree, branch, or PR intent in a prompt.
 
+## Autoresearch performance skill
+
+Willow also ships `skills/willow-autoresearch/`, a trace-guided loop for improving CLI latency. Its harness builds Willow once, creates an isolated temporary `WILLOW_BASE_DIR`, runs benchmark scenarios with `WILLOW_TELEMETRY=off` and `WILLOW_TRACE=1`, and records JSON/JSONL results under `.autoresearch/`.
+
+```bash
+python3 skills/willow-autoresearch/scripts/bench_willow.py --runs 7 --json
+python3 skills/willow-autoresearch/scripts/bench_willow.py --reference-repo ~/code/myrepo --runs 7 --json
+```
+
+`--reference-repo` can be a local repo path, an existing Willow repo name, or a git URL. The harness treats it as read-only and mirrors branch/worktree shape into the benchmark fixture.
+
 ## Claude Code status tracking
 
 ```bash
