@@ -77,11 +77,12 @@ func listFromGitMetadata(commonDir string) ([]Worktree, bool) {
 		return nil, false
 	}
 
+	resolver := refResolver{commonDir: commonDir}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		wt, ok := readLinkedWorktree(commonDir, filepath.Join(commonDir, "worktrees", entry.Name()))
+		wt, ok := readLinkedWorktree(filepath.Join(commonDir, "worktrees", entry.Name()), &resolver)
 		if !ok {
 			return nil, false
 		}
@@ -107,7 +108,14 @@ func isBareCommonDir(dir string) bool {
 	return false
 }
 
-func readLinkedWorktree(commonDir, adminDir string) (Worktree, bool) {
+type refResolver struct {
+	commonDir     string
+	packedRefs    map[string]string
+	packedRefsOK  bool
+	packedRefsSet bool
+}
+
+func readLinkedWorktree(adminDir string, refs *refResolver) (Worktree, bool) {
 	gitDirData, err := os.ReadFile(filepath.Join(adminDir, "gitdir"))
 	if err != nil {
 		return Worktree{}, false
@@ -140,7 +148,7 @@ func readLinkedWorktree(commonDir, adminDir string) (Worktree, bool) {
 		if !ok || branch == "" {
 			return Worktree{}, false
 		}
-		resolved, ok := resolveRef(commonDir, ref)
+		resolved, ok := refs.resolve(ref)
 		if !ok {
 			return Worktree{}, false
 		}
@@ -155,8 +163,8 @@ func readLinkedWorktree(commonDir, adminDir string) (Worktree, bool) {
 	return wt, true
 }
 
-func resolveRef(commonDir, ref string) (string, bool) {
-	data, err := os.ReadFile(filepath.Join(commonDir, filepath.FromSlash(ref)))
+func (r *refResolver) resolve(ref string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(r.commonDir, filepath.FromSlash(ref)))
 	if err == nil {
 		value := strings.TrimSpace(string(data))
 		return value, value != ""
@@ -165,21 +173,40 @@ func resolveRef(commonDir, ref string) (string, bool) {
 		return "", false
 	}
 
-	data, err = os.ReadFile(filepath.Join(commonDir, "packed-refs"))
-	if err != nil {
+	refs, ok := r.loadPackedRefs()
+	if !ok {
 		return "", false
 	}
+	value := refs[ref]
+	return value, value != ""
+}
+
+func (r *refResolver) loadPackedRefs() (map[string]string, bool) {
+	if r.packedRefsSet {
+		return r.packedRefs, r.packedRefsOK
+	}
+
+	r.packedRefsSet = true
+	data, err := os.ReadFile(filepath.Join(r.commonDir, "packed-refs"))
+	if err != nil {
+		r.packedRefs = map[string]string{}
+		r.packedRefsOK = errors.Is(err, os.ErrNotExist)
+		return r.packedRefs, r.packedRefsOK
+	}
+
+	r.packedRefs = make(map[string]string)
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "^") {
 			continue
 		}
 		sha, name, ok := strings.Cut(line, " ")
-		if ok && name == ref && sha != "" {
-			return sha, true
+		if ok && sha != "" && name != "" {
+			r.packedRefs[name] = sha
 		}
 	}
-	return "", false
+	r.packedRefsOK = true
+	return r.packedRefs, true
 }
 
 func parsePorcelain(output string) []Worktree {
