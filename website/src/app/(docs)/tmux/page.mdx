@@ -47,7 +47,7 @@ Set `"tmux": {"switcherPreview": false}` in config to hide that panel, use the f
 | `Ctrl-G` | Dispatch: create worktree from query text as prompt, launch Claude Code |
 | `Ctrl-S` | Sync stacked worktrees (selected branch's subtree, or all) |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
-| `Ctrl-X` | Delete merged worktrees currently shown, skipping unsafe ones |
+| `Ctrl-X` | Delete stale worktrees currently shown, skipping unsafe ones |
 | `Esc` | Close picker |
 
 ### Dispatch
@@ -76,9 +76,9 @@ Rename refuses to overwrite an existing tmux session. If you use the shell integ
 
 Press `Ctrl-E` to open a secondary picker showing all remote branches that don't already have worktrees. Willow opens this picker immediately from cached refs, then refreshes from origin in the background (unless `defaults.fetch` is disabled) so freshly pushed branches appear without blocking the initial render. Press `Ctrl-R` inside the branch picker to force a synchronous refresh.
 
-### Merged worktree indicator
+### Stale worktree cleanup
 
-Worktrees whose exact current-head PR is merged show a dim `[merged]` tag. Willow matches the PR head branch, head SHA, and expected base branch, using stack parents as the base for stacked branches. The picker uses cached GitHub PR-state results on open so slow PR lookups don't block rendering. These sort to the bottom of the list, making it easy to spot stale worktrees. Clean them up one at a time with `Ctrl-D`, bulk-delete the safe subset currently shown with `Ctrl-X` (the active tmux session and any merged worktrees with local changes, unpushed commits, or stacked children are skipped), or use `ww gc --prune`.
+Worktrees whose exact current-head PR is merged show a dim `[merged]` tag, and worktrees whose configured upstream branch is gone show `[gone]`. Willow matches PRs by head branch, head SHA, and expected base branch, using stack parents as the base for stacked branches. The picker uses cached GitHub PR-state results on open so slow PR lookups don't block rendering. Stale rows and fully stale stack groups sort toward the bottom of the list. Clean them up one at a time with `Ctrl-D`, bulk-delete the safe subset currently shown with `Ctrl-X` (the active tmux session, dirty worktrees, stacked parents, and remote-gone branches with local-only commits are skipped), or use `ww gc --prune`.
 
 ### Features
 

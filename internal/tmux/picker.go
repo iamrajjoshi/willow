@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
@@ -29,23 +29,29 @@ const (
 )
 
 type PickerItem struct {
-	RepoName    string
-	Branch      string
-	Head        string
-	Detached    bool
-	WtDirName   string
-	WtPath      string
-	Status      claude.Status
-	Unread      bool
-	HasSession  bool
-	Sessions    []*claude.SessionStatus
-	Merged      bool
-	StackPrefix string // tree-drawing prefix for stacked branches (e.g., "├─ ")
+	RepoName        string
+	Branch          string
+	Head            string
+	Detached        bool
+	WtDirName       string
+	WtPath          string
+	Status          claude.Status
+	Unread          bool
+	HasSession      bool
+	Sessions        []*claude.SessionStatus
+	Merged          bool
+	StaleReasons    []cleanup.Reason
+	ExpectedBaseRef string
+	StackPrefix     string // tree-drawing prefix for stacked branches (e.g., "├─ ")
+}
+
+func (item PickerItem) IsStale() bool {
+	return len(item.StaleReasons) > 0 || item.Merged
 }
 
 type pickerGroup struct {
 	items    []PickerItem
-	merged   bool
+	stale    bool
 	priority int
 }
 
@@ -118,31 +124,18 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, opts PickerBu
 		return result
 	}
 
-	cfg := config.Load(bareDir)
-	baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-	branchHeads := make(map[string]string, len(wts))
-	branchBases := make(map[string]string, len(wts))
-	repoDir := ""
-	for _, wt := range wts {
-		if !wt.IsBare && !wt.Detached && wt.Branch != "" {
-			if repoDir == "" {
-				repoDir = wt.Path
-			}
-			branchHeads[wt.Branch] = wt.Head
-			if parent := result.stack.Parent(wt.Branch); parent != "" {
-				branchBases[wt.Branch] = parent
-			}
-		}
-	}
-
-	done = trace.Span(ctx, "gh.MergedWorktreeSet/"+repoName)
-	var mergedSet map[string]bool
-	if opts.RefreshGitHubMerged {
-		mergedSet = gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
-	} else {
-		mergedSet = gh.CachedMergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
-	}
+	done = trace.Span(ctx, "cleanup.CandidatesForWorktrees/"+repoName)
+	candidates, err := cleanup.CandidatesForWorktrees(repoName, bareDir, wts, cleanup.ScanOptions{
+		RefreshPRState: opts.RefreshGitHubMerged,
+	})
 	done()
+	if err != nil {
+		candidates = nil
+	}
+	candidatesByBranch := make(map[string]cleanup.Candidate, len(candidates))
+	for _, candidate := range candidates {
+		candidatesByBranch[candidate.Branch] = candidate
+	}
 
 	done = trace.Span(ctx, "per-wt-loop/"+repoName)
 	for _, wt := range wts {
@@ -152,17 +145,20 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, opts PickerBu
 		wtDir := filepath.Base(wt.Path)
 		sessions := claude.ReadAllSessions(repoName, wtDir)
 		ws := claude.AggregateStatus(sessions)
+		candidate := candidatesByBranch[wt.Branch]
 		result.items = append(result.items, PickerItem{
-			RepoName:  repoName,
-			Branch:    wt.Branch,
-			Head:      wt.Head,
-			Detached:  wt.Detached,
-			WtDirName: wtDir,
-			WtPath:    wt.Path,
-			Status:    ws.Status,
-			Unread:    ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
-			Sessions:  sessions,
-			Merged:    !wt.Detached && mergedSet[wt.Branch],
+			RepoName:        repoName,
+			Branch:          wt.Branch,
+			Head:            wt.Head,
+			Detached:        wt.Detached,
+			WtDirName:       wtDir,
+			WtPath:          wt.Path,
+			Status:          ws.Status,
+			Unread:          ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			Sessions:        sessions,
+			Merged:          candidate.HasReason(cleanup.ReasonMergedPR),
+			StaleReasons:    candidate.Reasons,
+			ExpectedBaseRef: candidate.ExpectedBaseRef,
 		})
 	}
 	done()
@@ -183,8 +179,8 @@ func defaultPickerStackLoader(repoName string) *stack.Stack {
 func sortPickerItems(items []PickerItem, repoNames []string, loadStack pickerStackLoader) []PickerItem {
 	groups := buildPickerGroups(items, repoNames, loadStack)
 	sort.SliceStable(groups, func(i, j int) bool {
-		if groups[i].merged != groups[j].merged {
-			return !groups[i].merged
+		if groups[i].stale != groups[j].stale {
+			return !groups[i].stale
 		}
 		return groups[i].priority < groups[j].priority
 	})
@@ -273,12 +269,12 @@ func buildPickerGroups(items []PickerItem, repoNames []string, loadStack pickerS
 func newPickerGroup(items []PickerItem) pickerGroup {
 	group := pickerGroup{
 		items:    items,
-		merged:   true,
+		stale:    true,
 		priority: claude.WorktreeUrgencyOrder(claude.StatusOffline, false),
 	}
 	for _, item := range items {
-		if !item.Merged {
-			group.merged = false
+		if !item.IsStale() {
+			group.stale = false
 		}
 		priority := claude.WorktreeUrgencyOrder(item.Status, item.Unread)
 		if priority < group.priority {
@@ -309,9 +305,7 @@ func FormatPickerLines(items []PickerItem) []string {
 	nameW := 0
 	for _, item := range items {
 		plain := displayName(item, multiRepo)
-		if item.Merged {
-			plain += " [merged]"
-		}
+		plain += staleTagsPlain(item)
 		if utf8.RuneCountInString(plain) > nameW {
 			nameW = utf8.RuneCountInString(plain)
 		}
@@ -330,9 +324,12 @@ func FormatPickerLines(items []PickerItem) []string {
 
 		namePlain := displayName(item, multiRepo)
 		name := namePlain
-		if item.Merged {
-			namePlain += " [merged]"
-			name += fmt.Sprintf(" %s[merged]%s", colorDim, colorReset)
+		tags := staleTags(item)
+		if len(tags) > 0 {
+			namePlain += staleTagsPlain(item)
+			for _, tag := range tags {
+				name += fmt.Sprintf(" %s[%s]%s", colorDim, tag, colorReset)
+			}
 		}
 		padding := nameW - utf8.RuneCountInString(namePlain)
 		if padding < 0 {
@@ -413,6 +410,38 @@ func displayName(item PickerItem, multiRepo bool) string {
 		name = item.StackPrefix + name
 	}
 	return name
+}
+
+func staleTags(item PickerItem) []string {
+	if len(item.StaleReasons) == 0 && item.Merged {
+		return []string{"merged"}
+	}
+
+	tags := make([]string, 0, len(item.StaleReasons))
+	for _, reason := range item.StaleReasons {
+		switch reason {
+		case cleanup.ReasonMergedPR:
+			tags = append(tags, "merged")
+		case cleanup.ReasonGoneUpstream:
+			tags = append(tags, "gone")
+		}
+	}
+	return tags
+}
+
+func staleTagsPlain(item PickerItem) string {
+	tags := staleTags(item)
+	if len(tags) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, tag := range tags {
+		b.WriteString(" [")
+		b.WriteString(tag)
+		b.WriteString("]")
+	}
+	return b.String()
 }
 
 // ExtractPathFromLine pulls the worktree path from the last pipe-delimited field,

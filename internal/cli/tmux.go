@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
@@ -850,44 +851,47 @@ func tmuxPickDelete(self, selection string, items []tmux.PickerItem) error {
 }
 
 func tmuxPickDeleteMerged(self, currentSession string, items []tmux.PickerItem) error {
-	candidates, skippedCurrent := mergedDeleteCandidates(items, currentSession)
+	candidates, skippedCurrent, err := staleDeleteCandidates(items, currentSession)
+	if err != nil {
+		return err
+	}
 	if len(candidates) == 0 {
 		if skippedCurrent {
-			return errors.Userf("no merged worktrees available to delete (current session skipped)")
+			return errors.Userf("no stale worktrees available to delete (current session skipped)")
 		}
-		return errors.Userf("no merged worktrees available to delete")
+		return errors.Userf("no stale worktrees available to delete")
 	}
 
-	safe, skipped, err := filterMergedDeleteCandidates(candidates)
+	safe, skipped, err := cleanup.FilterSafe(candidates)
 	if err != nil {
 		return err
 	}
 
-	multiRepo := mergedDeleteHasMultipleRepos(items)
+	multiRepo := cleanup.HasMultipleRepos(candidates)
 	if len(safe) == 0 {
 		if skippedCurrent {
 			fmt.Fprintln(os.Stderr, "Skipping the active tmux session's worktree.")
 		}
 		if len(skipped) > 0 {
-			fmt.Fprintln(os.Stderr, "Skipping unsafe merged worktrees:")
+			fmt.Fprintln(os.Stderr, "Skipping unsafe stale worktrees:")
 			for _, skip := range skipped {
-				fmt.Fprintf(os.Stderr, "  %s (%s)\n", mergedDeleteLabel(skip.Item, multiRepo), skip.Reason)
+				fmt.Fprintf(os.Stderr, "  %s (%s)\n", cleanup.Label(skip.Candidate, multiRepo), skip.Reason)
 			}
 		}
-		return errors.Userf("no safe merged worktrees available to delete")
+		return errors.Userf("no safe stale worktrees available to delete")
 	}
 
-	fmt.Fprintf(os.Stderr, "Remove %d merged worktree(s)?\n", len(safe))
-	for _, item := range safe {
-		fmt.Fprintf(os.Stderr, "  %s\n", mergedDeleteLabel(item, multiRepo))
+	fmt.Fprintf(os.Stderr, "Remove %d safe stale worktree(s)?\n", len(safe))
+	for _, candidate := range safe {
+		fmt.Fprintf(os.Stderr, "  %s (%s)\n", cleanup.Label(candidate, multiRepo), candidate.ReasonString())
 	}
 	if skippedCurrent {
 		fmt.Fprintln(os.Stderr, "\nSkipping the active tmux session's worktree.")
 	}
 	if len(skipped) > 0 {
-		fmt.Fprintln(os.Stderr, "\nSkipping unsafe merged worktrees:")
+		fmt.Fprintln(os.Stderr, "\nSkipping unsafe stale worktrees:")
 		for _, skip := range skipped {
-			fmt.Fprintf(os.Stderr, "  %s (%s)\n", mergedDeleteLabel(skip.Item, multiRepo), skip.Reason)
+			fmt.Fprintf(os.Stderr, "  %s (%s)\n", cleanup.Label(skip.Candidate, multiRepo), skip.Reason)
 		}
 	}
 
@@ -899,124 +903,83 @@ func tmuxPickDeleteMerged(self, currentSession string, items []tmux.PickerItem) 
 	}
 
 	failures := 0
-	for _, item := range safe {
-		fmt.Fprintf(os.Stderr, "Removing %s...\n", mergedDeleteLabel(item, multiRepo))
-		if err := tmuxPickDeleteItem(self, item); err != nil {
+	for _, candidate := range safe {
+		fmt.Fprintf(os.Stderr, "Removing %s...\n", cleanup.Label(candidate, multiRepo))
+		item := pickerItemForCandidate(items, candidate)
+		if item == nil {
 			failures++
-			fmt.Fprintf(os.Stderr, "Warning: failed to remove %s: %v\n", mergedDeleteLabel(item, multiRepo), err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove %s: worktree not found\n", cleanup.Label(candidate, multiRepo))
+			continue
+		}
+		if err := tmuxPickDeleteItem(self, *item); err != nil {
+			failures++
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove %s: %v\n", cleanup.Label(candidate, multiRepo), err)
 		}
 	}
 	if failures > 0 {
-		return fmt.Errorf("failed to remove %d merged worktree(s)", failures)
+		return fmt.Errorf("failed to remove %d stale worktree(s)", failures)
 	}
 
-	fmt.Fprintf(os.Stderr, "Removed %d merged worktree(s).\n", len(safe))
+	fmt.Fprintf(os.Stderr, "Removed %d stale worktree(s).\n", len(safe))
 	return nil
 }
 
-type mergedDeleteSkip struct {
-	Item   tmux.PickerItem
-	Reason string
-}
-
-func filterMergedDeleteCandidates(items []tmux.PickerItem) ([]tmux.PickerItem, []mergedDeleteSkip, error) {
-	bareDirs := make(map[string]string)
-	stacks := make(map[string]*stack.Stack)
-	var safe []tmux.PickerItem
-	var skipped []mergedDeleteSkip
-
-	for _, item := range items {
-		bareDir, ok := bareDirs[item.RepoName]
-		if !ok {
-			resolved, err := config.ResolveRepo(item.RepoName)
-			if err != nil {
-				return nil, nil, err
-			}
-			bareDir = resolved
-			bareDirs[item.RepoName] = bareDir
-			stacks[item.RepoName] = stack.Load(bareDir)
-		}
-
-		reason, err := mergedDeleteSkipReason(item, stacks[item.RepoName])
-		if err != nil {
-			return nil, nil, err
-		}
-		if reason != "" {
-			skipped = append(skipped, mergedDeleteSkip{Item: item, Reason: reason})
-			continue
-		}
-		safe = append(safe, item)
-	}
-
-	return safe, skipped, nil
-}
-
-func mergedDeleteCandidates(items []tmux.PickerItem, currentSession string) ([]tmux.PickerItem, bool) {
-	var candidates []tmux.PickerItem
+func staleDeleteCandidates(items []tmux.PickerItem, currentSession string) ([]cleanup.Candidate, bool, error) {
+	var candidates []cleanup.Candidate
 	skippedCurrent := false
 	for _, item := range items {
-		if !item.Merged {
+		if !item.IsStale() {
 			continue
 		}
 		if currentSession != "" && tmux.SessionNameForWorktree(item.RepoName, item.WtDirName) == currentSession {
 			skippedCurrent = true
 			continue
 		}
-		candidates = append(candidates, item)
+		candidate, err := cleanupCandidateForPickerItem(item)
+		if err != nil {
+			return nil, false, err
+		}
+		candidates = append(candidates, candidate)
 	}
-	return candidates, skippedCurrent
+	return candidates, skippedCurrent, nil
 }
 
-func mergedDeleteSkipReason(item tmux.PickerItem, st *stack.Stack) (string, error) {
-	var children []string
-	if st != nil {
-		children = st.Children(item.Branch)
-	}
-
-	wtGit := &git.Git{Dir: item.WtPath}
-	dirty, err := wtGit.IsDirty()
+func cleanupCandidateForPickerItem(item tmux.PickerItem) (cleanup.Candidate, error) {
+	bareDir, err := config.ResolveRepo(item.RepoName)
 	if err != nil {
-		return "", err
+		return cleanup.Candidate{}, err
 	}
-
-	unpushed, err := wtGit.HasUnpushedCommits()
-	if err != nil {
-		return "", err
+	reasons := item.StaleReasons
+	if len(reasons) == 0 && item.Merged {
+		reasons = []cleanup.Reason{cleanup.ReasonMergedPR}
 	}
-
-	return mergedDeleteSkipReasonFromState(children, dirty, unpushed), nil
+	expectedBaseRef := item.ExpectedBaseRef
+	if expectedBaseRef == "" {
+		repoGit := &git.Git{Dir: bareDir}
+		cfg := config.Load(bareDir)
+		st := stack.Load(bareDir)
+		baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
+		expectedBaseRef = cleanup.ExpectedBaseRef(repoGit, st, baseBranch, item.Branch)
+	}
+	return cleanup.Candidate{
+		RepoName:        item.RepoName,
+		BareDir:         bareDir,
+		Branch:          item.Branch,
+		Head:            item.Head,
+		Path:            item.WtPath,
+		WtDirName:       item.WtDirName,
+		ExpectedBaseRef: expectedBaseRef,
+		Reasons:         reasons,
+	}, nil
 }
 
-func mergedDeleteSkipReasonFromState(children []string, dirty, unpushed bool) string {
-	var reasons []string
-	if len(children) > 0 {
-		reasons = append(reasons, "stacked children: "+strings.Join(children, ", "))
-	}
-	if dirty {
-		reasons = append(reasons, "uncommitted changes")
-	}
-	if unpushed {
-		reasons = append(reasons, "unpushed commits")
-	}
-	return strings.Join(reasons, "; ")
-}
-
-func mergedDeleteLabel(item tmux.PickerItem, multiRepo bool) string {
-	if multiRepo {
-		return item.RepoName + "/" + item.Branch
-	}
-	return item.Branch
-}
-
-func mergedDeleteHasMultipleRepos(items []tmux.PickerItem) bool {
-	repos := make(map[string]bool)
-	for _, item := range items {
-		repos[item.RepoName] = true
-		if len(repos) > 1 {
-			return true
+func pickerItemForCandidate(items []tmux.PickerItem, candidate cleanup.Candidate) *tmux.PickerItem {
+	for i := range items {
+		if items[i].RepoName == candidate.RepoName && items[i].Branch == candidate.Branch && items[i].WtPath == candidate.Path {
+			return &items[i]
 		}
 	}
-	return false
+	return nil
 }
 
 func readTrimmedStdinLine() string {

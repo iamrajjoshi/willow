@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
+	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
-	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
-	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
@@ -23,11 +21,20 @@ func gcCmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "prune",
-				Usage: "Interactively remove merged worktrees",
+				Usage: "Interactively remove safe stale worktrees",
 			},
 			&cli.BoolFlag{
 				Name:  "dry-run",
 				Usage: "Show what would be cleaned up without removing anything",
+			},
+			&cli.StringFlag{
+				Name:    "repo",
+				Aliases: []string{"r"},
+				Usage:   "Target a willow-managed repo by name",
+			},
+			&cli.BoolFlag{
+				Name:  "no-fetch",
+				Usage: "Skip fetching and pruning remotes before scanning",
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -59,87 +66,73 @@ func gcCmd() *cli.Command {
 				u.Success(fmt.Sprintf("Cleaned up %d trash entries", len(entries)))
 			}
 
-			repos, err := config.ListRepos()
+			repos, err := gcRepos(cmd.String("repo"))
 			if err != nil {
-				return fmt.Errorf("failed to list repos: %w", err)
+				return err
 			}
+			var candidates []cleanup.Candidate
+			for _, repo := range repos {
+				cfg := config.Load(repo.BareDir)
+				repoGit := &git.Git{Dir: repo.BareDir, Verbose: flags.Verbose}
+				if *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") {
+					if _, err := repoGit.Run("fetch", "--prune", "origin"); err != nil {
+						u.Warn(fmt.Sprintf("Skipping remote refresh for %s: %v", repo.Name, err))
+					}
+				}
 
-			type mergedWorktree struct {
-				repoName string
-				branch   string
-			}
-			var candidates []mergedWorktree
-
-			for _, repoName := range repos {
-				bareDir, err := config.ResolveRepo(repoName)
+				repoCandidates, err := cleanup.ScanRepo(repo.Name, repo.BareDir, cleanup.ScanOptions{
+					RefreshPRState: true,
+					Verbose:        flags.Verbose,
+				})
 				if err != nil {
-					u.Warn(fmt.Sprintf("Skipping repo %s: %v", repoName, err))
+					u.Warn(fmt.Sprintf("Skipping repo %s: %v", repo.Name, err))
 					continue
 				}
-
-				cfg := config.Load(bareDir)
-				repoGit := &git.Git{Dir: bareDir}
-				wts, err := worktree.List(repoGit)
-				if err != nil {
-					u.Warn(fmt.Sprintf("Skipping repo %s: failed to list worktrees: %v", repoName, err))
-					continue
-				}
-
-				baseBranch := repoGit.ResolveBaseBranch(cfg.BaseBranch)
-				branchHeads := make(map[string]string, len(wts))
-				branchBases := make(map[string]string, len(wts))
-				repoDir := ""
-				st := stack.Load(bareDir)
-				for _, wt := range wts {
-					if wt.IsBare || wt.Detached || wt.Branch == "" {
-						continue
-					}
-					if repoDir == "" {
-						repoDir = wt.Path
-					}
-					branchHeads[wt.Branch] = wt.Head
-					if parent := st.Parent(wt.Branch); parent != "" {
-						branchBases[wt.Branch] = parent
-					}
-				}
-
-				mergedSet := gh.MergedWorktreeSet(repoDir, baseBranch, branchHeads, branchBases)
-				if len(mergedSet) == 0 {
-					continue
-				}
-
-				for _, wt := range wts {
-					if !wt.IsBare && !wt.Detached && mergedSet[wt.Branch] {
-						candidates = append(candidates, mergedWorktree{repoName: repoName, branch: wt.Branch})
-					}
-				}
+				candidates = append(candidates, repoCandidates...)
 			}
 
 			if len(candidates) == 0 {
-				u.Info("No merged worktrees found.")
+				u.Info("No stale worktrees found.")
 				return nil
 			}
 
-			u.Info(fmt.Sprintf("\nFound %d merged worktree(s):", len(candidates)))
+			multiRepo := cleanup.HasMultipleRepos(candidates)
+			u.Info(fmt.Sprintf("\nFound %d stale worktree(s):", len(candidates)))
 			for _, c := range candidates {
-				u.Info(fmt.Sprintf("  %s (repo: %s)", c.branch, c.repoName))
+				u.Info(fmt.Sprintf("  %s (%s)", cleanup.Label(c, multiRepo), c.ReasonString()))
 			}
 
 			if !prune {
 				u.Info("\nTo remove these, run:")
 				for _, c := range candidates {
-					u.Info(fmt.Sprintf("  willow rm %s --repo %s", c.branch, c.repoName))
+					u.Info(fmt.Sprintf("  willow rm %s --repo %s", c.Branch, c.RepoName))
 				}
-				u.Info("\nOr re-run with --prune to interactively remove them.")
+				u.Info("\nOr re-run with --prune to interactively remove the safe subset.")
 				return nil
+			}
+
+			safe, skipped, err := cleanup.FilterSafe(candidates)
+			if err != nil {
+				return err
+			}
+			if len(skipped) > 0 {
+				u.Info("\nSkipping unsafe stale worktrees:")
+				for _, skip := range skipped {
+					u.Info(fmt.Sprintf("  %s (%s)", cleanup.Label(skip.Candidate, multiRepo), skip.Reason))
+				}
 			}
 
 			if dryRun {
-				u.Info("\nDry run: would remove the above worktrees.")
+				u.Info(fmt.Sprintf("\nDry run: would remove %d safe stale worktree(s).", len(safe)))
 				return nil
 			}
 
-			fmt.Fprintf(os.Stderr, "\nRemove %d merged worktree(s)? [y/N] ", len(candidates))
+			if len(safe) == 0 {
+				u.Info("\nNo safe stale worktrees to remove.")
+				return nil
+			}
+
+			fmt.Fprintf(os.Stderr, "\nRemove %d safe stale worktree(s)? [y/N] ", len(safe))
 			var answer string
 			fmt.Fscanf(os.Stdin, "%s", &answer)
 			if answer != "y" && answer != "Y" {
@@ -147,22 +140,47 @@ func gcCmd() *cli.Command {
 				return nil
 			}
 
-			self, err := os.Executable()
-			if err != nil {
-				self = "willow"
-			}
-
-			for _, c := range candidates {
-				u.Info(fmt.Sprintf("Removing %s from %s...", c.branch, c.repoName))
-				rmCmd := exec.Command(self, "rm", c.branch, "--force", "--repo", c.repoName)
-				rmCmd.Stdout = os.Stdout
-				rmCmd.Stderr = os.Stderr
-				if err := rmCmd.Run(); err != nil {
-					u.Warn(fmt.Sprintf("Failed to remove %s: %v", c.branch, err))
+			tr := trace.FromContext(ctx)
+			for _, c := range safe {
+				u.Info(fmt.Sprintf("Removing %s from %s...", c.Branch, c.RepoName))
+				repoGit := &git.Git{Dir: c.BareDir, Verbose: flags.Verbose}
+				cfg := config.Load(c.BareDir)
+				wt := worktree.Worktree{
+					Branch: c.Branch,
+					Path:   c.Path,
+					Head:   c.Head,
+				}
+				if err := removeWorktree(ctx, tr, u, repoGit, &wt, c.BareDir, cfg, true, false, flags.Verbose); err != nil {
+					u.Warn(fmt.Sprintf("Failed to remove %s: %v", c.Branch, err))
 				}
 			}
 
 			return nil
 		},
 	}
+}
+
+func gcRepos(repoFlag string) ([]repoInfo, error) {
+	if repoFlag != "" {
+		bareDir, err := config.ResolveRepo(repoFlag)
+		if err != nil {
+			return nil, err
+		}
+		return []repoInfo{{Name: repoFlag, BareDir: bareDir}}, nil
+	}
+
+	repoNames, err := config.ListRepos()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repos: %w", err)
+	}
+
+	repos := make([]repoInfo, 0, len(repoNames))
+	for _, repoName := range repoNames {
+		bareDir, err := config.ResolveRepo(repoName)
+		if err != nil {
+			continue
+		}
+		repos = append(repos, repoInfo{Name: repoName, BareDir: bareDir})
+	}
+	return repos, nil
 }
