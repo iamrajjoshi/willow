@@ -21,7 +21,7 @@ func TestSetupCmdInstallsHooksWithExistingTelemetryPreference(t *testing.T) {
 		t.Fatalf("cc-setup failed: %v", err)
 	}
 
-	for _, want := range []string{"Installed Claude Code hooks", "hook:", "status:"} {
+	for _, want := range []string{"Installed Claude Code hooks", "hook:", "status:", "Desktop notifications are enabled by default", "notify.command"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("cc-setup output missing %q:\n%s", want, out)
 		}

@@ -28,6 +28,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Tmux.SwitcherPreview == nil || !*cfg.Tmux.SwitcherPreview {
 		t.Error("Tmux.SwitcherPreview should be true")
 	}
+	if cfg.Notify.Desktop == nil || !*cfg.Notify.Desktop {
+		t.Error("Notify.Desktop should be true")
+	}
 }
 
 func TestMerge_StringOverride(t *testing.T) {

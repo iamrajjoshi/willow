@@ -58,6 +58,9 @@ func DefaultConfig() *Config {
 		Tmux: TmuxConfig{
 			SwitcherPreview: BoolPtr(true),
 		},
+		Notify: NotifyConfig{
+			Desktop: BoolPtr(true),
+		},
 	}
 }
 

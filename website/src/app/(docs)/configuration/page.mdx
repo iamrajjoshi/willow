@@ -39,6 +39,10 @@ The local config lives inside the bare repo directory, so it's private to your m
     "fetch": true,
     "autoSetupRemote": true
   },
+  "notify": {
+    "desktop": true,
+    "command": ""
+  },
   "tmux": {
     "notification": true,
     "notifyCommand": "afplay /System/Library/Sounds/Glass.aiff",
@@ -65,6 +69,8 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `teardown` | `string[]` | Commands to run before removing a worktree |
 | `defaults.fetch` | `boolean` | Whether to fetch before creating a worktree |
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
+| `notify.desktop` | `boolean` | Send desktop notifications from Claude Code hooks when an agent finishes or needs input (default: `true`) |
+| `notify.command` | `string` | Custom command for non-tmux notifications. Receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` |
 | `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
 | `tmux.switcherPreview` | `boolean` | Show the right-side live preview in the tmux picker. Set to `false` for an fzf-only picker and compact `ww tmux install` popup binding (default: `true`) |

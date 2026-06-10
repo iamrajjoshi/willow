@@ -36,6 +36,8 @@ func setupCmd() *cli.Command {
 			u.Info("")
 			u.Info("Claude Code will now report agent status for willow-managed worktrees.")
 			u.Info("Use 'ww status' or 'ww ls' to see agent status.")
+			u.Info("Desktop notifications are enabled by default for agent finish/input events.")
+			u.Info("Set notify.desktop=false to disable, or notify.command to customize.")
 
 			cfg := config.Load("")
 			if cfg.Telemetry == nil {
