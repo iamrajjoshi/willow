@@ -426,7 +426,7 @@ ww log --json                   # raw JSON output
 
 Desktop notifications fire directly from Claude Code's hook system — no daemon, no polling. Run `ww cc-setup` once; whenever an agent transitions from BUSY to DONE or WAIT, a macOS Notification Center alert appears within ~200ms.
 
-Enable with `"notify": {"desktop": true}` in config. Set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
+Desktop notifications are enabled by default. Set `"notify": {"desktop": false}` to disable them, or set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
 
 ### `ww dispatch <prompt> [flags]`
 
@@ -529,6 +529,10 @@ Config merges two tiers (local wins):
   "defaults": {
     "fetch": true,
     "autoSetupRemote": true
+  },
+  "notify": {
+    "desktop": true,
+    "command": ""
   },
   "tmux": {
     "switcherPreview": true,

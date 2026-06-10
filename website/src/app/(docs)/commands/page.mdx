@@ -427,7 +427,7 @@ Without `--prune`, willow only empties the trash directory and prints the comman
 
 Desktop notifications fire directly from Claude Code's hook system after you run `ww cc-setup` — there's no daemon, no polling, and no `ww notify` subcommand. Whenever an agent transitions from `BUSY` to `DONE` or `WAIT`, the hook fires a macOS Notification Center alert within ~200ms.
 
-**Enable desktop notifications:** Set `"notify": {"desktop": true}` in config. The tmux status bar is a separate channel and is unaffected.
+**Desktop notifications:** Enabled by default. Set `"notify": {"desktop": false}` in config to disable them. The tmux status bar is a separate channel and is unaffected.
 
 **Custom notification command:** Set `notify.command` in config to run your own script instead of the built-in dispatch. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
 

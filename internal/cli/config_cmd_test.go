@@ -82,7 +82,36 @@ func TestConfigShowPrintsSourceAnnotationsAndWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config show failed: %v", err)
 	}
-	for _, want := range []string{"baseDir:", "# default", "tmux.panes:", "# global", "tmux.panes configured"} {
+	for _, want := range []string{"baseDir:", "# default", "notify.desktop:", "tmux.panes:", "# global", "tmux.panes configured"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("config show output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfigShowPrintsNotifyConfigSources(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := config.GlobalConfigPath()
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"notify":{"desktop":false,"command":"printf notify"}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return runApp("config", "show")
+	})
+	if err != nil {
+		t.Fatalf("config show failed: %v", err)
+	}
+	for _, want := range []string{
+		"notify.desktop:",
+		"false  # global",
+		"notify.command:",
+		`"printf notify"  # global`,
+	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("config show output missing %q:\n%s", want, out)
 		}

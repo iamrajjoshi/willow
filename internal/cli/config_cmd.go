@@ -93,6 +93,8 @@ func configShowCmd() *cli.Command {
 			printField("teardown", merged.Teardown, fieldSourceSlice(local.Teardown, global.Teardown, def.Teardown))
 			printField("defaults.fetch", merged.Defaults.Fetch, fieldSourceBoolPtr(local.Defaults.Fetch, global.Defaults.Fetch, def.Defaults.Fetch))
 			printField("defaults.autoSetupRemote", merged.Defaults.AutoSetupRemote, fieldSourceBoolPtr(local.Defaults.AutoSetupRemote, global.Defaults.AutoSetupRemote, def.Defaults.AutoSetupRemote))
+			printField("notify.desktop", merged.Notify.Desktop, fieldSourceBoolPtr(local.Notify.Desktop, global.Notify.Desktop, def.Notify.Desktop))
+			printField("notify.command", merged.Notify.Command, fieldSource(local.Notify.Command, global.Notify.Command, def.Notify.Command))
 			printField("tmux.reloadInterval", merged.Tmux.ReloadInterval, fieldSource(local.Tmux.ReloadInterval, global.Tmux.ReloadInterval, def.Tmux.ReloadInterval))
 			printField("tmux.notification", merged.Tmux.Notification, fieldSourceBoolPtr(local.Tmux.Notification, global.Tmux.Notification, def.Tmux.Notification))
 			printField("tmux.notifyCommand", merged.Tmux.NotifyCommand, fieldSource(local.Tmux.NotifyCommand, global.Tmux.NotifyCommand, def.Tmux.NotifyCommand))
