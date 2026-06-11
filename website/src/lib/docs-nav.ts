@@ -92,7 +92,7 @@ export const DOCS_NAV: DocNavGroup[] = [
           { id: "pr-picker", text: "PR picker", level: 3 },
           { id: "renaming-worktrees", text: "Renaming worktrees", level: 3 },
           { id: "existing-branch-picker", text: "Existing branch picker", level: 3 },
-          { id: "merged-worktree-indicator", text: "Merged worktree indicator", level: 3 },
+          { id: "stale-worktree-cleanup", text: "Stale worktree cleanup", level: 3 },
           { id: "features", text: "Features", level: 3 },
           { id: "status-bar-widget", text: "Status bar widget", level: 2 },
           { id: "configuration", text: "Configuration", level: 3 },

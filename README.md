@@ -96,6 +96,7 @@ This gives you:
 | `ww promote [name] <branch>` | Promote a detached worktree to a branch |
 | `ww rename [worktree] <name>` | Rename a worktree, branch, status dir, and tmux session |
 | `ww checkout <branch>` | Smart checkout + cd (switch or create, tmux-aware) |
+| `ww gc` | Clean trash and list stale worktrees |
 | `wwn <branch>` | Shorthand for `ww new` |
 | `wwc <branch>` | Shorthand for `ww checkout` |
 | `www` | cd to `<willow-base>/worktrees/` |
@@ -352,7 +353,7 @@ Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by
 
 Remove a worktree. Without arguments, opens fzf picker with multi-select (TAB to toggle, Ctrl-A to select all).
 
-From the tmux picker, `Ctrl-D` removes the selected worktree and `Ctrl-X` bulk-removes safe merged worktrees currently shown in the picker, skipping the active tmux session plus any merged worktrees with local changes, unpushed commits, or stacked children.
+From the tmux picker, `Ctrl-D` removes the selected worktree and `Ctrl-X` bulk-removes safe stale worktrees currently shown in the picker. Stale means the exact current-head PR is merged or the branch's configured upstream is gone; the active tmux session, dirty worktrees, stacked parents, and remote-gone branches with local-only commits are skipped.
 
 ```bash
 ww rm auth-refactor              # direct removal
@@ -366,6 +367,27 @@ ww rm auth-refactor --prune      # also run git worktree prune
 | `-f, --force` | Skip safety checks |
 | `--keep-branch` | Keep the local branch |
 | `--prune` | Run `git worktree prune` after |
+
+### `ww gc`
+
+Clean up leftover trash from removed worktrees and list stale worktrees. Stale candidates are worktrees whose exact current-head PR is merged or whose configured upstream branch is gone after `git fetch --prune`.
+
+```bash
+ww gc                    # empty trash and list stale worktrees
+ww gc --repo myrepo      # scan one repo
+ww gc --no-fetch         # use local remote-tracking refs as-is
+ww gc --prune            # confirm and remove the safe subset
+ww gc --prune --dry-run  # show what --prune would remove
+```
+
+| Flag | Description |
+|------|-------------|
+| `--prune` | Interactively remove safe stale worktrees |
+| `--dry-run` | Show what would be cleaned up without removing anything |
+| `-r, --repo` | Target a willow-managed repo by name |
+| `--no-fetch` | Skip `git fetch --prune` before scanning |
+
+`ww gc --prune` skips dirty worktrees, branches with stacked children, and remote-gone branches whose commits are not reachable from their expected base. PR-merged worktrees use the existing exact GitHub match and do not fall back to Git ancestry.
 
 ### `ww ls [repo]`
 

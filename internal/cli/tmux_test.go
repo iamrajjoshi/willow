@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
@@ -24,6 +25,14 @@ func item(repo, branch string) tmux.PickerItem {
 }
 
 func branches(items []tmux.PickerItem) []string {
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = it.Branch
+	}
+	return out
+}
+
+func cleanupBranches(items []cleanup.Candidate) []string {
 	out := make([]string, len(items))
 	for i, it := range items {
 		out[i] = it.Branch
@@ -344,7 +353,8 @@ func TestTmuxPickDeleteArgsDetachedUsesDirName(t *testing.T) {
 	}
 }
 
-func TestMergedDeleteCandidates_SkipsCurrentSessionAndKeepsOrder(t *testing.T) {
+func TestStaleDeleteCandidates_SkipsCurrentSessionAndKeepsOrder(t *testing.T) {
+	setupTmuxCommandHome(t, "repo")
 	items := []tmux.PickerItem{
 		{RepoName: "repo", Branch: "main", WtDirName: "main"},
 		{RepoName: "repo", Branch: "feature-a", WtDirName: "feature-a", Merged: true},
@@ -352,70 +362,36 @@ func TestMergedDeleteCandidates_SkipsCurrentSessionAndKeepsOrder(t *testing.T) {
 		{RepoName: "repo", Branch: "feature-c", WtDirName: "feature-c", Merged: true},
 	}
 
-	got, skippedCurrent := mergedDeleteCandidates(items, "repo/feature-b")
+	got, skippedCurrent, err := staleDeleteCandidates(items, "repo/feature-b")
+	if err != nil {
+		t.Fatalf("staleDeleteCandidates: %v", err)
+	}
 	if !skippedCurrent {
 		t.Fatal("expected current session worktree to be skipped")
 	}
 
 	want := []string{"feature-a", "feature-c"}
-	assertBranches(t, branches(got), want)
+	assertBranches(t, cleanupBranches(got), want)
 }
 
-func TestMergedDeleteCandidates_NoCurrentSessionDeletesAllMerged(t *testing.T) {
+func TestStaleDeleteCandidates_NoCurrentSessionDeletesAllStale(t *testing.T) {
+	setupTmuxCommandHome(t, "repo", "other")
 	items := []tmux.PickerItem{
 		{RepoName: "repo", Branch: "main", WtDirName: "main"},
 		{RepoName: "repo", Branch: "feature-a", WtDirName: "feature-a", Merged: true},
-		{RepoName: "other", Branch: "feature-b", WtDirName: "feature-b", Merged: true},
+		{RepoName: "other", Branch: "feature-b", WtDirName: "feature-b", StaleReasons: []cleanup.Reason{cleanup.ReasonGoneUpstream}},
 	}
 
-	got, skippedCurrent := mergedDeleteCandidates(items, "")
+	got, skippedCurrent, err := staleDeleteCandidates(items, "")
+	if err != nil {
+		t.Fatalf("staleDeleteCandidates: %v", err)
+	}
 	if skippedCurrent {
 		t.Fatal("did not expect any current session skip")
 	}
 
 	want := []string{"feature-a", "feature-b"}
-	assertBranches(t, branches(got), want)
-}
-
-func TestMergedDeleteSkipReasonFromState(t *testing.T) {
-	tests := []struct {
-		name     string
-		children []string
-		dirty    bool
-		unpushed bool
-		want     string
-	}{
-		{
-			name: "safe",
-			want: "",
-		},
-		{
-			name:     "stacked children only",
-			children: []string{"child-a", "child-b"},
-			want:     "stacked children: child-a, child-b",
-		},
-		{
-			name:  "dirty only",
-			dirty: true,
-			want:  "uncommitted changes",
-		},
-		{
-			name:     "all reasons",
-			children: []string{"child-a"},
-			dirty:    true,
-			unpushed: true,
-			want:     "stacked children: child-a; uncommitted changes; unpushed commits",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mergedDeleteSkipReasonFromState(tt.children, tt.dirty, tt.unpushed)
-			if got != tt.want {
-				t.Fatalf("got %q, want %q", got, tt.want)
-			}
-		})
-	}
+	assertBranches(t, cleanupBranches(got), want)
 }
 
 func TestAvailableExistingBranches(t *testing.T) {
@@ -519,24 +495,24 @@ func TestExtractBranchFromPRLine(t *testing.T) {
 	}
 }
 
-func TestMergedDeleteLabel(t *testing.T) {
-	item := tmux.PickerItem{RepoName: "repo-a", Branch: "feature-a"}
-	if got := mergedDeleteLabel(item, false); got != "feature-a" {
+func TestCleanupLabel(t *testing.T) {
+	item := cleanup.Candidate{RepoName: "repo-a", Branch: "feature-a"}
+	if got := cleanup.Label(item, false); got != "feature-a" {
 		t.Fatalf("single-repo label = %q, want feature-a", got)
 	}
-	if got := mergedDeleteLabel(item, true); got != "repo-a/feature-a" {
+	if got := cleanup.Label(item, true); got != "repo-a/feature-a" {
 		t.Fatalf("multi-repo label = %q, want repo-a/feature-a", got)
 	}
 }
 
-func TestMergedDeleteHasMultipleRepos(t *testing.T) {
-	if mergedDeleteHasMultipleRepos(nil) {
+func TestCleanupHasMultipleRepos(t *testing.T) {
+	if cleanup.HasMultipleRepos(nil) {
 		t.Fatal("empty item set should not count as multiple repos")
 	}
-	if mergedDeleteHasMultipleRepos([]tmux.PickerItem{item("repo-a", "main"), item("repo-a", "feature")}) {
+	if cleanup.HasMultipleRepos([]cleanup.Candidate{{RepoName: "repo-a"}, {RepoName: "repo-a"}}) {
 		t.Fatal("same repo items should not count as multiple repos")
 	}
-	if !mergedDeleteHasMultipleRepos([]tmux.PickerItem{item("repo-a", "main"), item("repo-b", "feature")}) {
+	if !cleanup.HasMultipleRepos([]cleanup.Candidate{{RepoName: "repo-a"}, {RepoName: "repo-b"}}) {
 		t.Fatal("different repo items should count as multiple repos")
 	}
 }
@@ -931,7 +907,7 @@ func TestTmuxPickDeleteKillsSessionAndRunsWillowRm(t *testing.T) {
 
 func TestTmuxPickDeleteMergedReportsNoCandidates(t *testing.T) {
 	self, _ := installFakeWillowForTmux(t, filepath.Join(t.TempDir(), "worktrees"))
-	if err := tmuxPickDeleteMerged(self, "", nil); err == nil || !strings.Contains(err.Error(), "no merged worktrees") {
+	if err := tmuxPickDeleteMerged(self, "", nil); err == nil || !strings.Contains(err.Error(), "no stale worktrees") {
 		t.Fatalf("tmuxPickDeleteMerged empty error = %v", err)
 	}
 	items := []tmux.PickerItem{{RepoName: "repo", Branch: "merged", WtDirName: "merged", Merged: true}}

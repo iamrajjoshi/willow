@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
-	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -984,7 +984,7 @@ func TestRm_KeepBranch(t *testing.T) {
 	}
 }
 
-func TestFilterMergedDeleteCandidates_SkipsUnsafeWorktrees(t *testing.T) {
+func TestCleanupFilterSafe_SkipsUnsafeStaleWorktrees(t *testing.T) {
 	origin := setupTestEnv(t)
 	home, _ := os.UserHomeDir()
 
@@ -1013,7 +1013,7 @@ func TestFilterMergedDeleteCandidates_SkipsUnsafeWorktrees(t *testing.T) {
 		t.Fatalf("git config name: %v", err)
 	}
 
-	createMergedBranch := func(branch string, pushBranch, dirtyAfterMerge, unsetUpstream bool) string {
+	createBranch := func(branch string, pushBranch, mergeToBase, dirtyAfterMerge bool) string {
 		t.Helper()
 
 		if err := runApp("new", branch, "--no-fetch"); err != nil {
@@ -1037,28 +1037,25 @@ func TestFilterMergedDeleteCandidates_SkipsUnsafeWorktrees(t *testing.T) {
 				t.Fatalf("git push %s: %v", branch, err)
 			}
 		}
-		if _, err := mainGit.Run("merge", "--no-ff", branch, "-m", "merge "+branch); err != nil {
-			t.Fatalf("git merge %s: %v", branch, err)
-		}
-		if _, err := mainGit.Run("push", "origin", mainBranch); err != nil {
-			t.Fatalf("git push %s: %v", mainBranch, err)
+		if mergeToBase {
+			if _, err := mainGit.Run("merge", "--no-ff", branch, "-m", "merge "+branch); err != nil {
+				t.Fatalf("git merge %s: %v", branch, err)
+			}
+			if _, err := mainGit.Run("push", "origin", mainBranch); err != nil {
+				t.Fatalf("git push %s: %v", mainBranch, err)
+			}
 		}
 		if dirtyAfterMerge {
 			if err := os.WriteFile(file, []byte(branch+"\ndirty\n"), 0o644); err != nil {
 				t.Fatalf("dirty write %s: %v", file, err)
 			}
 		}
-		if unsetUpstream {
-			if _, err := wtGit.Run("branch", "--unset-upstream"); err != nil {
-				t.Fatalf("unset upstream %s: %v", branch, err)
-			}
-		}
 		return wtPath
 	}
 
-	safePath := createMergedBranch("safe-merged", true, false, false)
-	dirtyPath := createMergedBranch("dirty-merged", true, true, false)
-	unpushedPath := createMergedBranch("unpushed-merged", false, false, true)
+	safePath := createBranch("safe-merged", true, true, false)
+	dirtyPath := createBranch("dirty-merged", true, true, true)
+	localOnlyPath := createBranch("local-only-gone", false, false, false)
 
 	if err := runApp("new", "stack-parent", "--no-fetch"); err != nil {
 		t.Fatalf("new stack-parent failed: %v", err)
@@ -1089,32 +1086,37 @@ func TestFilterMergedDeleteCandidates_SkipsUnsafeWorktrees(t *testing.T) {
 		t.Fatalf("git push %s: %v", mainBranch, err)
 	}
 
-	items := []tmux.PickerItem{
-		{RepoName: "testrepo", Branch: "safe-merged", WtDirName: "safe-merged", WtPath: safePath},
-		{RepoName: "testrepo", Branch: "dirty-merged", WtDirName: "dirty-merged", WtPath: dirtyPath},
-		{RepoName: "testrepo", Branch: "unpushed-merged", WtDirName: "unpushed-merged", WtPath: unpushedPath},
-		{RepoName: "testrepo", Branch: "stack-parent", WtDirName: "stack-parent", WtPath: parentPath},
+	baseRef := "refs/remotes/origin/" + mainBranch
+	candidates := []cleanup.Candidate{
+		{RepoName: "testrepo", BareDir: filepath.Join(home, ".willow", "repos", "testrepo.git"), Branch: "safe-merged", WtDirName: "safe-merged", Path: safePath, ExpectedBaseRef: baseRef, Reasons: []cleanup.Reason{cleanup.ReasonGoneUpstream}},
+		{RepoName: "testrepo", BareDir: filepath.Join(home, ".willow", "repos", "testrepo.git"), Branch: "dirty-merged", WtDirName: "dirty-merged", Path: dirtyPath, ExpectedBaseRef: baseRef, Reasons: []cleanup.Reason{cleanup.ReasonGoneUpstream}},
+		{RepoName: "testrepo", BareDir: filepath.Join(home, ".willow", "repos", "testrepo.git"), Branch: "local-only-gone", WtDirName: "local-only-gone", Path: localOnlyPath, ExpectedBaseRef: baseRef, Reasons: []cleanup.Reason{cleanup.ReasonGoneUpstream}},
+		{RepoName: "testrepo", BareDir: filepath.Join(home, ".willow", "repos", "testrepo.git"), Branch: "stack-parent", WtDirName: "stack-parent", Path: parentPath, ExpectedBaseRef: baseRef, Reasons: []cleanup.Reason{cleanup.ReasonMergedPR}},
 	}
 
-	safe, skipped, err := filterMergedDeleteCandidates(items)
+	safe, skipped, err := cleanup.FilterSafe(candidates)
 	if err != nil {
-		t.Fatalf("filterMergedDeleteCandidates failed: %v", err)
+		t.Fatalf("FilterSafe failed: %v", err)
 	}
 
-	if got := branches(safe); len(got) != 1 || got[0] != "safe-merged" {
+	got := make([]string, len(safe))
+	for i, candidate := range safe {
+		got[i] = candidate.Branch
+	}
+	if len(got) != 1 || got[0] != "safe-merged" {
 		t.Fatalf("safe branches = %v, want [safe-merged]", got)
 	}
 
 	reasons := make(map[string]string)
 	for _, skip := range skipped {
-		reasons[skip.Item.Branch] = skip.Reason
+		reasons[skip.Candidate.Branch] = skip.Reason
 	}
 
 	if !strings.Contains(reasons["dirty-merged"], "uncommitted changes") {
 		t.Fatalf("dirty-merged reason = %q, want uncommitted changes", reasons["dirty-merged"])
 	}
-	if !strings.Contains(reasons["unpushed-merged"], "unpushed commits") {
-		t.Fatalf("unpushed-merged reason = %q, want unpushed commits", reasons["unpushed-merged"])
+	if !strings.Contains(reasons["local-only-gone"], "not merged into origin/"+mainBranch) {
+		t.Fatalf("local-only-gone reason = %q, want reachability skip", reasons["local-only-gone"])
 	}
 	if !strings.Contains(reasons["stack-parent"], "stacked children: stack-child") {
 		t.Fatalf("stack-parent reason = %q, want stacked child", reasons["stack-parent"])
@@ -2053,6 +2055,138 @@ func TestGc_CleansTrash(t *testing.T) {
 	}
 }
 
+func TestGcListsGoneUpstreamAndRespectsRepoFilter(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "goneone"); err != nil {
+		t.Fatalf("clone goneone failed: %v", err)
+	}
+	if err := runApp("clone", origin, "gonetwo"); err != nil {
+		t.Fatalf("clone gonetwo failed: %v", err)
+	}
+
+	createGoneUpstreamWorktree(t, home, origin, "goneone", "gone-one", false, false)
+	createGoneUpstreamWorktree(t, home, origin, "gonetwo", "gone-two", false, false)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("gc", "--repo", "goneone")
+	})
+	if err != nil {
+		t.Fatalf("gc --repo failed: %v", err)
+	}
+	if !strings.Contains(out, "gone-one (gone-upstream)") {
+		t.Fatalf("expected gone-one stale output, got:\n%s", out)
+	}
+	if strings.Contains(out, "gone-two") {
+		t.Fatalf("gc --repo should not include gonetwo, got:\n%s", out)
+	}
+}
+
+func TestGcNoFetchDoesNotDiscoverNewlyGoneUpstream(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "gcnofetch"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+	createGoneUpstreamWorktree(t, home, origin, "gcnofetch", "gone-without-prune", false, false)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("gc", "--repo", "gcnofetch", "--no-fetch")
+	})
+	if err != nil {
+		t.Fatalf("gc --no-fetch failed: %v", err)
+	}
+	if strings.Contains(out, "gone-without-prune") {
+		t.Fatalf("--no-fetch should not discover newly gone upstream, got:\n%s", out)
+	}
+}
+
+func TestGcPruneDeletesOnlySafeGoneUpstreamWorktrees(t *testing.T) {
+	origin := setupTestEnv(t)
+	home, _ := os.UserHomeDir()
+
+	if err := runApp("clone", origin, "gcstale"); err != nil {
+		t.Fatalf("clone failed: %v", err)
+	}
+
+	safePath := createGoneUpstreamWorktree(t, home, origin, "gcstale", "safe-gone", true, false)
+	localOnlyPath := createGoneUpstreamWorktree(t, home, origin, "gcstale", "local-only-gone", false, false)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin })
+	if _, err := w.WriteString("y\n"); err != nil {
+		t.Fatalf("write confirmation: %v", err)
+	}
+	_ = w.Close()
+
+	out, err := captureStdout(t, func() error {
+		return runApp("gc", "--repo", "gcstale", "--prune")
+	})
+	os.Stdin = origStdin
+	if err != nil {
+		t.Fatalf("gc --prune failed: %v", err)
+	}
+	if !strings.Contains(out, "local-only-gone (not merged into origin/") {
+		t.Fatalf("expected local-only skip reason, got:\n%s", out)
+	}
+	if _, err := os.Stat(safePath); !os.IsNotExist(err) {
+		t.Fatalf("safe-gone should be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(localOnlyPath); err != nil {
+		t.Fatalf("local-only-gone should remain, stat err=%v", err)
+	}
+}
+
+func createGoneUpstreamWorktree(t *testing.T, home, origin, repoName, branch string, mergeToBase, dirty bool) string {
+	t.Helper()
+
+	worktreeRoot := filepath.Join(home, ".willow", "worktrees", repoName)
+	mainDir := filepath.Join(worktreeRoot, firstWorktreeDir(t, worktreeRoot))
+	baseBranch := filepath.Base(mainDir)
+	if err := os.Chdir(mainDir); err != nil {
+		t.Fatalf("chdir main: %v", err)
+	}
+	if err := runApp("new", branch, "--repo", repoName, "--no-fetch"); err != nil {
+		t.Fatalf("new %s failed: %v", branch, err)
+	}
+
+	wtPath := filepath.Join(worktreeRoot, branch)
+	commitFile(t, wtPath, branch+".txt", branch+"\n", "add "+branch)
+	wtGit := &git.Git{Dir: wtPath}
+	if _, err := wtGit.Run("push", "-u", "origin", branch); err != nil {
+		t.Fatalf("push %s: %v", branch, err)
+	}
+
+	if mergeToBase {
+		mainGit := &git.Git{Dir: mainDir}
+		if _, err := mainGit.Run("merge", "--no-ff", branch, "-m", "merge "+branch); err != nil {
+			t.Fatalf("merge %s: %v", branch, err)
+		}
+		if _, err := mainGit.Run("push", "origin", baseBranch); err != nil {
+			t.Fatalf("push %s: %v", baseBranch, err)
+		}
+	}
+
+	if dirty {
+		if err := os.WriteFile(filepath.Join(wtPath, branch+".txt"), []byte(branch+"\ndirty\n"), 0o644); err != nil {
+			t.Fatalf("dirty write %s: %v", branch, err)
+		}
+	}
+
+	originGit := &git.Git{Dir: origin}
+	if _, err := originGit.Run("update-ref", "-d", "refs/heads/"+branch); err != nil {
+		t.Fatalf("delete remote branch %s: %v", branch, err)
+	}
+	return wtPath
+}
+
 func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 	origin := setupTestEnv(t)
 	home, _ := os.UserHomeDir()
@@ -2093,7 +2227,7 @@ func TestMergedWorktrees_UsesGitHubMergedPRsAcrossCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gc failed: %v", err)
 	}
-	if !strings.Contains(gcOut, "feature-merged (repo: mergedrepo)") {
+	if !strings.Contains(gcOut, "feature-merged (merged-pr)") {
 		t.Fatalf("expected gc output to include merged feature worktree, got:\n%s", gcOut)
 	}
 
@@ -2150,7 +2284,7 @@ func TestMergedWorktrees_OpenPRDoesNotMarkMergedAcrossCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gc failed: %v", err)
 	}
-	if strings.Contains(gcOut, "feature-open (repo: openprrepo)") {
+	if strings.Contains(gcOut, "feature-open") {
 		t.Fatalf("open PR worktree should not be offered as merged, got:\n%s", gcOut)
 	}
 
@@ -2207,7 +2341,7 @@ func TestMergedWorktrees_GitMergedBranchWithoutPRIsNotMerged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gc failed: %v", err)
 	}
-	if strings.Contains(gcOut, "manual-merged (repo: gitmergedrepo)") {
+	if strings.Contains(gcOut, "manual-merged") {
 		t.Fatalf("git-only merged worktree should not be offered as PR-merged, got:\n%s", gcOut)
 	}
 }
