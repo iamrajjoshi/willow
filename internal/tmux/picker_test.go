@@ -390,6 +390,22 @@ func TestFormatPickerLinesHarnessSummaryLabels(t *testing.T) {
 			t.Fatalf("line %d missing %q:\n%s", tt.line, tt.want, strings.Join(plain, "\n"))
 		}
 	}
+	firstSep := displayColumnBeforeSeparator(plain[0], strings.Index)
+	secondSep := displayColumnBeforeSeparator(plain[0], strings.LastIndex)
+	if firstSep == -1 || secondSep == -1 || firstSep == secondSep {
+		t.Fatalf("line 0 missing table separators: %q", plain[0])
+	}
+	if strings.Index(plain[0], "[codex]") < strings.Index(plain[0], "|") {
+		t.Fatalf("harness label should render in the name column, not before the first separator: %q", plain[0])
+	}
+	for i, line := range plain {
+		if got := displayColumnBeforeSeparator(line, strings.Index); got != firstSep {
+			t.Fatalf("line %d first separator = %d, want %d:\n%s", i, got, firstSep, strings.Join(plain, "\n"))
+		}
+		if got := displayColumnBeforeSeparator(line, strings.LastIndex); got != secondSep {
+			t.Fatalf("line %d path separator = %d, want %d:\n%s", i, got, secondSep, strings.Join(plain, "\n"))
+		}
+	}
 	for _, tt := range []struct {
 		line  int
 		label string
@@ -426,6 +442,14 @@ func TestFormatPickerLinesWithWidthFitsNarrowWidth(t *testing.T) {
 	if full := FormatPickerLines([]PickerItem{{RepoName: "repo", Branch: long, WtDirName: long, WtPath: "/fakehome/worktrees/repo/" + long}})[0]; termfmt.VisibleWidth(full) <= 72 {
 		t.Fatalf("unbounded picker line should remain untruncated for fzf selection parsing: %s", full)
 	}
+}
+
+func displayColumnBeforeSeparator(line string, index func(string, string) int) int {
+	i := index(line, "|")
+	if i < 0 {
+		return -1
+	}
+	return termfmt.VisibleWidth(line[:i])
 }
 
 func TestBuildPickerItemsUsesRepoWorktreesAndStatuses(t *testing.T) {
