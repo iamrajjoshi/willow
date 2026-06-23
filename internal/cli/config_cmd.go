@@ -85,24 +85,25 @@ func configShowCmd() *cli.Command {
 				local = &config.Config{}
 			}
 
-			printField("baseDir", merged.BaseDir, baseDirSource(global.BaseDir))
-			printField("baseBranch", merged.BaseBranch, fieldSource(local.BaseBranch, global.BaseBranch, def.BaseBranch))
-			printField("branchPrefix", merged.BranchPrefix, fieldSource(local.BranchPrefix, global.BranchPrefix, def.BranchPrefix))
-			printField("postCheckoutHook", merged.PostCheckoutHook, fieldSource(local.PostCheckoutHook, global.PostCheckoutHook, def.PostCheckoutHook))
-			printField("setup", merged.Setup, fieldSourceSlice(local.Setup, global.Setup, def.Setup))
-			printField("teardown", merged.Teardown, fieldSourceSlice(local.Teardown, global.Teardown, def.Teardown))
-			printField("defaults.fetch", merged.Defaults.Fetch, fieldSourceBoolPtr(local.Defaults.Fetch, global.Defaults.Fetch, def.Defaults.Fetch))
-			printField("defaults.autoSetupRemote", merged.Defaults.AutoSetupRemote, fieldSourceBoolPtr(local.Defaults.AutoSetupRemote, global.Defaults.AutoSetupRemote, def.Defaults.AutoSetupRemote))
-			printField("notify.desktop", merged.Notify.Desktop, fieldSourceBoolPtr(local.Notify.Desktop, global.Notify.Desktop, def.Notify.Desktop))
-			printField("notify.command", merged.Notify.Command, fieldSource(local.Notify.Command, global.Notify.Command, def.Notify.Command))
-			printField("tmux.reloadInterval", merged.Tmux.ReloadInterval, fieldSource(local.Tmux.ReloadInterval, global.Tmux.ReloadInterval, def.Tmux.ReloadInterval))
-			printField("tmux.notification", merged.Tmux.Notification, fieldSourceBoolPtr(local.Tmux.Notification, global.Tmux.Notification, def.Tmux.Notification))
-			printField("tmux.notifyCommand", merged.Tmux.NotifyCommand, fieldSource(local.Tmux.NotifyCommand, global.Tmux.NotifyCommand, def.Tmux.NotifyCommand))
-			printField("tmux.notifyWaitCommand", merged.Tmux.NotifyWaitCommand, fieldSource(local.Tmux.NotifyWaitCommand, global.Tmux.NotifyWaitCommand, def.Tmux.NotifyWaitCommand))
-			printField("tmux.switcherPreview", merged.Tmux.SwitcherPreview, fieldSourceBoolPtr(local.Tmux.SwitcherPreview, global.Tmux.SwitcherPreview, def.Tmux.SwitcherPreview))
-			printField("tmux.layout", merged.Tmux.Layout, fieldSourceSlice(local.Tmux.Layout, global.Tmux.Layout, def.Tmux.Layout))
-			printField("tmux.panes", merged.Tmux.Panes, fieldSourceSlice(local.Tmux.Panes, global.Tmux.Panes, def.Tmux.Panes))
-			printField("telemetry", merged.Telemetry, fieldSourceBoolPtr(local.Telemetry, global.Telemetry, def.Telemetry))
+			printField("baseDir", formatStringValue(merged.BaseDir), baseDirSource(global.BaseDir))
+			printField("baseBranch", formatStringValue(merged.BaseBranch), fieldSource(local.BaseBranch, global.BaseBranch, def.BaseBranch))
+			printField("branchPrefix", formatStringValue(merged.BranchPrefix), fieldSource(local.BranchPrefix, global.BranchPrefix, def.BranchPrefix))
+			printField("postCheckoutHook", formatStringValue(merged.PostCheckoutHook), fieldSource(local.PostCheckoutHook, global.PostCheckoutHook, def.PostCheckoutHook))
+			printField("setup", formatStringSliceValue(merged.Setup), fieldSourceSlice(local.Setup, global.Setup, def.Setup))
+			printField("teardown", formatStringSliceValue(merged.Teardown), fieldSourceSlice(local.Teardown, global.Teardown, def.Teardown))
+			printField("defaults.fetch", formatBoolPtrValue(merged.Defaults.Fetch), fieldSourceBoolPtr(local.Defaults.Fetch, global.Defaults.Fetch, def.Defaults.Fetch))
+			printField("defaults.autoSetupRemote", formatBoolPtrValue(merged.Defaults.AutoSetupRemote), fieldSourceBoolPtr(local.Defaults.AutoSetupRemote, global.Defaults.AutoSetupRemote, def.Defaults.AutoSetupRemote))
+			printField("notify.desktop", formatBoolPtrValue(merged.Notify.Desktop), fieldSourceBoolPtr(local.Notify.Desktop, global.Notify.Desktop, def.Notify.Desktop))
+			printField("notify.command", formatStringValue(merged.Notify.Command), fieldSource(local.Notify.Command, global.Notify.Command, def.Notify.Command))
+			printField("agent.default", formatStringValue(merged.Agent.Default), fieldSource(local.Agent.Default, global.Agent.Default, def.Agent.Default))
+			printField("tmux.reloadInterval", formatIntValue(merged.Tmux.ReloadInterval), fieldSource(local.Tmux.ReloadInterval, global.Tmux.ReloadInterval, def.Tmux.ReloadInterval))
+			printField("tmux.notification", formatBoolPtrValue(merged.Tmux.Notification), fieldSourceBoolPtr(local.Tmux.Notification, global.Tmux.Notification, def.Tmux.Notification))
+			printField("tmux.notifyCommand", formatStringValue(merged.Tmux.NotifyCommand), fieldSource(local.Tmux.NotifyCommand, global.Tmux.NotifyCommand, def.Tmux.NotifyCommand))
+			printField("tmux.notifyWaitCommand", formatStringValue(merged.Tmux.NotifyWaitCommand), fieldSource(local.Tmux.NotifyWaitCommand, global.Tmux.NotifyWaitCommand, def.Tmux.NotifyWaitCommand))
+			printField("tmux.switcherPreview", formatBoolPtrValue(merged.Tmux.SwitcherPreview), fieldSourceBoolPtr(local.Tmux.SwitcherPreview, global.Tmux.SwitcherPreview, def.Tmux.SwitcherPreview))
+			printField("tmux.layout", formatStringSliceValue(merged.Tmux.Layout), fieldSourceSlice(local.Tmux.Layout, global.Tmux.Layout, def.Tmux.Layout))
+			printField("tmux.panes", formatPaneSliceValue(merged.Tmux.Panes), fieldSourceSlice(local.Tmux.Panes, global.Tmux.Panes, def.Tmux.Panes))
+			printField("telemetry", formatBoolPtrValue(merged.Telemetry), fieldSourceBoolPtr(local.Telemetry, global.Telemetry, def.Telemetry))
 
 			if warnings := merged.Validate(); len(warnings) > 0 {
 				fmt.Println()
@@ -262,37 +263,37 @@ func baseDirSource(globalVal string) string {
 	return "default"
 }
 
-func printField(name string, value any, source string) {
-	fmt.Printf("%-30s %s  # %s\n", name+":", formatValue(value), source)
+func printField(name, value, source string) {
+	fmt.Printf("%-30s %s  # %s\n", name+":", value, source)
 }
 
-func formatValue(v any) string {
-	switch val := v.(type) {
-	case string:
-		return fmt.Sprintf("%q", val)
-	case *bool:
-		if val == nil {
-			return "<nil>"
-		}
-		return fmt.Sprintf("%v", *val)
-	case []string:
-		if val == nil {
-			return "[]"
-		}
-		return fmt.Sprintf("%v", val)
-	case []config.PaneConfig:
-		if val == nil {
-			return "[]"
-		}
-		if len(val) == 0 {
-			return "[]"
-		}
-		return fmt.Sprintf("[%d panes]", len(val))
-	case int:
-		return fmt.Sprintf("%d", val)
-	default:
-		return fmt.Sprintf("%v", v)
+func formatStringValue(v string) string {
+	return fmt.Sprintf("%q", v)
+}
+
+func formatBoolPtrValue(v *bool) string {
+	if v == nil {
+		return "<nil>"
 	}
+	return fmt.Sprintf("%v", *v)
+}
+
+func formatStringSliceValue(v []string) string {
+	if v == nil {
+		return "[]"
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+func formatPaneSliceValue(v []config.PaneConfig) string {
+	if len(v) == 0 {
+		return "[]"
+	}
+	return fmt.Sprintf("[%d panes]", len(v))
+}
+
+func formatIntValue(v int) string {
+	return fmt.Sprintf("%d", v)
 }
 
 // fieldSource determines the source of a string or int field value.
@@ -320,7 +321,11 @@ func fieldSourceBoolPtr(localVal, globalVal, defaultVal *bool) string {
 	return "default"
 }
 
-func fieldSourceSlice[T any](localVal, globalVal, defaultVal []T) string {
+type configSliceElem interface {
+	string | config.PaneConfig
+}
+
+func fieldSourceSlice[T configSliceElem](localVal, globalVal, _ []T) string {
 	if localVal != nil {
 		return "local"
 	}

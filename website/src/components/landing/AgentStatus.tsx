@@ -12,7 +12,7 @@ export function AgentStatus() {
         <ScrollReveal>
           <SectionHeading
             title="Agent status"
-            subtitle="After running ww cc-setup, Claude Code automatically reports its state."
+            subtitle="After setup, Claude Code and Codex CLI automatically report their state."
           />
         </ScrollReveal>
 

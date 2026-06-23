@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
@@ -51,12 +51,12 @@ func lsBranches(rows []lsRow) []string {
 
 func TestSortLSRows_UrgencyAndMergedOrder(t *testing.T) {
 	rows := []lsRow{
-		{branch: "busy", status: claude.StatusBusy, wt: worktree.Worktree{Branch: "busy"}},
-		{branch: "done-unread", status: claude.StatusDone, unread: true, wt: worktree.Worktree{Branch: "done-unread"}},
-		{branch: "wait", status: claude.StatusWait, wt: worktree.Worktree{Branch: "wait"}},
-		{branch: "done-read", status: claude.StatusDone, wt: worktree.Worktree{Branch: "done-read"}},
-		{branch: "idle", status: claude.StatusIdle, wt: worktree.Worktree{Branch: "idle"}},
-		{branch: "merged-wait", status: claude.StatusWait, merged: true, wt: worktree.Worktree{Branch: "merged-wait"}},
+		{branch: "busy", status: agent.StatusBusy, wt: worktree.Worktree{Branch: "busy"}},
+		{branch: "done-unread", status: agent.StatusDone, unread: true, wt: worktree.Worktree{Branch: "done-unread"}},
+		{branch: "wait", status: agent.StatusWait, wt: worktree.Worktree{Branch: "wait"}},
+		{branch: "done-read", status: agent.StatusDone, wt: worktree.Worktree{Branch: "done-read"}},
+		{branch: "idle", status: agent.StatusIdle, wt: worktree.Worktree{Branch: "idle"}},
+		{branch: "merged-wait", status: agent.StatusWait, merged: true, wt: worktree.Worktree{Branch: "merged-wait"}},
 	}
 
 	got := lsBranches(sortLSRows(rows, nil))
@@ -70,10 +70,10 @@ func TestSortLSRows_UrgencyAndMergedOrder(t *testing.T) {
 
 func TestSortLSRows_StackStaysContiguousAndRanksByUrgency(t *testing.T) {
 	rows := []lsRow{
-		{branch: "busy", status: claude.StatusBusy, wt: worktree.Worktree{Branch: "busy"}},
-		{branch: "stack-a", status: claude.StatusIdle, wt: worktree.Worktree{Branch: "stack-a"}},
-		{branch: "stack-b", status: claude.StatusWait, wt: worktree.Worktree{Branch: "stack-b"}},
-		{branch: "done-read", status: claude.StatusDone, wt: worktree.Worktree{Branch: "done-read"}},
+		{branch: "busy", status: agent.StatusBusy, wt: worktree.Worktree{Branch: "busy"}},
+		{branch: "stack-a", status: agent.StatusIdle, wt: worktree.Worktree{Branch: "stack-a"}},
+		{branch: "stack-b", status: agent.StatusWait, wt: worktree.Worktree{Branch: "stack-b"}},
+		{branch: "done-read", status: agent.StatusDone, wt: worktree.Worktree{Branch: "done-read"}},
 	}
 
 	got := sortLSRows(rows, lsTestStack("stack-a", "main", "stack-b", "stack-a"))

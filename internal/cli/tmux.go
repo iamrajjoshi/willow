@@ -10,7 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
@@ -25,7 +26,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const tmuxPickerHeader = "^N new ^T detach ^U promote ^B stack ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
+const tmuxPickerHeader = "^N new ^T detach ^U promote ^B stack ^E existing ^P PR ^G dispatch ^O agent ^S sync ^D rm ^X prune"
 
 func tmuxCmd() *cli.Command {
 	return &cli.Command{
@@ -97,7 +98,7 @@ func tmuxPickCmd() *cli.Command {
 					fzf.WithDelimiter("\\|"),
 					fzf.WithNth("1,2"),
 					fzf.WithHeader(tmuxPickerHeader),
-					fzf.WithExpectKeys("ctrl-n", "ctrl-t", "ctrl-u", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-s", "ctrl-d", "ctrl-x"),
+					fzf.WithExpectKeys("ctrl-n", "ctrl-t", "ctrl-u", "ctrl-b", "ctrl-e", "ctrl-p", "ctrl-g", "ctrl-o", "ctrl-s", "ctrl-d", "ctrl-x"),
 					fzf.WithPrintQuery(),
 				}
 
@@ -165,6 +166,13 @@ func tmuxPickCmd() *cli.Command {
 
 				case "ctrl-g":
 					if err := tmuxPickDispatch(self, result.Query, repoFilter, sessionName, items); err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						continue
+					}
+					return nil
+
+				case "ctrl-o":
+					if err := tmuxPickDispatchWithPicker(self, result.Query, repoFilter, sessionName, items); err != nil {
 						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 						continue
 					}
@@ -242,7 +250,7 @@ func tmuxSwCmd() *cli.Command {
 			wtDir := filepath.Base(wtPath)
 			repoName := filepath.Base(filepath.Dir(wtPath))
 
-			claude.MarkRead(repoName, wtDir)
+			agent.MarkRead(repoName, wtDir)
 			return ensureTmuxSession(repoName, wtDir, wtPath)
 		},
 	}
@@ -290,7 +298,7 @@ func tmuxPickSwitch(selection string, items []tmux.PickerItem) error {
 		return fmt.Errorf("worktree not found: %s", wtPath)
 	}
 
-	claude.MarkRead(item.RepoName, item.WtDirName)
+	agent.MarkRead(item.RepoName, item.WtDirName)
 	return ensureTmuxSession(item.RepoName, item.WtDirName, item.WtPath)
 }
 
@@ -729,6 +737,59 @@ func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.
 	if err != nil {
 		return err
 	}
+	cfg := loadRepoConfig(repo)
+	return tmuxPickDispatchForRepo(self, query, repo, harness.DefaultID(cfg), cfg)
+}
+
+func tmuxPickDispatchWithPicker(self, query, repoFilter, sessionName string, items []tmux.PickerItem) error {
+	if query == "" {
+		return errors.Userf("type a prompt first")
+	}
+
+	repo, err := resolveRepo(repoFilter, sessionName, items)
+	if err != nil {
+		return err
+	}
+	cfg := loadRepoConfig(repo)
+	defaultID := harness.DefaultID(cfg)
+	ids := harness.IDs()
+	sort.SliceStable(ids, func(i, j int) bool {
+		if ids[i] == defaultID {
+			return true
+		}
+		if ids[j] == defaultID {
+			return false
+		}
+		return ids[i] < ids[j]
+	})
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		h, _ := harness.Get(id)
+		label := id
+		if h != nil {
+			label = fmt.Sprintf("%s\t%s", id, h.DisplayName())
+		}
+		if id == defaultID {
+			label += "\tdefault"
+		}
+		lines = append(lines, label)
+	}
+	selected, err := fzf.Run(lines, fzf.WithReverse(), fzf.WithHeader("Pick an agent harness"))
+	if err != nil {
+		return err
+	}
+	if selected == "" {
+		return nil
+	}
+	agentID := strings.Fields(selected)[0]
+	return tmuxPickDispatchForRepo(self, query, repo, agentID, cfg)
+}
+
+func tmuxPickDispatchForRepo(self, query, repo, agentID string, cfg *config.Config) error {
+	h, err := harness.MustGet(agentID)
+	if err != nil {
+		return err
+	}
 
 	branch := "dispatch--" + slugify(query)
 	args := []string{"new", "--cd", "--repo", repo, "--", branch}
@@ -745,7 +806,7 @@ func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.
 		return fmt.Errorf("no path returned from willow new")
 	}
 
-	meta := map[string]string{"prompt": truncatePrompt(query)}
+	meta := map[string]string{"prompt": truncatePrompt(query), "agent": h.ID()}
 	_ = log.Append(log.Event{Action: "dispatch", Repo: repo, Branch: branch, Metadata: meta})
 
 	wtDir := filepath.Base(wtPath)
@@ -761,14 +822,19 @@ func tmuxPickDispatch(self, query, repoFilter, sessionName string, items []tmux.
 		return fmt.Errorf("failed to write prompt file: %w", err)
 	}
 
-	cfg := loadRepoConfig(repoName)
 	if err := tmux.NewSession(sessName, wtPath, cfg.Tmux.Layout, cfg.Tmux.Panes); err != nil {
 		return fmt.Errorf("failed to create tmux session: %w", err)
 	}
 
-	claudeCmd := fmt.Sprintf(`claude "$(cat %s)"; rm -f %s`, shellQuote(promptFile), shellQuote(promptFile))
-	if err := tmux.SendKeys(sessName, claudeCmd, "Enter"); err != nil {
-		return fmt.Errorf("failed to send claude command: %w", err)
+	promptArg := fmt.Sprintf(`"$(cat %s)"`, shellQuote(promptFile))
+	agentCmd := h.BuildShellLaunch(harness.ShellLaunchOptions{
+		PromptArg:    promptArg,
+		PromptArgRaw: true,
+		Overrides:    harness.OverridesFor(cfg, h.ID()),
+	})
+	agentCmd = fmt.Sprintf("%s; rm -f %s", agentCmd, shellQuote(promptFile))
+	if err := tmux.SendKeys(sessName, agentCmd, "Enter"); err != nil {
+		return fmt.Errorf("failed to send agent command: %w", err)
 	}
 
 	return tmux.SwitchClient(sessName)
@@ -815,7 +881,7 @@ func resolveRepo(repoFilter, sessionName string, items []tmux.PickerItem) (strin
 	}
 	activeRepos := make(map[string]bool)
 	for _, item := range items {
-		if claude.IsActive(item.Status) {
+		if agent.IsActive(item.Status) {
 			activeRepos[item.RepoName] = true
 		}
 	}
@@ -1304,7 +1370,7 @@ func tmuxStatusBarCmd() *cli.Command {
 
 			totalWt := 0
 			activeAgents := 0
-			currentStatuses := make(map[string]claude.Status)
+			currentStatuses := make(map[string]agent.Status)
 			done := trace.Span(ctx, "tmux.ListSessions")
 			sessionSet := tmux.ListSessions()
 			done()
@@ -1338,11 +1404,11 @@ func tmuxStatusBarCmd() *cli.Command {
 type tmuxStatusBarRepoResult struct {
 	totalWt      int
 	activeAgents int
-	statuses     map[string]claude.Status
+	statuses     map[string]agent.Status
 }
 
 func collectTmuxStatusBarRepo(ctx context.Context, repoName string, sessionSet map[string]bool) tmuxStatusBarRepoResult {
-	result := tmuxStatusBarRepoResult{statuses: make(map[string]claude.Status)}
+	result := tmuxStatusBarRepoResult{statuses: make(map[string]agent.Status)}
 	bareDir, err := config.ResolveRepo(repoName)
 	if err != nil {
 		return result
@@ -1360,22 +1426,22 @@ func collectTmuxStatusBarRepo(ctx context.Context, repoName string, sessionSet m
 		}
 		result.totalWt++
 		wtDir := filepath.Base(wt.Path)
-		sessions := claude.ReadAllSessions(repoName, wtDir)
-		ws := claude.AggregateStatus(sessions)
+		sessions := agent.ReadAllSessions(repoName, wtDir)
+		ws := agent.AggregateStatus(sessions)
 
 		// Clean orphaned sessions whose tmux session no longer exists.
 		sessName := tmux.SessionNameForWorktree(repoName, wtDir)
-		if (ws.Status == claude.StatusBusy || ws.Status == claude.StatusWait) && !sessionSet[sessName] {
+		if (ws.Status == agent.StatusBusy || ws.Status == agent.StatusWait) && !sessionSet[sessName] {
 			for _, ss := range sessions {
-				if ss.Status == claude.StatusBusy || ss.Status == claude.StatusWait {
-					claude.RemoveSessionFile(repoName, wtDir, ss.SessionID)
+				if ss.Status == agent.StatusBusy || ss.Status == agent.StatusWait {
+					agent.RemoveSessionFileForSession(repoName, wtDir, *ss)
 				}
 			}
-			ws = claude.AggregateStatus(claude.ReadAllSessions(repoName, wtDir))
+			ws = agent.AggregateStatus(agent.ReadAllSessions(repoName, wtDir))
 		}
 
 		result.statuses[repoName+"/"+wtDir] = ws.Status
-		if claude.IsActive(ws.Status) {
+		if agent.IsActive(ws.Status) {
 			result.activeAgents++
 		}
 	}

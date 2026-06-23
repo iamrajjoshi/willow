@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 )
 
 // TestHookCmd_Structure checks that the subcommand is registered and hidden.
@@ -41,7 +41,7 @@ func TestHookCmd_EndToEnd(t *testing.T) {
 	os.Chdir(wtPath)
 
 	// Swap stdin with the hook event JSON.
-	payload, _ := json.Marshal(claude.HookInput{
+	payload, _ := json.Marshal(agent.HookInput{
 		SessionID:     "s1",
 		HookEventName: "Stop",
 	})
@@ -62,7 +62,7 @@ func TestHookCmd_EndToEnd(t *testing.T) {
 		t.Fatalf("Action: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(claude.StatusDir(), repo, wt, "s1.json"))
+	data, err := os.ReadFile(agent.SessionPath(repo, wt, "claude", "s1"))
 	if err != nil {
 		t.Fatalf("status file missing: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestHookCmd_WritesStatusUnderConfiguredBaseDir(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 
-	payload, _ := json.Marshal(claude.HookInput{
+	payload, _ := json.Marshal(agent.HookInput{
 		SessionID:     "s1",
 		HookEventName: "Stop",
 	})
@@ -110,7 +110,7 @@ func TestHookCmd_WritesStatusUnderConfiguredBaseDir(t *testing.T) {
 		t.Fatalf("Action: %v", err)
 	}
 
-	statusFile := filepath.Join(home, "custom willow", "status", repo, wt, "s1.json")
+	statusFile := filepath.Join(home, "custom willow", "status", repo, wt, "claude", "s1.json")
 	if _, err := os.Stat(statusFile); err != nil {
 		t.Fatalf("status file missing at configured base dir: %v", err)
 	}

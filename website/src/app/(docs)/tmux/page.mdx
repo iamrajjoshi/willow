@@ -2,7 +2,7 @@ export const metadata = { title: "Tmux Integration" }
 
 # Tmux Integration
 
-Willow includes native tmux support — a worktree picker popup, live Claude output preview, status bar widget, and automatic session management. If you use tmux, this replaces the need for any separate worktree-switching plugin.
+Willow includes native tmux support — a worktree picker popup, live agent output preview, status bar widget, and automatic session management. If you use tmux, this replaces the need for any separate worktree-switching plugin.
 
 ## Setup
 
@@ -30,7 +30,7 @@ bind w run-shell -b 'tmux display-popup -E -w 70% -h 70% "/path/to/willow tmux p
 
 Press `prefix + w` to open the worktree picker in a popup.
 
-The right panel shows a live preview of the tmux pane content (Claude Code output).
+The right panel shows a live preview of the tmux pane content (for example Claude Code or Codex CLI output).
 Set `"tmux": {"switcherPreview": false}` in config to hide that panel, use the full popup for the fzf picker, and make `ww tmux install` emit the smaller popup binding.
 
 ### Keybindings
@@ -44,7 +44,8 @@ Set `"tmux": {"switcherPreview": false}` in config to hide that panel, use the f
 | `Ctrl-B` | Create new worktree stacked on a base branch (opens branch picker) |
 | `Ctrl-E` | Browse existing remote branches and create a worktree |
 | `Ctrl-P` | Browse open PRs and create a worktree for the selected one |
-| `Ctrl-G` | Dispatch: create worktree from query text as prompt, launch Claude Code |
+| `Ctrl-G` | Dispatch: create worktree from query text as prompt, launch `agent.default` |
+| `Ctrl-O` | Dispatch with a one-off agent harness picker |
 | `Ctrl-S` | Sync stacked worktrees (selected branch's subtree, or all) |
 | `Ctrl-D` | Delete selected worktree and its tmux session |
 | `Ctrl-X` | Delete stale worktrees currently shown, skipping unsafe ones |
@@ -52,7 +53,9 @@ Set `"tmux": {"switcherPreview": false}` in config to hide that panel, use the f
 
 ### Dispatch
 
-Type a prompt in the query field and press `Ctrl-G` to dispatch a Claude Code agent. This creates a worktree (branch auto-named from the prompt, e.g. `dispatch--fix-the-login-bug`), opens a tmux session, and launches `claude` with your prompt. You're switched to the session immediately.
+Type a prompt in the query field and press `Ctrl-G` to dispatch the configured default agent harness. This creates a worktree (branch auto-named from the prompt, e.g. `dispatch--fix-the-login-bug`), opens a tmux session, and launches `claude` or `codex` with your prompt. You're switched to the session immediately.
+
+Press `Ctrl-O` instead when you want to pick `claude` or `codex` for just this dispatch without changing `agent.default`.
 
 ### PR picker
 
@@ -89,7 +92,7 @@ Worktrees whose exact current-head PR is merged show a dim `[merged]` tag, and w
 - **Unread indicator** — `●` marks completed sessions you haven't viewed
 - **Merged indicator** — `[merged]` marks worktrees whose exact current-head PR is merged when `gh` data is available
 - **Stack-aware ordering** — stacked branches stay grouped together and inherit the most urgent item in the tree
-- **Multi-Claude sub-rows** — when a worktree has multiple active Claude sessions, each is shown as an indented sub-row with its own status and tool info
+- **Multi-agent sub-rows** — when a worktree has multiple active sessions, each is shown as an indented sub-row with its harness label, status, and tool info
 - **Embedded fzf** — fzf is compiled into the willow binary, no external `fzf` dependency needed
 
 ## Status bar widget
@@ -100,7 +103,7 @@ The status bar shows worktree and active agent counts:
 🌳 5 🤖 3
 ```
 
-It also tracks state transitions — when a Claude session goes from BUSY to any other state, it triggers an audio notification (macOS `Glass.aiff` by default).
+It also tracks state transitions — when an agent session goes from BUSY to any other state, it triggers an audio notification (macOS `Glass.aiff` by default).
 
 ### Configuration
 

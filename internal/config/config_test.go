@@ -25,6 +25,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Defaults.AutoSetupRemote == nil || !*cfg.Defaults.AutoSetupRemote {
 		t.Error("Defaults.AutoSetupRemote should be true")
 	}
+	if cfg.Agent.Default != "claude" {
+		t.Errorf("Agent.Default = %q, want claude", cfg.Agent.Default)
+	}
 	if cfg.Tmux.SwitcherPreview == nil || !*cfg.Tmux.SwitcherPreview {
 		t.Error("Tmux.SwitcherPreview should be true")
 	}
@@ -89,6 +92,40 @@ func TestMerge_NilSliceDoesNotOverride(t *testing.T) {
 
 	if len(base.Setup) != 1 || base.Setup[0] != "npm install" {
 		t.Errorf("Setup = %v, want [npm install]", base.Setup)
+	}
+}
+
+func TestMerge_AgentConfig(t *testing.T) {
+	base := DefaultConfig()
+	base.Agent.Harnesses = map[string]AgentHarnessConfig{
+		"codex": {Command: "codex", Args: []string{"--profile", "old"}},
+	}
+	overlay := &Config{
+		Agent: AgentConfig{
+			Default: "codex",
+			Harnesses: map[string]AgentHarnessConfig{
+				"codex": {
+					Args:     []string{"--profile", "work"},
+					YoloArgs: []string{"--dangerously-bypass-approvals-and-sandbox"},
+				},
+			},
+		},
+	}
+
+	merge(base, overlay)
+
+	if base.Agent.Default != "codex" {
+		t.Errorf("Agent.Default = %q, want codex", base.Agent.Default)
+	}
+	got := base.Agent.Harnesses["codex"]
+	if got.Command != "codex" {
+		t.Errorf("codex command = %q, want existing command preserved", got.Command)
+	}
+	if len(got.Args) != 2 || got.Args[1] != "work" {
+		t.Errorf("codex args = %v, want override", got.Args)
+	}
+	if len(got.YoloArgs) != 1 {
+		t.Errorf("codex yolo args = %v, want override", got.YoloArgs)
 	}
 }
 

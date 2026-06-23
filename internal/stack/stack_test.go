@@ -27,6 +27,54 @@ func TestLoadSave(t *testing.T) {
 	}
 }
 
+func TestLoadStrictMissingFileReturnsEmptyStack(t *testing.T) {
+	dir := t.TempDir()
+
+	loaded, err := LoadStrict(dir)
+	if err != nil {
+		t.Fatalf("LoadStrict missing file: %v", err)
+	}
+	if !loaded.IsEmpty() {
+		t.Fatalf("LoadStrict missing file = %+v, want empty stack", loaded)
+	}
+}
+
+func TestLoadStrictRejectsInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "branches.json")
+	if err := os.WriteFile(path, []byte("{bad json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadStrict(dir); err == nil {
+		t.Fatal("LoadStrict invalid JSON error = nil, want error")
+	}
+}
+
+func TestUpdateRejectsInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "branches.json")
+	original := []byte("{bad json\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Update(dir, func(s *Stack) {
+		s.SetParent("feature", "main")
+	})
+	if err == nil {
+		t.Fatal("Update invalid JSON error = nil, want error")
+	}
+
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != string(original) {
+		t.Fatalf("Update rewrote invalid branches.json: %q", data)
+	}
+}
+
 func TestSaveEmptyRemovesFile(t *testing.T) {
 	dir := t.TempDir()
 

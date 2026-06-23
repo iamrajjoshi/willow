@@ -66,8 +66,8 @@ func TestDim(t *testing.T) {
 
 func TestUI_DefaultWritesToStdout(t *testing.T) {
 	u := &UI{}
-	if u.out() != nil {
-		// out() returns os.Stdout by default, just verify it doesn't panic
+	if got := u.out(); got != os.Stdout {
+		t.Fatalf("out() = %v, want os.Stdout", got)
 	}
 }
 

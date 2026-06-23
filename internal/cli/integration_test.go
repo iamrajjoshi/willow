@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -88,14 +88,14 @@ func writeGlobalConfigFile(t *testing.T, contents string) {
 	}
 }
 
-func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status claude.Status) {
+func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status agent.Status) {
 	t.Helper()
 
-	dir := filepath.Join(claude.StatusDir(), repo, wt)
+	dir := filepath.Join(agent.StatusDir(), repo, wt)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir session dir: %v", err)
 	}
-	data, err := json.Marshal(claude.SessionStatus{
+	data, err := json.Marshal(agent.SessionStatus{
 		Status:    status,
 		SessionID: sessionID,
 		Timestamp: time.Now(),
@@ -672,7 +672,7 @@ func TestPromote_GeneratedDetachedWorktreeMovesToBranchName(t *testing.T) {
 		t.Fatalf("promote generated without branch error = %v", err)
 	}
 
-	writeActiveSessionFile(t, "testrepo", oldDir, "s1", claude.StatusDone)
+	writeActiveSessionFile(t, "testrepo", oldDir, "s1", agent.StatusDone)
 	binDir := t.TempDir()
 	tmuxLog := filepath.Join(t.TempDir(), "tmux.log")
 	installFakeTmuxForRename(t, binDir, tmuxLog, "testrepo/"+oldDir, "")
@@ -708,10 +708,10 @@ func TestPromote_GeneratedDetachedWorktreeMovesToBranchName(t *testing.T) {
 		t.Fatalf("branch = %q, want feature/generated", branch)
 	}
 
-	if _, err := os.Stat(claude.StatusWorktreeDir("testrepo", oldDir)); !os.IsNotExist(err) {
+	if _, err := os.Stat(agent.StatusWorktreeDir("testrepo", oldDir)); !os.IsNotExist(err) {
 		t.Fatalf("old status dir should be gone, err=%v", err)
 	}
-	if _, err := os.Stat(filepath.Join(claude.StatusWorktreeDir("testrepo", "feature-generated"), "s1.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(agent.StatusWorktreeDir("testrepo", "feature-generated"), "s1.json")); err != nil {
 		t.Fatalf("new status file missing: %v", err)
 	}
 	if !strings.Contains(readTestFile(t, tmuxLog), "rename-session|-t|testrepo/"+oldDir+"|testrepo/feature-generated") {
@@ -2678,7 +2678,7 @@ func TestMigrateBase_RejectsActiveSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read worktrees dir: %v", err)
 	}
-	writeActiveSessionFile(t, "sessionrepo", entries[0].Name(), "s1", claude.StatusDone)
+	writeActiveSessionFile(t, "sessionrepo", entries[0].Name(), "s1", agent.StatusDone)
 	if err := os.Chdir(home); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}

@@ -1,4 +1,4 @@
-package claude
+package agent
 
 import (
 	"encoding/json"
@@ -164,7 +164,7 @@ func TestTimelinePath(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	path := TimelinePath("myrepo", "feat-auth", "sess-1")
-	want := filepath.Join(home, ".willow", "status", "myrepo", "feat-auth", "sess-1.timeline")
+	want := filepath.Join(home, ".willow", "status", "myrepo", "feat-auth", "claude", "sess-1.timeline")
 	if path != want {
 		t.Errorf("TimelinePath = %q, want %q", path, want)
 	}

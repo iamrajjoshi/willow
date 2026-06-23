@@ -58,6 +58,9 @@ func runPostCheckoutHook(hookPath, wtPath string, u *ui.UI, cdOnly bool) {
 
 	hookFile := filepath.Join(wtPath, hookPath)
 	if _, err := os.Stat(hookFile); err != nil {
+		if !os.IsNotExist(err) {
+			u.Warn(fmt.Sprintf("post-checkout hook: failed to inspect %s: %v", hookFile, err))
+		}
 		return
 	}
 
@@ -388,10 +391,8 @@ func newCmd() *cli.Command {
 			}
 			done()
 
-			// Only treat as local base when --base was explicitly provided and the
-			// branch exists locally (stacked PRs). Auto-detected defaults always
-			// use origin/ so they stay current — in bare repos every branch appears
-			// local, which previously caused the fetch to be skipped.
+			// Only explicit --base can select a local stack parent. Auto-detected
+			// bases use origin/<base> because bare repos expose branch refs locally.
 			localBase := explicitBase && repoGit.LocalBranchExists(baseBranch)
 			gitRef := "origin/" + baseBranch
 			if localBase {

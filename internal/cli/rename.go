@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -248,8 +248,8 @@ func checkRenameCollisions(repoGit *git.Git, plan *renamePlan) error {
 		return errors.Userf("worktree path already exists: %s", plan.NewPath)
 	}
 
-	oldStatus := claude.StatusWorktreeDir(plan.RepoName, plan.OldDir)
-	newStatus := claude.StatusWorktreeDir(plan.RepoName, plan.NewDir)
+	oldStatus := agent.StatusWorktreeDir(plan.RepoName, plan.OldDir)
+	newStatus := agent.StatusWorktreeDir(plan.RepoName, plan.NewDir)
 	if comparablePath(oldStatus) != comparablePath(newStatus) && pathExists(newStatus) {
 		return errors.Userf("status directory already exists: %s", newStatus)
 	}
@@ -285,7 +285,7 @@ func executeRenamePlan(ctx context.Context, tr *trace.Tracer, u interface{ Warn(
 
 	if plan.OldDir != plan.NewDir {
 		done := tr.StartCtx(ctx, "move status dir")
-		if err := claude.MoveStatusDir(plan.RepoName, plan.OldDir, plan.NewDir); err != nil {
+		if err := agent.MoveStatusDir(plan.RepoName, plan.OldDir, plan.NewDir); err != nil {
 			return fmt.Errorf("failed to move status directory: %w", err)
 		}
 		done()

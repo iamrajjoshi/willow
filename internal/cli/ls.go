@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -152,12 +152,12 @@ func printRepoList(flags Flags) error {
 			}
 			row.count++
 			wtDir := filepath.Base(wt.Path)
-			sessions := claude.ReadAllSessions(r, wtDir)
-			ws := claude.AggregateStatus(sessions)
-			if claude.IsActive(ws.Status) {
+			sessions := agent.ReadAllSessions(r, wtDir)
+			ws := agent.AggregateStatus(sessions)
+			if agent.IsActive(ws.Status) {
 				row.activeCount++
 			}
-			if claude.CountUnreadIn(r, wtDir, sessions) > 0 {
+			if agent.CountUnreadIn(r, wtDir, sessions) > 0 {
 				row.unreadCount++
 			}
 		}
@@ -194,7 +194,7 @@ type lsRow struct {
 	branch string
 	prefix string // tree-drawing prefix
 	merged bool
-	status claude.Status
+	status agent.Status
 	unread bool
 	age    string
 	wt     worktree.Worktree
@@ -241,13 +241,13 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	var rows []lsRow
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
-		sessions := claude.ReadAllSessions(repoName, wtDir)
-		ws := claude.AggregateStatus(sessions)
+		sessions := agent.ReadAllSessions(repoName, wtDir)
+		ws := agent.AggregateStatus(sessions)
 		rows = append(rows, lsRow{
 			branch: wt.Branch,
 			merged: !wt.Detached && mergedSet[wt.Branch],
 			status: ws.Status,
-			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			unread: ws.Status == agent.StatusDone && agent.CountUnreadIn(repoName, wtDir, sessions) > 0,
 			age:    worktreeAge(wt.Path),
 			wt:     wt,
 		})
@@ -278,7 +278,7 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	u.Info(u.Bold(header))
 
 	for _, row := range rows {
-		statusLabel := claude.StatusLabel(row.status)
+		statusLabel := agent.StatusLabel(row.status)
 		if row.unread {
 			statusLabel += "\u25CF" // ●
 		}
@@ -363,13 +363,13 @@ func newLSRowGroup(rows []lsRow) lsRowGroup {
 	group := lsRowGroup{
 		rows:     rows,
 		merged:   true,
-		priority: claude.WorktreeUrgencyOrder(claude.StatusOffline, false),
+		priority: agent.WorktreeUrgencyOrder(agent.StatusOffline, false),
 	}
 	for _, row := range rows {
 		if !row.merged {
 			group.merged = false
 		}
-		priority := claude.WorktreeUrgencyOrder(row.status, row.unread)
+		priority := agent.WorktreeUrgencyOrder(row.status, row.unread)
 		if priority < group.priority {
 			group.priority = priority
 		}

@@ -1,4 +1,4 @@
-package claude
+package agent
 
 // WorktreeUrgencyOrder returns the attention priority for worktree-focused
 // views like pickers and tables.

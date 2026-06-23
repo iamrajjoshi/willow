@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/trace"
@@ -18,6 +18,7 @@ import (
 type sessionEntry struct {
 	Repo      string `json:"repo,omitempty"`
 	Branch    string `json:"branch"`
+	Harness   string `json:"harness,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	Status    string `json:"status"`
 	Timestamp string `json:"timestamp,omitempty"`
@@ -37,36 +38,36 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 	rs := repoStatus{Name: repoName, WorktreeCount: len(worktrees)}
 	for _, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
-		sessions := claude.ReadAllSessions(repoName, wtDir)
-		unread := hasDoneSession(sessions) && claude.CountUnreadIn(repoName, wtDir, sessions) > 0
-		if unread {
+		sessions := agent.ReadAllSessions(repoName, wtDir)
+		if agent.CountUnreadIn(repoName, wtDir, sessions) > 0 {
 			rs.UnreadCount++
 		}
 
 		if len(sessions) > 0 {
 			for _, ss := range sessions {
-				effective := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+				effective := agent.EffectiveStatus(ss.Status, ss.Timestamp)
 				entry := sessionEntry{
 					Repo:      repoName,
 					Branch:    wt.DisplayName(),
+					Harness:   ss.Harness,
 					SessionID: ss.SessionID,
 					Status:    string(effective),
 					Path:      wt.Path,
 				}
 				if !ss.Timestamp.IsZero() {
-					entry.Timestamp = claude.TimeSince(ss.Timestamp)
+					entry.Timestamp = agent.TimeSince(ss.Timestamp)
 				}
-				if effective == claude.StatusDone && unread {
+				if effective == agent.StatusDone && agent.CountUnreadIn(repoName, wtDir, []*agent.SessionStatus{ss}) > 0 {
 					entry.Unread = true
 				}
 				rs.Entries = append(rs.Entries, entry)
 
-				if claude.IsActive(effective) {
+				if agent.IsActive(effective) {
 					rs.ActiveCount++
 				}
 			}
 		} else {
-			ws := claude.AggregateStatus(sessions)
+			ws := agent.AggregateStatus(sessions)
 			entry := sessionEntry{
 				Repo:   repoName,
 				Branch: wt.DisplayName(),
@@ -74,25 +75,16 @@ func collectRepoStatus(repoName string, worktrees []worktree.Worktree) repoStatu
 				Path:   wt.Path,
 			}
 			if !ws.Timestamp.IsZero() {
-				entry.Timestamp = claude.TimeSince(ws.Timestamp)
+				entry.Timestamp = agent.TimeSince(ws.Timestamp)
 			}
 			rs.Entries = append(rs.Entries, entry)
 
-			if claude.IsActive(ws.Status) {
+			if agent.IsActive(ws.Status) {
 				rs.ActiveCount++
 			}
 		}
 	}
 	return rs
-}
-
-func hasDoneSession(sessions []*claude.SessionStatus) bool {
-	for _, ss := range sessions {
-		if ss.Status == claude.StatusDone {
-			return true
-		}
-	}
-	return false
 }
 
 func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
@@ -122,18 +114,22 @@ func collectRepoStatuses(repos []repoInfo, verbose bool) []repoStatus {
 	return statuses
 }
 
-func statusBranchLabel(branch, sessionID string) string {
+func statusBranchLabel(branch, harnessID, sessionID string) string {
 	if sessionID == "" {
 		return branch
 	}
-	return fmt.Sprintf("%s [%s]", branch, claude.ShortSessionID(sessionID))
+	prefix := agent.ShortSessionID(sessionID)
+	if harnessID != "" {
+		prefix = fmt.Sprintf("%s:%s", harnessID, prefix)
+	}
+	return fmt.Sprintf("%s [%s]", branch, prefix)
 }
 
 func statusCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "status",
 		Aliases: []string{"s"},
-		Usage:   "Show Claude Code agent status per worktree",
+		Usage:   "Show agent status per worktree",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "json",
@@ -182,19 +178,19 @@ func statusCmd() *cli.Command {
 
 				branchW := 0
 				for _, e := range rs.Entries {
-					label := statusBranchLabel(e.Branch, e.SessionID)
+					label := statusBranchLabel(e.Branch, e.Harness, e.SessionID)
 					if len(label) > branchW {
 						branchW = len(label)
 					}
 				}
 
 				for _, e := range rs.Entries {
-					icon := claude.StatusIcon(claude.Status(e.Status))
+					icon := agent.StatusIcon(agent.Status(e.Status))
 					label := e.Status
 					if e.Unread {
 						label += "\u25CF" // bullet
 					}
-					branchLabel := statusBranchLabel(e.Branch, e.SessionID)
+					branchLabel := statusBranchLabel(e.Branch, e.Harness, e.SessionID)
 					var line string
 					if e.Timestamp != "" {
 						line = fmt.Sprintf("  %s %-*s  %-6s  %s",

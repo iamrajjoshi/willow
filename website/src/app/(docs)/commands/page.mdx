@@ -89,7 +89,7 @@ ww promote scratch-repro feature/repro-fix
 
 Running `ww new -e` without a branch name opens an fzf picker showing all remote branches that don't already have worktrees. Select one to create a worktree for it.
 
-From the tmux picker, `Ctrl-B` creates a stacked worktree from a picked base branch, and `Ctrl-E` opens the same existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+From the tmux picker, `Ctrl-B` creates a stacked worktree from a picked base branch, and `Ctrl-E` opens the same existing-branch flow from cached refs first, then refreshes remote branches in the background so opening the picker does not wait on a remote fetch.
 
 #### GitHub PR support
 
@@ -108,7 +108,7 @@ Promote a detached worktree to a normal branch-backed worktree.
 
 If you run it from inside a detached worktree, pass only the branch name. From another directory, pass the detached worktree name first. With one argument outside an explicitly named detached worktree, Willow uses that name for both the worktree and branch.
 
-Generated detached worktrees like `detached-a13f09c` require an explicit branch name. When promoted, Willow moves their directory, Claude status dir, and tmux session to the promoted branch identity. Explicitly named detached worktrees keep their existing directory and tmux session name.
+Generated detached worktrees like `detached-a13f09c` require an explicit branch name. When promoted, Willow moves their directory, agent status dir, and tmux session to the promoted branch identity. Explicitly named detached worktrees keep their existing directory and tmux session name.
 
 ```bash
 ww promote feature/auth                 # from inside a detached worktree
@@ -124,7 +124,7 @@ ww promote scratch-repro                # promote to branch scratch-repro
 
 ### `ww rename [worktree] <name>` (alias: `mv`)
 
-Rename a worktree safely. Branch-backed worktrees rename the local branch and move the worktree directory. Detached worktrees only move the worktree directory. Claude status files and matching tmux sessions move with the worktree.
+Rename a worktree safely. Branch-backed worktrees rename the local branch and move the worktree directory. Detached worktrees only move the worktree directory. Agent status files and matching tmux sessions move with the worktree.
 
 ```bash
 ww rename better-name              # rename the current worktree
@@ -144,7 +144,7 @@ Use `--remote` to push the new branch and delete the old remote branch. Before d
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. Figures out the right action based on what exists:
+Switch to an existing worktree, create one for a remote branch, or create a new branch:
 
 1. **Worktree exists** for that branch → switch to it (like `ww sw`)
 2. **Branch exists on remote** but no worktree → create a worktree for it (like `ww new -e`)
@@ -170,7 +170,7 @@ ww checkout auth-refactor                # auto-cd via shell integration (tmux-a
 
 ### `ww sw`
 
-Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
+Switch worktrees via fzf. Shows agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
 
 ```
 ⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
@@ -338,14 +338,14 @@ Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
 
 ### `ww status`
 
-Rich view of Claude Code agent status across all worktrees. Shows per-session rows when multiple Claude sessions run in the same worktree, with a short session ID on each session row.
+Show agent status per worktree/session. Multiple sessions in the same worktree render with a `harness:session` label.
 
 ```
 myrepo (4 worktrees, 3 sessions active, 1 unread)
 
-  🤖 auth-refactor [4f2c9a1b]  BUSY    2m ago
-  🤖 auth-refactor [9b7d2e44]  BUSY    5m ago
-  ✅ payments      [3ac18f02]  DONE●   12m ago
+  🤖 auth-refactor [claude:4f2c9a1b]  BUSY    2m ago
+  🤖 auth-refactor [codex:9b7d2e44]   BUSY    5m ago
+  ✅ payments      [claude:3ac18f02]  DONE●   12m ago
   🟡 main                     IDLE    1h ago
      old-feature              --
 ```
@@ -429,7 +429,7 @@ Without `--prune`, willow only empties the trash directory and prints the comman
 
 ### Desktop notifications
 
-Desktop notifications fire directly from Claude Code's hook system after you run `ww cc-setup` — there's no daemon, no polling, and no `ww notify` subcommand. Whenever an agent transitions from `BUSY` to `DONE` or `WAIT`, the hook fires a macOS Notification Center alert within ~200ms.
+Desktop notifications fire directly from agent hook systems after you run `ww cc-setup`, `ww codex-setup`, or `ww agent setup all` — there's no daemon, no polling, and no `ww notify` subcommand. Whenever an agent transitions from `BUSY` to `DONE` or `WAIT`, the hook fires a macOS Notification Center alert within ~200ms.
 
 **Desktop notifications:** Enabled by default. Set `"notify": {"desktop": false}` in config to disable them. The tmux status bar is a separate channel and is unaffected.
 
@@ -439,13 +439,14 @@ Desktop notifications fire directly from Claude Code's hook system after you run
 
 ### `ww dispatch <prompt>`
 
-Create a worktree and launch Claude Code with a prompt. From the terminal, Claude runs interactively in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session.
+Create a worktree and launch the configured agent harness with a prompt. From the terminal, the agent runs interactively in the foreground. From the tmux picker, `Ctrl-G` launches the configured default in a background session and `Ctrl-O` lets you pick a one-off harness.
 
 ```bash
 ww dispatch "Fix the login validation bug"                  # auto-name branch
 ww dispatch "Add retry logic" --name add-retries             # explicit branch name
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
+ww dispatch "Fix auth" --agent codex                         # one-off Codex dispatch
 ```
 
 | Flag | Description | Default |
@@ -454,11 +455,12 @@ ww dispatch "Refactor payments" --repo myrepo                # target specific r
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `-b, --base` | Base branch to fork from | Config default |
 | `--no-fetch` | Skip fetching from remote | `false` |
-| `--yolo` | Run Claude with `--dangerously-skip-permissions` | `false` |
+| `--agent` | Override `agent.default` (`claude` or `codex`) | Config default |
+| `--yolo` | Run with the harness's full-access flag | `false` |
 
 **How it works:**
 1. Creates a new worktree (reuses `ww new` internally)
-2. Launches `claude "<prompt>"` (interactive session with prompt pre-loaded)
+2. Launches the selected harness (`claude "<prompt>"` or `codex "<prompt>"`)
 3. Logs a `dispatch` event (visible in `ww log`)
 
 The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to it anytime with `ww sw`.
@@ -470,7 +472,17 @@ Hook installation for Claude Code status tracking. Safe to re-run: each invocati
 1. Creates the status directory: `<willow-base>/status/`
 2. Registers the hidden `willow hook` subcommand for every event willow tracks. The absolute binary path is resolved via `os.Executable()` at install time.
 
-The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`). Each invocation writes per-session status to `<willow-base>/status/<repo>/<worktree>/<session_id>.json`, appends to the session timeline, and dispatches desktop notifications on status transitions. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
+The hook fires on 6 events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`). Each invocation writes per-session status to `<willow-base>/status/<repo>/<worktree>/claude/<session_id>.json`, appends to the session timeline, and dispatches desktop notifications on status transitions. Multiple Claude sessions in the same worktree are tracked independently. The `SessionEnd` event immediately removes the session file for instant cleanup.
+
+### `ww codex-setup`
+
+Hook installation for Codex CLI status tracking. Safe to re-run: each invocation overwrites Willow's entries in `~/.codex/hooks.json` with the current binary path and leaves unrelated hook rules untouched. Codex may ask you to review and trust the hook with `/hooks`.
+
+The hook tracks `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop`, writing status to `<willow-base>/status/<repo>/<worktree>/codex/<session_id>.json`.
+
+### `ww agent setup`
+
+Install hooks for one harness or both. With no argument, this installs all built-in harnesses.
 
 The hook also tracks enriched session data:
 - **`tool_count`** — number of tool invocations in the session
@@ -479,7 +491,7 @@ The hook also tracks enriched session data:
 
 ### Agent status
 
-After running `ww cc-setup`, Claude Code automatically reports its state:
+After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supported agents automatically report their state:
 
 | Icon | Status | Meaning |
 |------|--------|---------|
@@ -549,7 +561,7 @@ ww migrate-base ~/code/worktrees/willow --yes
 | `--dry-run` | Show the planned move without changing anything | `false` |
 | `-y, --yes` | Skip confirmation | `false` |
 
-The command rejects overlapping paths, non-empty destinations, active Claude session files, and running from inside the current willow base.
+The command rejects overlapping paths, non-empty destinations, active agent session files, and running from inside the current willow base.
 
 ### `ww doctor`
 
@@ -564,7 +576,10 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 ✔ git 2.45.0
 ✔ gh CLI installed
 ✔ tmux installed
+✔ Claude Code (default) CLI installed
 ✔ Claude Code hooks installed
+✔ Codex CLI installed
+✔ Codex CLI hooks installed
 ✔ <willow-base> exists
 ✔ <willow-base>/repos exists
 ✔ <willow-base>/worktrees exists
@@ -577,7 +592,8 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 | git version | Warns if &lt; 2.30 |
 | gh CLI | Optional — warns if missing |
 | tmux | Optional — warns if missing |
-| Claude Code hooks | Checks `~/.claude/settings.json` for willow hooks; flags unmarked legacy entries from older releases |
+| Agent CLIs and hooks | Checks Claude Code and Codex CLI binaries plus Willow hook installation |
+| Claude legacy hooks | Flags unmarked entries from older Willow releases in `~/.claude/settings.json` |
 | Willow directories | `<willow-base>`, `repos/`, `worktrees/` |
 | Stale sessions | Session files older than 30 minutes |
 | Config validity | Validates merged config for common issues |

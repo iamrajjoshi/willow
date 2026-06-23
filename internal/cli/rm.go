@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
@@ -201,7 +201,10 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	wtGit := &git.Git{Dir: wt.Path, Verbose: verbose}
 	label := wt.DisplayName()
 
-	st := stack.Load(bareDir)
+	st, err := stack.LoadStrict(bareDir)
+	if err != nil {
+		return fmt.Errorf("failed to load stack: %w", err)
+	}
 	if !wt.Detached {
 		if children := st.Children(wt.Branch); len(children) > 0 && !force {
 			u.Warn(fmt.Sprintf("Branch %s has stacked children: %s", u.Bold(wt.Branch), strings.Join(children, ", ")))
@@ -261,7 +264,8 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	done := tr.StartCtx(ctx, "remove worktree "+label)
 	adminDir, err := readGitAdminDir(wt.Path)
 	if err != nil {
-		adminDir = filepath.Join(bareDir, "worktrees", filepath.Base(wt.Path))
+		done()
+		return fmt.Errorf("failed to read worktree git admin dir: %w", err)
 	}
 
 	// Move worktree to trash first (reversible — admin dir still intact).
@@ -270,12 +274,14 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	// the user can retry.
 	trashDir := config.TrashDir()
 	if err := os.MkdirAll(trashDir, 0o755); err != nil {
+		done()
 		return fmt.Errorf("failed to create trash dir: %w", err)
 	}
 
 	trashDest := filepath.Join(trashDir, fmt.Sprintf("%d-%s", time.Now().UnixNano(), filepath.Base(wt.Path)))
 	if err := os.Rename(wt.Path, trashDest); err != nil {
 		if removeErr := os.RemoveAll(wt.Path); removeErr != nil {
+			done()
 			return fmt.Errorf("failed to remove worktree: %w", removeErr)
 		}
 	} else {
@@ -285,6 +291,7 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	}
 
 	if err := os.RemoveAll(adminDir); err != nil {
+		done()
 		return fmt.Errorf("failed to remove worktree admin dir: %w", err)
 	}
 	done()
@@ -300,7 +307,7 @@ func removeWorktree(ctx context.Context, tr *trace.Tracer, u *ui.UI, repoGit *gi
 	done = tr.StartCtx(ctx, "cleanup status "+label)
 	repoName := repoNameFromDir(bareDir)
 	wtDir := filepath.Base(wt.Path)
-	claude.RemoveStatusDir(repoName, wtDir)
+	agent.RemoveStatusDir(repoName, wtDir)
 	done()
 
 	if !wt.Detached && st.IsTracked(wt.Branch) {

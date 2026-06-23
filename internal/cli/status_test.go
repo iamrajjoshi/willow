@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -34,8 +34,8 @@ func TestCollectRepoStatus_NoSessions(t *testing.T) {
 		t.Errorf("Entries = %d, want 2", len(rs.Entries))
 	}
 	for _, e := range rs.Entries {
-		if e.Status != string(claude.StatusOffline) {
-			t.Errorf("Entry status = %q, want %q", e.Status, claude.StatusOffline)
+		if e.Status != string(agent.StatusOffline) {
+			t.Errorf("Entry status = %q, want %q", e.Status, agent.StatusOffline)
 		}
 	}
 }
@@ -52,9 +52,9 @@ func TestCollectRepoStatus_WithSessions(t *testing.T) {
 	os.MkdirAll(sessDir, 0o755)
 
 	now := time.Now().UTC()
-	sessions := []claude.SessionStatus{
-		{Status: claude.StatusBusy, SessionID: "s1", Timestamp: now},
-		{Status: claude.StatusDone, SessionID: "s2", Timestamp: now},
+	sessions := []agent.SessionStatus{
+		{Status: agent.StatusBusy, SessionID: "s1", Timestamp: now},
+		{Status: agent.StatusDone, SessionID: "s2", Timestamp: now},
 	}
 	for _, ss := range sessions {
 		data, _ := json.Marshal(ss)
@@ -101,10 +101,10 @@ func TestCollectRepoStatus_RepoNameSet(t *testing.T) {
 }
 
 func TestStatusBranchLabel(t *testing.T) {
-	if got := statusBranchLabel("feature", "1234567890"); got != "feature [12345678]" {
-		t.Errorf("statusBranchLabel with session = %q, want %q", got, "feature [12345678]")
+	if got := statusBranchLabel("feature", "claude", "1234567890"); got != "feature [claude:12345678]" {
+		t.Errorf("statusBranchLabel with session = %q, want %q", got, "feature [claude:12345678]")
 	}
-	if got := statusBranchLabel("main", ""); got != "main" {
+	if got := statusBranchLabel("main", "", ""); got != "main" {
 		t.Errorf("statusBranchLabel without session = %q, want %q", got, "main")
 	}
 }
@@ -120,7 +120,7 @@ func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 
 	// Use a past timestamp so MarkRead (which writes "now") is strictly after it
 	past := time.Now().UTC().Add(-5 * time.Second)
-	ss := claude.SessionStatus{Status: claude.StatusDone, SessionID: "s1", Timestamp: past}
+	ss := agent.SessionStatus{Status: agent.StatusDone, SessionID: "s1", Timestamp: past}
 	data, _ := json.Marshal(ss)
 	os.WriteFile(filepath.Join(sessDir, "s1.json"), data, 0o644)
 
@@ -137,13 +137,53 @@ func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 	}
 
 	// Mark as read, then re-collect
-	claude.MarkRead(repoName, wtName)
+	agent.MarkRead(repoName, wtName)
 	rs = collectRepoStatus(repoName, wts)
 	if rs.Entries[0].Unread {
 		t.Error("DONE session should not be unread after MarkRead")
 	}
 	if rs.UnreadCount != 0 {
 		t.Errorf("UnreadCount = %d, want 0 after MarkRead", rs.UnreadCount)
+	}
+}
+
+func TestCollectRepoStatus_MarksOnlyUnreadDoneSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoName := "myrepo"
+	wtName := "done-wt"
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	os.MkdirAll(sessDir, 0o755)
+
+	base := time.Now().UTC().Add(-10 * time.Minute)
+	sessions := []agent.SessionStatus{
+		{Status: agent.StatusDone, SessionID: "old", Timestamp: base},
+		{Status: agent.StatusDone, SessionID: "new", Timestamp: base.Add(2 * time.Minute)},
+	}
+	for _, ss := range sessions {
+		data, _ := json.Marshal(ss)
+		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+	}
+	lastRead := base.Add(1*time.Minute).Format(time.RFC3339) + "\n"
+	os.WriteFile(filepath.Join(sessDir, ".lastread"), []byte(lastRead), 0o644)
+
+	rs := collectRepoStatus(repoName, []worktree.Worktree{
+		{Branch: "done-branch", Path: "/wt/myrepo/" + wtName},
+	})
+	if rs.UnreadCount != 1 {
+		t.Fatalf("UnreadCount = %d, want 1", rs.UnreadCount)
+	}
+
+	unreadBySession := map[string]bool{}
+	for _, e := range rs.Entries {
+		unreadBySession[e.SessionID] = e.Unread
+	}
+	if unreadBySession["old"] {
+		t.Fatal("old DONE session should not be marked unread")
+	}
+	if !unreadBySession["new"] {
+		t.Fatal("new DONE session should be marked unread")
 	}
 }
 

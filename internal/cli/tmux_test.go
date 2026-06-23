@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/cleanup"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/tmux"
@@ -297,7 +298,7 @@ func TestMoveToFrontWithStack_DetachedOnlyMovesSelectedWorktree(t *testing.T) {
 }
 
 func TestTmuxPickerHeaderActions(t *testing.T) {
-	want := "^N new ^T detach ^U promote ^B stack ^E existing ^P PR ^G dispatch ^S sync ^D rm ^X prune"
+	want := "^N new ^T detach ^U promote ^B stack ^E existing ^P PR ^G dispatch ^O agent ^S sync ^D rm ^X prune"
 	if tmuxPickerHeader != want {
 		t.Fatalf("tmux picker header = %q, want %q", tmuxPickerHeader, want)
 	}
@@ -878,7 +879,33 @@ func TestTmuxPickDispatchWritesPromptAndStartsClaude(t *testing.T) {
 	for _, want := range []string{
 		"new-session -d -s repo/dispatch--fix-a-gnarly-bug",
 		"send-keys -t repo/dispatch--fix-a-gnarly-bug",
-		"claude \"$(cat",
+		"'claude' \"$(cat",
+	} {
+		if !strings.Contains(tmuxText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
+		}
+	}
+}
+
+func TestTmuxPickDispatchForRepoStartsCodex(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+
+	cfg := config.DefaultConfig()
+	if err := tmuxPickDispatchForRepo(self, "Fix via codex", "repo", "codex", cfg); err != nil {
+		t.Fatalf("tmuxPickDispatchForRepo: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "new --cd --repo repo -- dispatch--fix-via-codex") {
+		t.Fatalf("willow log missing dispatch new:\n%s", willowText)
+	}
+	tmuxText := readTestFile(t, tmuxLog)
+	for _, want := range []string{
+		"send-keys -t repo/dispatch--fix-via-codex",
+		"'codex' \"$(cat",
 	} {
 		if !strings.Contains(tmuxText, want) {
 			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
@@ -985,7 +1012,7 @@ func TestResolveRepoSingleAndNoRepos(t *testing.T) {
 func TestResolveRepoOrdersCurrentAndActiveRepos(t *testing.T) {
 	setupTmuxCommandHome(t, "alpha", "beta", "gamma")
 	t.Setenv("FZF_DEFAULT_OPTS", "--filter=gamma")
-	items := []tmux.PickerItem{{RepoName: "gamma", Status: claude.StatusBusy}}
+	items := []tmux.PickerItem{{RepoName: "gamma", Status: agent.StatusBusy}}
 
 	if got, err := resolveRepo("", "beta/current", items); err != nil || got != "gamma" {
 		t.Fatalf("resolveRepo multi = %q, %v; want gamma, nil", got, err)
@@ -1099,7 +1126,7 @@ func TestTmuxStatusBarCommand_CountsWorktreesAndAgents(t *testing.T) {
 	if err := runApp("new", "feature-agent", "--no-fetch"); err != nil {
 		t.Fatalf("new failed: %v", err)
 	}
-	writeActiveSessionFile(t, "tmuxstatus", "feature-agent", "s1", claude.StatusDone)
+	writeActiveSessionFile(t, "tmuxstatus", "feature-agent", "s1", agent.StatusDone)
 
 	out, err := captureStdout(t, func() error {
 		return runApp("tmux", "status-bar")

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "willow — Git worktree manager for AI agents",
     description:
-      "Spin up isolated worktrees for Claude Code sessions. Switch between them instantly with fzf. See which agents are busy, waiting, or idle.",
+      "Spin up isolated worktrees for local agent sessions. Switch between them instantly with fzf. See which agents are busy, waiting, or idle.",
     type: "website",
     url: "https://getwillow.dev",
   },

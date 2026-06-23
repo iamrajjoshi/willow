@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -185,22 +185,22 @@ func TestRename_MovesStatusDirAndRejectsCollision(t *testing.T) {
 	if err := runApp("new", "old", "--no-fetch"); err != nil {
 		t.Fatalf("new old failed: %v", err)
 	}
-	writeActiveSessionFile(t, repo.RepoName, "old", "s1", claude.StatusDone)
+	writeActiveSessionFile(t, repo.RepoName, "old", "s1", agent.StatusDone)
 
 	if err := runApp("rename", "old", "new"); err != nil {
 		t.Fatalf("rename failed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(claude.StatusWorktreeDir(repo.RepoName, "new"), "s1.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(agent.StatusWorktreeDir(repo.RepoName, "new"), "s1.json")); err != nil {
 		t.Fatalf("new status file missing: %v", err)
 	}
-	if _, err := os.Stat(claude.StatusWorktreeDir(repo.RepoName, "old")); !os.IsNotExist(err) {
+	if _, err := os.Stat(agent.StatusWorktreeDir(repo.RepoName, "old")); !os.IsNotExist(err) {
 		t.Fatalf("old status dir should be gone, err=%v", err)
 	}
 
 	if err := runApp("new", "old2", "--no-fetch"); err != nil {
 		t.Fatalf("new old2 failed: %v", err)
 	}
-	if err := os.MkdirAll(claude.StatusWorktreeDir(repo.RepoName, "new2"), 0o755); err != nil {
+	if err := os.MkdirAll(agent.StatusWorktreeDir(repo.RepoName, "new2"), 0o755); err != nil {
 		t.Fatalf("mkdir status collision: %v", err)
 	}
 	if err := runApp("rename", "old2", "new2"); err == nil {

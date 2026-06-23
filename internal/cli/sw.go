@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/fzf"
@@ -58,7 +58,7 @@ func swCmd() *cli.Command {
 					return err
 				}
 				wtDir := filepath.Base(rwt.Worktree.Path)
-				claude.MarkRead(rwt.Repo.Name, wtDir)
+				agent.MarkRead(rwt.Repo.Name, wtDir)
 				fmt.Println(rwt.Worktree.Path)
 				return nil
 			}
@@ -84,7 +84,7 @@ func swCmd() *cli.Command {
 
 				path := extractPathFromLine(selected)
 				if rwt := repoWorktreeByPath(allWts, path); rwt != nil {
-					claude.MarkRead(rwt.Repo.Name, filepath.Base(path))
+					agent.MarkRead(rwt.Repo.Name, filepath.Base(path))
 				}
 				fmt.Println(path)
 				return nil
@@ -112,7 +112,7 @@ func swCmd() *cli.Command {
 			}
 
 			wtDir := filepath.Base(selected)
-			claude.MarkRead(repoName, wtDir)
+			agent.MarkRead(repoName, wtDir)
 			fmt.Println(selected)
 			return nil
 		},
@@ -121,7 +121,7 @@ func swCmd() *cli.Command {
 
 type worktreeWithStatus struct {
 	wt     worktree.Worktree
-	status *claude.WorktreeStatus
+	status *agent.WorktreeStatus
 	unread bool
 	merged bool
 }
@@ -131,12 +131,12 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 	items := make([]worktreeWithStatus, len(worktrees))
 	for i, wt := range worktrees {
 		wtDir := filepath.Base(wt.Path)
-		sessions := claude.ReadAllSessions(repoName, wtDir)
-		ws := claude.AggregateStatus(sessions)
+		sessions := agent.ReadAllSessions(repoName, wtDir)
+		ws := agent.AggregateStatus(sessions)
 		items[i] = worktreeWithStatus{
 			wt:     wt,
 			status: ws,
-			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			unread: ws.Status == agent.StatusDone && agent.CountUnreadIn(repoName, wtDir, sessions) > 0,
 			merged: !wt.Detached && mergedSet[wt.Branch],
 		}
 	}
@@ -145,8 +145,8 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 		if items[i].merged != items[j].merged {
 			return !items[i].merged
 		}
-		return claude.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
-			claude.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
+		return agent.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
+			agent.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
 	})
 
 	branchW := 0
@@ -160,8 +160,8 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 
 	var lines []string
 	for _, item := range items {
-		icon := claude.StatusIcon(item.status.Status)
-		label := claude.StatusLabel(item.status.Status)
+		icon := agent.StatusIcon(item.status.Status)
+		label := agent.StatusLabel(item.status.Status)
 		if item.unread {
 			label += "\u25CF"
 		}
@@ -179,7 +179,7 @@ func buildWorktreeLines(worktrees []worktree.Worktree, repoName string) []string
 func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	type item struct {
 		rwt    repoWorktree
-		status *claude.WorktreeStatus
+		status *agent.WorktreeStatus
 		unread bool
 		merged bool
 	}
@@ -211,12 +211,12 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 	items := make([]item, len(rwts))
 	for i, rwt := range rwts {
 		wtDir := filepath.Base(rwt.Worktree.Path)
-		sessions := claude.ReadAllSessions(rwt.Repo.Name, wtDir)
-		ws := claude.AggregateStatus(sessions)
+		sessions := agent.ReadAllSessions(rwt.Repo.Name, wtDir)
+		ws := agent.AggregateStatus(sessions)
 		items[i] = item{
 			rwt:    rwt,
 			status: ws,
-			unread: ws.Status == claude.StatusDone && claude.CountUnreadIn(rwt.Repo.Name, wtDir, sessions) > 0,
+			unread: ws.Status == agent.StatusDone && agent.CountUnreadIn(rwt.Repo.Name, wtDir, sessions) > 0,
 			merged: !rwt.Worktree.Detached && mergedSets[rwt.Repo.Name][rwt.Worktree.Branch],
 		}
 	}
@@ -225,8 +225,8 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 		if items[i].merged != items[j].merged {
 			return !items[i].merged
 		}
-		return claude.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
-			claude.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
+		return agent.WorktreeUrgencyOrder(items[i].status.Status, items[i].unread) <
+			agent.WorktreeUrgencyOrder(items[j].status.Status, items[j].unread)
 	})
 
 	nameW := 0
@@ -240,8 +240,8 @@ func buildCrossRepoWorktreeLines(rwts []repoWorktree) []string {
 
 	var lines []string
 	for _, it := range items {
-		icon := claude.StatusIcon(it.status.Status)
-		label := claude.StatusLabel(it.status.Status)
+		icon := agent.StatusIcon(it.status.Status)
+		label := agent.StatusLabel(it.status.Status)
 		if it.unread {
 			label += "\u25CF"
 		}

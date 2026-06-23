@@ -3,7 +3,7 @@ package tmux
 import (
 	"os/exec"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 )
 
@@ -21,26 +21,26 @@ const (
 )
 
 // CheckTransitions detects BUSY→non-BUSY transitions using the tmux state file.
-func CheckTransitions(current map[string]claude.Status) []claude.Transition {
-	return claude.DetectTransitions(current, claude.TmuxStateFile())
+func CheckTransitions(current map[string]agent.Status) []agent.Transition {
+	return agent.DetectTransitions(current, agent.TmuxStateFile())
 }
 
 // NotifyWithContext sends sound notifications for transitions, skipping the current
 // tmux session.
-func NotifyWithContext(transitions []claude.Transition, cfg *config.Config) {
+func NotifyWithContext(transitions []agent.Transition, cfg *config.Config) {
 	session, _ := currentSession()
 	for _, t := range transitions {
 		if t.Key == session {
 			continue
 		}
 		switch t.ToStatus {
-		case claude.StatusWait:
+		case agent.StatusWait:
 			cmd := cfg.Tmux.NotifyWaitCommand
 			if cmd == "" {
 				cmd = defaultNotifyWaitCommand
 			}
 			Notify(cmd)
-		case claude.StatusDone:
+		case agent.StatusDone:
 			Notify(cfg.Tmux.NotifyCommand)
 		}
 	}

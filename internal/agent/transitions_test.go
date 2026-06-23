@@ -1,4 +1,4 @@
-package claude
+package agent
 
 import (
 	"os"
@@ -89,4 +89,3 @@ func TestFireNotifications_SingleTransitionUnderLock(t *testing.T) {
 		t.Errorf("observed %d transitions across racing goroutines, want exactly 1", count)
 	}
 }
-

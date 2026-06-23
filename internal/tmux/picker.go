@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/cleanup"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -35,10 +35,10 @@ type PickerItem struct {
 	Detached        bool
 	WtDirName       string
 	WtPath          string
-	Status          claude.Status
+	Status          agent.Status
 	Unread          bool
 	HasSession      bool
-	Sessions        []*claude.SessionStatus
+	Sessions        []*agent.SessionStatus
 	Merged          bool
 	StaleReasons    []cleanup.Reason
 	ExpectedBaseRef string
@@ -143,8 +143,8 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, opts PickerBu
 			continue
 		}
 		wtDir := filepath.Base(wt.Path)
-		sessions := claude.ReadAllSessions(repoName, wtDir)
-		ws := claude.AggregateStatus(sessions)
+		sessions := agent.ReadAllSessions(repoName, wtDir)
+		ws := agent.AggregateStatus(sessions)
 		candidate := candidatesByBranch[wt.Branch]
 		result.items = append(result.items, PickerItem{
 			RepoName:        repoName,
@@ -154,7 +154,7 @@ func buildPickerItemsForRepo(ctx context.Context, repoName string, opts PickerBu
 			WtDirName:       wtDir,
 			WtPath:          wt.Path,
 			Status:          ws.Status,
-			Unread:          ws.Status == claude.StatusDone && claude.CountUnreadIn(repoName, wtDir, sessions) > 0,
+			Unread:          ws.Status == agent.StatusDone && agent.CountUnreadIn(repoName, wtDir, sessions) > 0,
 			Sessions:        sessions,
 			Merged:          candidate.HasReason(cleanup.ReasonMergedPR),
 			StaleReasons:    candidate.Reasons,
@@ -270,13 +270,13 @@ func newPickerGroup(items []PickerItem) pickerGroup {
 	group := pickerGroup{
 		items:    items,
 		stale:    true,
-		priority: claude.WorktreeUrgencyOrder(claude.StatusOffline, false),
+		priority: agent.WorktreeUrgencyOrder(agent.StatusOffline, false),
 	}
 	for _, item := range items {
 		if !item.IsStale() {
 			group.stale = false
 		}
-		priority := claude.WorktreeUrgencyOrder(item.Status, item.Unread)
+		priority := agent.WorktreeUrgencyOrder(item.Status, item.Unread)
 		if priority < group.priority {
 			group.priority = priority
 		}
@@ -296,7 +296,7 @@ func pickerStableItemKey(item PickerItem) string {
 }
 
 // FormatPickerLines produces ANSI-colored lines for the fzf picker.
-// When a worktree has multiple active Claude sessions, sub-rows are shown
+// When a worktree has multiple active agent sessions, sub-rows are shown
 // indented below the parent row.
 func FormatPickerLines(items []PickerItem) []string {
 	multiRepo := hasMultipleRepos(items)
@@ -314,8 +314,8 @@ func FormatPickerLines(items []PickerItem) []string {
 	var lines []string
 	for _, item := range items {
 		color := statusColor(item.Status)
-		icon := claude.StatusIcon(item.Status)
-		label := fmt.Sprintf("%-7s", claude.StatusLabel(item.Status))
+		icon := agent.StatusIcon(item.Status)
+		label := fmt.Sprintf("%-7s", agent.StatusLabel(item.Status))
 
 		dot := " "
 		if item.Unread {
@@ -347,14 +347,17 @@ func FormatPickerLines(items []PickerItem) []string {
 		activeSessions := filterActiveSessions(item.Sessions)
 		if len(activeSessions) > 1 {
 			for _, ss := range activeSessions {
-				effStatus := claude.EffectiveStatus(ss.Status, ss.Timestamp)
+				effStatus := agent.EffectiveStatus(ss.Status, ss.Timestamp)
 				subColor := statusColor(effStatus)
-				subIcon := claude.StatusIcon(effStatus)
-				subLabel := fmt.Sprintf("%-6s", claude.StatusLabel(effStatus))
+				subIcon := agent.StatusIcon(effStatus)
+				subLabel := fmt.Sprintf("%-6s", agent.StatusLabel(effStatus))
 
 				prefix := "\u2514 "
 				sid := truncate(ss.SessionID, 8)
-				timeAgo := claude.TimeSince(ss.Timestamp)
+				if ss.Harness != "" {
+					sid = ss.Harness + ":" + sid
+				}
+				timeAgo := agent.TimeSince(ss.Timestamp)
 
 				plainLen := utf8.RuneCountInString(prefix) + len(sid)
 				infoAnsi := colorDim + prefix + sid
@@ -383,11 +386,11 @@ func FormatPickerLines(items []PickerItem) []string {
 	return lines
 }
 
-func filterActiveSessions(sessions []*claude.SessionStatus) []*claude.SessionStatus {
-	var active []*claude.SessionStatus
+func filterActiveSessions(sessions []*agent.SessionStatus) []*agent.SessionStatus {
+	var active []*agent.SessionStatus
 	for _, ss := range sessions {
-		eff := claude.EffectiveStatus(ss.Status, ss.Timestamp)
-		if eff != claude.StatusIdle && eff != claude.StatusOffline {
+		eff := agent.EffectiveStatus(ss.Status, ss.Timestamp)
+		if eff != agent.StatusIdle && eff != agent.StatusOffline {
 			active = append(active, ss)
 		}
 	}
@@ -493,15 +496,15 @@ func expandHome(path string) string {
 	return path
 }
 
-func statusColor(s claude.Status) string {
+func statusColor(s agent.Status) string {
 	switch s {
-	case claude.StatusBusy:
+	case agent.StatusBusy:
 		return colorGreen
-	case claude.StatusWait:
+	case agent.StatusWait:
 		return colorRed
-	case claude.StatusDone:
+	case agent.StatusDone:
 		return colorBlue
-	case claude.StatusIdle:
+	case agent.StatusIdle:
 		return colorYellow
 	default:
 		return colorDim

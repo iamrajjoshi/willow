@@ -27,25 +27,44 @@ func filePath(bareDir string) string {
 	return filepath.Join(bareDir, "branches.json")
 }
 
-// Load reads the stack from branches.json. Returns an empty stack if the file doesn't exist.
+// Load reads the stack from branches.json. Returns an empty stack if the file
+// doesn't exist or can't be parsed.
 func Load(bareDir string) *Stack {
+	s, err := LoadStrict(bareDir)
+	if err != nil {
+		return emptyStack()
+	}
+	return s
+}
+
+// LoadStrict reads the stack from branches.json. Missing files are treated as
+// an empty stack; read or parse errors are returned to the caller.
+func LoadStrict(bareDir string) (*Stack, error) {
 	s := &Stack{Parents: make(map[string]string)}
 	data, err := os.ReadFile(filePath(bareDir))
 	if err != nil {
-		return s
+		if errors.Is(err, os.ErrNotExist) {
+			return s, nil
+		}
+		return nil, err
 	}
 	var wrapped struct {
 		Parents map[string]string `json:"parents"`
 	}
 	if err := json.Unmarshal(data, &wrapped); err == nil && wrapped.Parents != nil {
 		s.Parents = wrapped.Parents
-		return s
+		return s, nil
 	}
 	var flat map[string]string
 	if err := json.Unmarshal(data, &flat); err == nil {
 		s.Parents = flat
+		return s, nil
 	}
-	return s
+	return nil, fmt.Errorf("parse branches.json: expected stack map or {parents: map}")
+}
+
+func emptyStack() *Stack {
+	return &Stack{Parents: make(map[string]string)}
 }
 
 // Save writes the stack to branches.json. Removes the file if the stack is empty.
@@ -90,7 +109,10 @@ func Update(bareDir string, fn func(*Stack)) error {
 	}
 	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 
-	s := Load(bareDir)
+	s, err := LoadStrict(bareDir)
+	if err != nil {
+		return err
+	}
 	fn(s)
 	return s.Save(bareDir)
 }

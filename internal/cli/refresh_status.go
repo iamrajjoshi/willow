@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
@@ -25,14 +25,14 @@ func refreshStatusCmd() *cli.Command {
 			u := parseFlags(cmd).NewUI()
 			dryRun := cmd.Bool("dry-run")
 
-			sessions, err := claude.ScanAllSessions()
+			sessions, err := agent.ScanAllSessions()
 			if err != nil {
 				return fmt.Errorf("failed to scan sessions: %w", err)
 			}
 
 			removed := 0
 			for _, si := range sessions {
-				if si.Session.Status != claude.StatusBusy && si.Session.Status != claude.StatusWait {
+				if si.Session.Status != agent.StatusBusy && si.Session.Status != agent.StatusWait {
 					continue
 				}
 
@@ -45,7 +45,7 @@ func refreshStatusCmd() *cli.Command {
 					u.Info(fmt.Sprintf("Would remove %s/%s session %s (%s)",
 						si.RepoName, si.WorktreeDir, si.Session.SessionID, si.Session.Status))
 				} else {
-					if err := claude.RemoveSessionFile(si.RepoName, si.WorktreeDir, si.Session.SessionID); err != nil {
+					if err := agent.RemoveSessionFileForSession(si.RepoName, si.WorktreeDir, si.Session); err != nil {
 						u.Warn(fmt.Sprintf("Failed to remove %s/%s session %s: %v",
 							si.RepoName, si.WorktreeDir, si.Session.SessionID, err))
 						continue
@@ -55,7 +55,7 @@ func refreshStatusCmd() *cli.Command {
 			}
 
 			if !dryRun {
-				if err := claude.CleanEmptyStatusDirs(); err != nil {
+				if err := agent.CleanEmptyStatusDirs(); err != nil {
 					u.Warn(fmt.Sprintf("Failed to clean empty status dirs: %v", err))
 				}
 			}

@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
 )
 
@@ -197,17 +198,17 @@ func TestCheckBinary(t *testing.T) {
 	}
 }
 
-func TestCheckClaudeHooks(t *testing.T) {
+func TestCheckAgentHarnesses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
 	u := &fakeDoctorUI{}
-	checkClaudeHooks(u, false)
+	checkAgentHarnesses(u, false)
 	if !u.hasWarning("hooks not installed") {
 		t.Fatalf("warnings = %v, want missing hooks warning", u.warnings)
 	}
 
-	if _, err := claude.Install(); err != nil {
+	if _, err := agent.InstallHarness(harness.ClaudeID); err != nil {
 		t.Fatalf("install hooks: %v", err)
 	}
 
@@ -233,7 +234,7 @@ func TestCheckClaudeHooks(t *testing.T) {
 	}
 
 	u = &fakeDoctorUI{}
-	checkClaudeHooks(u, false)
+	checkAgentHarnesses(u, false)
 	if !u.hasSuccess("hooks installed") {
 		t.Fatalf("successes = %v, want installed hooks", u.successes)
 	}
@@ -245,14 +246,14 @@ func TestCheckClaudeHooks(t *testing.T) {
 	}
 
 	u = &fakeDoctorUI{confirm: true}
-	checkClaudeHooks(u, true)
+	checkAgentHarnesses(u, true)
 	if len(u.confirms) != 1 {
 		t.Fatalf("confirms = %v, want one confirmation", u.confirms)
 	}
 	if !u.hasSuccess("Removed 1 legacy hook") {
 		t.Fatalf("successes = %v, want legacy hook removal", u.successes)
 	}
-	if got := claude.UnmarkedLegacyHooks(); len(got) != 0 {
+	if got := agent.UnmarkedLegacyHooks(); len(got) != 0 {
 		t.Fatalf("legacy hooks after fix = %v, want none", got)
 	}
 }
@@ -292,12 +293,12 @@ func TestCheckStaleSessions(t *testing.T) {
 		t.Fatalf("successes = %v, want no stale sessions", u.successes)
 	}
 
-	statusDir := filepath.Join(claude.StatusDir(), "repo", "worktree")
+	statusDir := filepath.Join(agent.StatusDir(), "repo", "worktree")
 	if err := os.MkdirAll(statusDir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
-	session := claude.SessionStatus{
-		Status:    claude.StatusBusy,
+	session := agent.SessionStatus{
+		Status:    agent.StatusBusy,
 		SessionID: "s1",
 		Timestamp: time.Now().Add(-31 * time.Minute),
 	}
