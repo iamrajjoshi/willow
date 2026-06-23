@@ -10,7 +10,9 @@ import (
 	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/parallel"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/trace"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -125,6 +127,58 @@ func statusBranchLabel(branch, harnessID, sessionID string) string {
 	return fmt.Sprintf("%s [%s]", branch, prefix)
 }
 
+func formatStatusEntryLines(u *ui.UI, entries []sessionEntry, width int) []string {
+	branchW := 0
+	labelW := 0
+	timeW := 0
+	type row struct {
+		icon   string
+		branch string
+		label  string
+		ts     string
+	}
+	rows := make([]row, 0, len(entries))
+	for _, e := range entries {
+		label := e.Status
+		if e.Unread {
+			label += "\u25CF" // bullet
+		}
+		r := row{
+			icon:   agent.StatusIcon(agent.Status(e.Status)),
+			branch: statusBranchLabel(e.Branch, e.Harness, e.SessionID),
+			label:  label,
+			ts:     e.Timestamp,
+		}
+		rows = append(rows, r)
+		branchW = max(branchW, termfmt.VisibleWidth(r.branch))
+		labelW = max(labelW, termfmt.VisibleWidth(r.label))
+		timeW = max(timeW, termfmt.VisibleWidth(r.ts))
+	}
+
+	termWidth := termfmt.Width(width)
+	fixed := 2 + 2 + 1 + 2 + labelW
+	if timeW > 0 {
+		fixed += 2 + timeW
+	}
+	if available := termWidth - fixed; available < branchW {
+		branchW = max(1, available)
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		icon := termfmt.PadRight(r.icon, 2)
+		branch := termfmt.FitRight(r.branch, branchW)
+		label := termfmt.FitRight(r.label, labelW)
+		if timeW > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %s  %s  %s",
+				icon, branch, label, u.Dim(termfmt.FitRight(r.ts, timeW))))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s %s  %s", icon, branch, label))
+		}
+	}
+	return lines
+}
+
 func statusCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "status",
@@ -176,29 +230,7 @@ func statusCmd() *cli.Command {
 				headerParts += ")\n"
 				u.Info(headerParts)
 
-				branchW := 0
-				for _, e := range rs.Entries {
-					label := statusBranchLabel(e.Branch, e.Harness, e.SessionID)
-					if len(label) > branchW {
-						branchW = len(label)
-					}
-				}
-
-				for _, e := range rs.Entries {
-					icon := agent.StatusIcon(agent.Status(e.Status))
-					label := e.Status
-					if e.Unread {
-						label += "\u25CF" // bullet
-					}
-					branchLabel := statusBranchLabel(e.Branch, e.Harness, e.SessionID)
-					var line string
-					if e.Timestamp != "" {
-						line = fmt.Sprintf("  %s %-*s  %-6s  %s",
-							icon, branchW, branchLabel, label, u.Dim(e.Timestamp))
-					} else {
-						line = fmt.Sprintf("  %s %-*s  %s",
-							icon, branchW, branchLabel, label)
-					}
+				for _, line := range formatStatusEntryLines(u, rs.Entries, termfmt.TerminalWidth()) {
 					u.Info(line)
 				}
 			}

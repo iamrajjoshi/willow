@@ -7,6 +7,8 @@ import (
 	"time"
 
 	activitylog "github.com/iamrajjoshi/willow/internal/log"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
+	"github.com/iamrajjoshi/willow/internal/ui"
 )
 
 func TestParseDurationSupportsDaysAndReportsBadInput(t *testing.T) {
@@ -45,6 +47,32 @@ func TestFormatMetadataSkipsEmptyAndTruncatesLongValues(t *testing.T) {
 	}
 	if !strings.Contains(got, "long="+strings.Repeat("x", 57)+"...") {
 		t.Fatalf("formatMetadata missing truncated long value: %q", got)
+	}
+}
+
+func TestFormatLogLinesFitsNarrowWidth(t *testing.T) {
+	u := &ui.UI{}
+	ts := time.Date(2026, 6, 22, 12, 30, 0, 0, time.UTC)
+	events := []activitylog.Event{
+		{
+			Action:    "create",
+			Repo:      "evergreen",
+			Branch:    "raj--tprm-464--backend-validate-review-risk-subtype",
+			Timestamp: ts,
+			Metadata:  map[string]string{"path": strings.Repeat("x", 80)},
+		},
+	}
+	lines := formatLogLines(u, events, 72)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 72 {
+			t.Fatalf("line width = %d, want <= 72:\n%s", got, termfmt.StripANSI(line))
+		}
+	}
+	plain := termfmt.StripANSI(strings.Join(lines, "\n"))
+	for _, want := range []string{ts.Local().Format("Jan 02 15:04"), "create", "evergreen"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("log line missing %q:\n%s", want, plain)
+		}
 	}
 }
 

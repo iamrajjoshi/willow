@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/log"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/trace"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
 )
 
@@ -77,33 +79,77 @@ func logCmd() *cli.Command {
 				return enc.Encode(events)
 			}
 
-			actionW, repoW, branchW := 0, 0, 0
-			for _, e := range events {
-				if len(e.Action) > actionW {
-					actionW = len(e.Action)
-				}
-				if len(e.Repo) > repoW {
-					repoW = len(e.Repo)
-				}
-				if len(e.Branch) > branchW {
-					branchW = len(e.Branch)
-				}
-			}
-
-			for _, e := range events {
-				ts := e.Timestamp.Local().Format("Jan 02 15:04")
-				meta := formatMetadata(e.Metadata)
-				line := fmt.Sprintf("  %s  %-*s  %-*s  %-*s",
-					u.Dim(ts), actionW, e.Action, repoW, e.Repo, branchW, e.Branch)
-				if meta != "" {
-					line += "  " + u.Dim(meta)
-				}
+			for _, line := range formatLogLines(u, events, termfmt.TerminalWidth()) {
 				u.Info(line)
 			}
 
 			return nil
 		},
 	}
+}
+
+func formatLogLines(u *ui.UI, events []log.Event, width int) []string {
+	type row struct {
+		ts     string
+		action string
+		repo   string
+		branch string
+		meta   string
+	}
+	rows := make([]row, 0, len(events))
+	tsW, actionW, repoW, branchW, metaW := 0, 0, 0, 0, 0
+	for _, e := range events {
+		r := row{
+			ts:     e.Timestamp.Local().Format("Jan 02 15:04"),
+			action: e.Action,
+			repo:   e.Repo,
+			branch: e.Branch,
+			meta:   formatMetadata(e.Metadata),
+		}
+		rows = append(rows, r)
+		tsW = max(tsW, termfmt.VisibleWidth(r.ts))
+		actionW = max(actionW, termfmt.VisibleWidth(r.action))
+		repoW = max(repoW, termfmt.VisibleWidth(r.repo))
+		branchW = max(branchW, termfmt.VisibleWidth(r.branch))
+		metaW = max(metaW, termfmt.VisibleWidth(r.meta))
+	}
+
+	termWidth := termfmt.Width(width)
+	fixedWithoutBranchMeta := 2 + tsW + 2 + actionW + 2 + repoW
+	hasMeta := metaW > 0
+	if hasMeta {
+		fixedWithoutBranchMeta += 2
+	}
+	available := termWidth - fixedWithoutBranchMeta
+	if hasMeta && branchW+2+metaW > available {
+		if metaAvailable := available - branchW - 2; metaAvailable >= 1 {
+			metaW = min(metaW, metaAvailable)
+		} else {
+			metaW = 1
+			branchAvailable := available - metaW - 2
+			if branchAvailable < 1 {
+				branchAvailable = 1
+			}
+			branchW = min(branchW, branchAvailable)
+		}
+	} else if !hasMeta && branchW > available {
+		branchW = max(1, available)
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		line := fmt.Sprintf("  %s  %s  %s  %s",
+			u.Dim(termfmt.FitRight(r.ts, tsW)),
+			termfmt.FitRight(r.action, actionW),
+			termfmt.FitRight(r.repo, repoW),
+			termfmt.FitRight(r.branch, branchW),
+		)
+		if hasMeta {
+			line += "  " + u.Dim(termfmt.FitRight(r.meta, metaW))
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func formatMetadata(m map[string]string) string {

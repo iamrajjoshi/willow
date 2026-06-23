@@ -12,6 +12,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 )
 
 func TestStripAnsi(t *testing.T) {
@@ -402,6 +403,28 @@ func TestFormatPickerLinesHarnessSummaryLabels(t *testing.T) {
 	}
 	if strings.Contains(plain[7], "[codex]") {
 		t.Fatalf("idle-only parent should not show inactive harness label:\n%s", plain[7])
+	}
+}
+
+func TestFormatPickerLinesWithWidthFitsNarrowWidth(t *testing.T) {
+	t.Setenv("HOME", "/fakehome")
+	long := "raj--tprm-464--backend-validate-review-risk-subtype"
+	lines := FormatPickerLinesWithWidth([]PickerItem{
+		{
+			RepoName:  "repo",
+			Branch:    long,
+			WtDirName: long,
+			WtPath:    "/fakehome/worktrees/repo/" + long,
+			Status:    agent.StatusDone,
+		},
+	}, 72)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 72 {
+			t.Fatalf("line width = %d, want <= 72:\n%s", got, termfmt.StripANSI(line))
+		}
+	}
+	if full := FormatPickerLines([]PickerItem{{RepoName: "repo", Branch: long, WtDirName: long, WtPath: "/fakehome/worktrees/repo/" + long}})[0]; termfmt.VisibleWidth(full) <= 72 {
+		t.Fatalf("unbounded picker line should remain untruncated for fzf selection parsing: %s", full)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
@@ -1105,8 +1106,10 @@ func TestTmuxListCommand_PrintsPickerLines(t *testing.T) {
 	if !strings.Contains(out, "feature-picker") {
 		t.Fatalf("expected picker output to include feature branch, got:\n%s", out)
 	}
-	if !strings.Contains(out, filepath.Join(".willow", "worktrees", "tmuxlist", "feature-picker")) {
-		t.Fatalf("expected picker output to include shortened worktree path, got:\n%s", out)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if got := termfmt.VisibleWidth(line); got > termfmt.DefaultWidth {
+			t.Fatalf("picker line width = %d, want <= %d:\n%s", got, termfmt.DefaultWidth, termfmt.StripANSI(line))
+		}
 	}
 }
 

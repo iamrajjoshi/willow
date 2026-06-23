@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/agent"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -106,6 +109,30 @@ func TestStatusBranchLabel(t *testing.T) {
 	}
 	if got := statusBranchLabel("main", "", ""); got != "main" {
 		t.Errorf("statusBranchLabel without session = %q, want %q", got, "main")
+	}
+}
+
+func TestFormatStatusEntryLinesFitsNarrowWidth(t *testing.T) {
+	u := &ui.UI{}
+	entries := []sessionEntry{
+		{
+			Branch:    "raj--tprm-464--backend-validate-review-risk-subtype",
+			Harness:   "codex",
+			SessionID: "1234567890abcdef",
+			Status:    string(agent.StatusDone),
+			Timestamp: "2h ago",
+			Unread:    true,
+		},
+	}
+	lines := formatStatusEntryLines(u, entries, 52)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 52 {
+			t.Fatalf("line width = %d, want <= 52:\n%s", got, termfmt.StripANSI(line))
+		}
+	}
+	plain := termfmt.StripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(plain, "DONE\u25CF") || !strings.Contains(plain, "2h ago") {
+		t.Fatalf("status line should preserve status and timestamp:\n%s", plain)
 	}
 }
 

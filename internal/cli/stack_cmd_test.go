@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/iamrajjoshi/willow/internal/gh"
+	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/ui"
 )
 
@@ -49,6 +51,32 @@ func TestFormatPRAnnotation(t *testing.T) {
 	for _, want := range []string{"#42", "CI", "Review", "MERGEABLE", "+3", "-1"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("formatPRAnnotation() missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestFormatStackStatusLinesFitsNarrowWidth(t *testing.T) {
+	u := &ui.UI{}
+	lines := formatStackStatusLines(u, []stack.TreeLine{
+		{Prefix: "\u2514\u2500 ", Branch: "raj--tprm-464--backend-validate-review-risk-subtype"},
+	}, map[string]*gh.PRInfo{
+		"raj--tprm-464--backend-validate-review-risk-subtype": {
+			Number:       42,
+			ReviewStatus: "APPROVED",
+			Mergeable:    "MERGEABLE",
+			Additions:    12,
+			Deletions:    4,
+		},
+	}, 72)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 72 {
+			t.Fatalf("line width = %d, want <= 72:\n%s", got, termfmt.StripANSI(line))
+		}
+	}
+	plain := termfmt.StripANSI(strings.Join(lines, "\n"))
+	for _, want := range []string{"#42", "CI", "Review", "MERGEABLE"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stack status line missing %q:\n%s", want, plain)
 		}
 	}
 }

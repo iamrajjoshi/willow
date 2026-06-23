@@ -15,6 +15,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
@@ -299,6 +300,21 @@ func pickerStableItemKey(item PickerItem) string {
 // When a worktree has multiple active agent sessions, sub-rows are shown
 // indented below the parent row.
 func FormatPickerLines(items []PickerItem) []string {
+	return formatPickerLines(items)
+}
+
+func FormatPickerLinesWithWidth(items []PickerItem, width int) []string {
+	lines := formatPickerLines(items)
+	width = termfmt.Width(width)
+	for i, line := range lines {
+		if termfmt.VisibleWidth(line) > width {
+			lines[i] = termfmt.TruncateEnd(line, width)
+		}
+	}
+	return lines
+}
+
+func formatPickerLines(items []PickerItem) []string {
 	multiRepo := hasMultipleRepos(items)
 	home, _ := os.UserHomeDir()
 

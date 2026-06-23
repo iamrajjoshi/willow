@@ -20,6 +20,7 @@ import (
 	"github.com/iamrajjoshi/willow/internal/log"
 	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/worktree"
@@ -1349,7 +1350,7 @@ func tmuxListCmd() *cli.Command {
 			if sess := cmd.String("session"); sess != "" {
 				items = moveToFront(items, sess)
 			}
-			for _, line := range tmux.FormatPickerLines(items) {
+			for _, line := range tmux.FormatPickerLinesWithWidth(items, termfmt.TerminalWidth()) {
 				fmt.Println(line)
 			}
 			return nil
