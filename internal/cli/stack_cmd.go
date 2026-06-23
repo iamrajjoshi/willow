@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/gh"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/urfave/cli/v3"
@@ -95,37 +94,47 @@ func stackStatusCmd() *cli.Command {
 				return enc.Encode(prMap)
 			}
 
-			maxBranchWidth := 0
-			for _, tl := range treeLines {
-				w := utf8.RuneCountInString(tl.Prefix) + utf8.RuneCountInString(tl.Branch)
-				if w > maxBranchWidth {
-					maxBranchWidth = w
-				}
-			}
-
-			for _, tl := range treeLines {
-				branchDisplay := tl.Prefix + tl.Branch
-				plainWidth := utf8.RuneCountInString(branchDisplay)
-				padding := maxBranchWidth - plainWidth
-				if padding < 0 {
-					padding = 0
-				}
-
-				pr := prMap[tl.Branch]
-				var annotation string
-				if pr == nil {
-					annotation = u.Dim("(no PR)")
-				} else {
-					annotation = formatPRAnnotation(u, pr)
-				}
-
-				line := fmt.Sprintf("  %s%s  %s", branchDisplay, strings.Repeat(" ", padding), annotation)
+			for _, line := range formatStackStatusLines(u, treeLines, prMap, termfmt.TerminalWidth()) {
 				u.Info(line)
 			}
 
 			return nil
 		},
 	}
+}
+
+func formatStackStatusLines(u *ui.UI, treeLines []stack.TreeLine, prMap map[string]*gh.PRInfo, width int) []string {
+	type row struct {
+		branch     string
+		annotation string
+	}
+	rows := make([]row, 0, len(treeLines))
+	branchW, annotationW := 0, 0
+	for _, tl := range treeLines {
+		annotation := u.Dim("(no PR)")
+		if pr := prMap[tl.Branch]; pr != nil {
+			annotation = formatPRAnnotation(u, pr)
+		}
+		r := row{branch: tl.Prefix + tl.Branch, annotation: annotation}
+		rows = append(rows, r)
+		branchW = max(branchW, termfmt.VisibleWidth(r.branch))
+		annotationW = max(annotationW, termfmt.VisibleWidth(r.annotation))
+	}
+
+	termWidth := termfmt.Width(width)
+	availableBranch := termWidth - (2 + 2 + annotationW)
+	if availableBranch < branchW {
+		branchW = max(1, availableBranch)
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			termfmt.FitRight(r.branch, branchW),
+			termfmt.FitRight(r.annotation, annotationW),
+		))
+	}
+	return lines
 }
 
 func formatPRAnnotation(u *ui.UI, pr *gh.PRInfo) string {

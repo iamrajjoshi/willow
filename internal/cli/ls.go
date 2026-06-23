@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
@@ -17,7 +16,9 @@ import (
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/parallel"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
 	"github.com/iamrajjoshi/willow/internal/trace"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 	"github.com/urfave/cli/v3"
 )
@@ -106,6 +107,14 @@ func listWorktrees(ctx context.Context, flags Flags, cmd *cli.Command, repoGit *
 	return nil
 }
 
+type repoListRow struct {
+	repo        string
+	count       int
+	activeCount int
+	unreadCount int
+	ok          bool
+}
+
 func printRepoList(flags Flags) error {
 	u := flags.NewUI()
 	repos, err := config.ListRepos()
@@ -118,23 +127,6 @@ func printRepoList(flags Flags) error {
 		return nil
 	}
 
-	nameW := len("REPO")
-	for _, r := range repos {
-		if len(r) > nameW {
-			nameW = len(r)
-		}
-	}
-
-	header := fmt.Sprintf("  %-*s  %-9s  %-6s  %s", nameW, "REPO", "WORKTREES", "ACTIVE", "UNREAD")
-	u.Info(u.Bold(header))
-
-	type repoListRow struct {
-		repo        string
-		count       int
-		activeCount int
-		unreadCount int
-		ok          bool
-	}
 	rows := parallel.Map(repos, func(_ int, r string) repoListRow {
 		bareDir, err := config.ResolveRepo(r)
 		if err != nil {
@@ -164,14 +156,53 @@ func printRepoList(flags Flags) error {
 		return row
 	})
 
+	for _, line := range formatRepoListRows(u, rows, termfmt.TerminalWidth()) {
+		u.Info(line)
+	}
+	return nil
+}
+
+func formatRepoListRows(u *ui.UI, rows []repoListRow, width int) []string {
+	nameW := len("REPO")
+	worktreesW := len("WORKTREES")
+	activeW := len("ACTIVE")
+	unreadW := len("UNREAD")
 	for _, row := range rows {
 		if !row.ok {
 			continue
 		}
-		line := fmt.Sprintf("  %-*s  %-9d  %-6d  %d", nameW, row.repo, row.count, row.activeCount, row.unreadCount)
-		u.Info(line)
+		nameW = max(nameW, termfmt.VisibleWidth(row.repo))
+		worktreesW = max(worktreesW, termfmt.VisibleWidth(fmt.Sprintf("%d", row.count)))
+		activeW = max(activeW, termfmt.VisibleWidth(fmt.Sprintf("%d", row.activeCount)))
+		unreadW = max(unreadW, termfmt.VisibleWidth(fmt.Sprintf("%d", row.unreadCount)))
 	}
-	return nil
+
+	termWidth := termfmt.Width(width)
+	fixed := 2 + 2 + worktreesW + 2 + activeW + 2 + unreadW
+	if available := termWidth - fixed; available < nameW {
+		nameW = max(1, available)
+	}
+
+	lines := []string{
+		u.Bold(fmt.Sprintf("  %s  %s  %s  %s",
+			termfmt.FitRight("REPO", nameW),
+			termfmt.FitRight("WORKTREES", worktreesW),
+			termfmt.FitRight("ACTIVE", activeW),
+			termfmt.FitRight("UNREAD", unreadW),
+		)),
+	}
+	for _, row := range rows {
+		if !row.ok {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %s  %s  %s",
+			termfmt.FitRight(row.repo, nameW),
+			termfmt.FitRight(fmt.Sprintf("%d", row.count), worktreesW),
+			termfmt.FitRight(fmt.Sprintf("%d", row.activeCount), activeW),
+			termfmt.FitRight(fmt.Sprintf("%d", row.unreadCount), unreadW),
+		))
+	}
+	return lines
 }
 
 func completeRepos(ctx context.Context, cmd *cli.Command) {
@@ -254,29 +285,26 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 	}
 	rows = sortLSRows(rows, st)
 
+	for _, line := range formatLSTableRows(u, rows, termfmt.TerminalWidth()) {
+		u.Info(line)
+	}
+}
+
+type lsDisplayRow struct {
+	branchPlain   string
+	branchDisplay string
+	status        string
+	path          string
+	age           string
+}
+
+func formatLSTableRows(u *ui.UI, rows []lsRow, width int) []string {
+	home, _ := os.UserHomeDir()
+	displayRows := make([]lsDisplayRow, 0, len(rows))
 	branchW := len("BRANCH")
 	statusW := len("STATUS")
 	pathW := len("PATH")
 	ageW := len("AGE")
-	for _, row := range rows {
-		display := row.prefix + row.wt.DisplayName()
-		if row.merged {
-			display += " [merged]"
-		}
-		if utf8.RuneCountInString(display) > branchW {
-			branchW = utf8.RuneCountInString(display)
-		}
-		if len(row.wt.Path) > pathW {
-			pathW = len(row.wt.Path)
-		}
-		if len(row.age) > ageW {
-			ageW = len(row.age)
-		}
-	}
-
-	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %*s", branchW, "BRANCH", statusW, "STATUS", pathW, "PATH", ageW, "AGE")
-	u.Info(u.Bold(header))
-
 	for _, row := range rows {
 		statusLabel := agent.StatusLabel(row.status)
 		if row.unread {
@@ -288,17 +316,66 @@ func printTable(ctx context.Context, flags Flags, worktrees []worktree.Worktree,
 			branchPlain += " [merged]"
 			branchDisplay += " " + u.Dim("[merged]")
 		}
-		// Pad based on plain text width to avoid ANSI code miscount
-		padding := branchW - utf8.RuneCountInString(branchPlain)
-		if padding < 0 {
-			padding = 0
-		}
-		branchCol := branchDisplay + strings.Repeat(" ", padding)
-		pathPadded := fmt.Sprintf("%-*s", pathW, row.wt.Path)
-		agePadded := fmt.Sprintf("%*s", ageW, row.age)
-		line := fmt.Sprintf("  %s  %-*s  %s  %s", branchCol, statusW, statusLabel, u.Dim(pathPadded), u.Dim(agePadded))
-		u.Info(line)
+		path := termfmt.ShortenHome(row.wt.Path, home)
+		displayRows = append(displayRows, lsDisplayRow{
+			branchPlain:   branchPlain,
+			branchDisplay: branchDisplay,
+			status:        statusLabel,
+			path:          path,
+			age:           row.age,
+		})
+		branchW = max(branchW, termfmt.VisibleWidth(branchPlain))
+		statusW = max(statusW, termfmt.VisibleWidth(statusLabel))
+		pathW = max(pathW, termfmt.VisibleWidth(path))
+		ageW = max(ageW, termfmt.VisibleWidth(row.age))
 	}
+
+	branchW, pathW = fitNameAndPathWidths(termfmt.Width(width), branchW, pathW, statusW, ageW)
+	lines := []string{
+		u.Bold(fmt.Sprintf("  %s  %s  %s  %s",
+			termfmt.FitRight("BRANCH", branchW),
+			termfmt.FitRight("STATUS", statusW),
+			termfmt.FitRight("PATH", pathW),
+			termfmt.FitLeft("AGE", ageW),
+		)),
+	}
+	for _, row := range displayRows {
+		lines = append(lines, fmt.Sprintf("  %s  %s  %s  %s",
+			fitDisplayRight(row.branchDisplay, row.branchPlain, branchW),
+			termfmt.FitRight(row.status, statusW),
+			u.Dim(termfmt.FitRight(row.path, pathW)),
+			u.Dim(termfmt.FitLeft(row.age, ageW)),
+		))
+	}
+	return lines
+}
+
+func fitNameAndPathWidths(width, nameW, pathW, statusW, tailW int) (int, int) {
+	minPathW := len("PATH")
+	fixedWithoutNamePath := 2 + 2 + statusW + 2 + 2 + tailW
+	available := width - fixedWithoutNamePath
+	if available <= 2 {
+		return 1, 1
+	}
+	if nameW+2+pathW <= available {
+		return nameW, pathW
+	}
+	if availablePath := available - nameW - 2; availablePath >= minPathW {
+		return nameW, min(pathW, availablePath)
+	}
+	pathW = minPathW
+	nameAvailable := available - pathW - 2
+	if nameAvailable < 1 {
+		nameAvailable = 1
+	}
+	return min(nameW, nameAvailable), pathW
+}
+
+func fitDisplayRight(display, plain string, width int) string {
+	if termfmt.VisibleWidth(plain) > width {
+		return termfmt.FitRight(plain, width)
+	}
+	return termfmt.PadRight(display, width)
 }
 
 func sortLSRows(rows []lsRow, st *stack.Stack) []lsRow {

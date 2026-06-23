@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/stack"
+	"github.com/iamrajjoshi/willow/internal/termfmt"
+	"github.com/iamrajjoshi/willow/internal/ui"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -89,5 +92,50 @@ func TestSortLSRows_StackStaysContiguousAndRanksByUrgency(t *testing.T) {
 	}
 	if got[1].prefix == "" {
 		t.Fatal("child prefix should be preserved")
+	}
+}
+
+func TestFormatLSTableRowsFitsNarrowWidth(t *testing.T) {
+	t.Setenv("HOME", "/Users/raj.joshi")
+	u := &ui.UI{}
+	long := "raj--tprm-464--backend-validate-review-risk-subtype"
+	rows := []lsRow{
+		{
+			branch: long,
+			prefix: "\u2514\u2500 ",
+			status: agent.StatusDone,
+			age:    "1h",
+			wt: worktree.Worktree{
+				Branch: long,
+				Path:   "/Users/raj.joshi/.willow/worktrees/evergreen/" + long,
+			},
+		},
+	}
+
+	lines := formatLSTableRows(u, rows, 80)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 80 {
+			t.Fatalf("line width = %d, want <= 80:\n%s", got, termfmt.StripANSI(line))
+		}
+	}
+	plain := termfmt.StripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(plain, "AGE") || !strings.Contains(plain, "1h") {
+		t.Fatalf("formatted ls table should preserve age column:\n%s", plain)
+	}
+	if !strings.Contains(plain, "…") {
+		t.Fatalf("formatted ls table should truncate narrow output:\n%s", plain)
+	}
+}
+
+func TestFormatRepoListRowsFitsNarrowWidth(t *testing.T) {
+	u := &ui.UI{}
+	rows := []repoListRow{
+		{repo: "evergreen-with-a-very-long-name", count: 15, activeCount: 10, unreadCount: 1, ok: true},
+	}
+	lines := formatRepoListRows(u, rows, 36)
+	for _, line := range lines {
+		if got := termfmt.VisibleWidth(line); got > 36 {
+			t.Fatalf("line width = %d, want <= 36:\n%s", got, termfmt.StripANSI(line))
+		}
 	}
 }
