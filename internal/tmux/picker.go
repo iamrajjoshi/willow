@@ -391,29 +391,14 @@ func FormatPickerLines(items []PickerItem) []string {
 }
 
 func harnessSummaryLabel(sessions []*agent.SessionStatus) string {
-	if len(sessions) == 0 {
+	if len(sessions) != 1 {
 		return ""
 	}
-
-	counts := map[string]int{}
-	for _, ss := range sessions {
-		name := strings.TrimSpace(ss.Harness)
-		if name == "" {
-			name = "claude"
-		}
-		counts[name]++
+	name := strings.TrimSpace(sessions[0].Harness)
+	if name == "" {
+		name = "claude"
 	}
-	if len(counts) != 1 {
-		return "[mixed]"
-	}
-
-	for name, count := range counts {
-		if count > 1 {
-			return fmt.Sprintf("[%s x%d]", name, count)
-		}
-		return "[" + name + "]"
-	}
-	return ""
+	return "[" + name + "]"
 }
 
 func filterActiveSessions(sessions []*agent.SessionStatus) []*agent.SessionStatus {
