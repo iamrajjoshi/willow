@@ -323,6 +323,79 @@ func TestFormatPickerLinesMultiRepoMergedUnreadAndSubSessions(t *testing.T) {
 	}
 }
 
+func TestFormatPickerLinesHarnessSummaryLabels(t *testing.T) {
+	t.Setenv("HOME", "/fakehome")
+	now := time.Now()
+
+	lines := FormatPickerLines([]PickerItem{
+		{
+			RepoName: "repo",
+			Branch:   "codex-single",
+			WtPath:   "/fakehome/worktrees/repo/codex-single",
+			Status:   agent.StatusDone,
+			Sessions: []*agent.SessionStatus{
+				{Harness: "codex", SessionID: "codex-session", Status: agent.StatusDone, Timestamp: now},
+			},
+		},
+		{
+			RepoName: "repo",
+			Branch:   "claude-pair",
+			WtPath:   "/fakehome/worktrees/repo/claude-pair",
+			Status:   agent.StatusBusy,
+			Sessions: []*agent.SessionStatus{
+				{Harness: "claude", SessionID: "claude-one", Status: agent.StatusBusy, Timestamp: now},
+				{Harness: "claude", SessionID: "claude-two", Status: agent.StatusDone, Timestamp: now},
+			},
+		},
+		{
+			RepoName: "repo",
+			Branch:   "mixed",
+			WtPath:   "/fakehome/worktrees/repo/mixed",
+			Status:   agent.StatusBusy,
+			Sessions: []*agent.SessionStatus{
+				{Harness: "claude", SessionID: "claude-session", Status: agent.StatusBusy, Timestamp: now},
+				{Harness: "codex", SessionID: "codex-session", Status: agent.StatusDone, Timestamp: now},
+			},
+		},
+		{
+			RepoName: "repo",
+			Branch:   "idle-only",
+			WtPath:   "/fakehome/worktrees/repo/idle-only",
+			Status:   agent.StatusIdle,
+			Sessions: []*agent.SessionStatus{
+				{Harness: "codex", SessionID: "idle-session", Status: agent.StatusIdle, Timestamp: now},
+			},
+		},
+	})
+
+	if len(lines) != 8 {
+		t.Fatalf("FormatPickerLines() returned %d lines, want 8: %#v", len(lines), lines)
+	}
+
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = stripAnsi(line)
+	}
+
+	for _, tt := range []struct {
+		line int
+		want string
+	}{
+		{line: 0, want: "[codex]"},
+		{line: 1, want: "[claude x2]"},
+		{line: 4, want: "[mixed]"},
+		{line: 5, want: "claude:claude-s"},
+		{line: 6, want: "codex:codex-se"},
+	} {
+		if !strings.Contains(plain[tt.line], tt.want) {
+			t.Fatalf("line %d missing %q:\n%s", tt.line, tt.want, strings.Join(plain, "\n"))
+		}
+	}
+	if strings.Contains(plain[7], "[codex]") {
+		t.Fatalf("idle-only parent should not show inactive harness label:\n%s", plain[7])
+	}
+}
+
 func TestBuildPickerItemsUsesRepoWorktreesAndStatuses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
