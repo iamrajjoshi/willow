@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/cleanup"
@@ -320,10 +319,19 @@ func formatPickerLines(items []PickerItem) []string {
 
 	nameW := 0
 	for _, item := range items {
-		plain := displayName(item, multiRepo)
+		activeSessions := filterActiveSessions(item.Sessions)
+		plain := pickerNamePlain(item, multiRepo, activeSessions)
 		plain += staleTagsPlain(item)
-		if utf8.RuneCountInString(plain) > nameW {
-			nameW = utf8.RuneCountInString(plain)
+		if termfmt.VisibleWidth(plain) > nameW {
+			nameW = termfmt.VisibleWidth(plain)
+		}
+		if len(activeSessions) > 1 {
+			for _, ss := range activeSessions {
+				plain := pickerSessionInfoPlain(ss)
+				if termfmt.VisibleWidth(plain) > nameW {
+					nameW = termfmt.VisibleWidth(plain)
+				}
+			}
 		}
 	}
 
@@ -333,18 +341,14 @@ func formatPickerLines(items []PickerItem) []string {
 		color := statusColor(item.Status)
 		icon := agent.StatusIcon(item.Status)
 		label := fmt.Sprintf("%-7s", agent.StatusLabel(item.Status))
-		harnessLabel := harnessSummaryLabel(activeSessions)
-		if harnessLabel != "" {
-			harnessLabel = " " + colorDim + harnessLabel + colorReset
-		}
 
 		dot := " "
 		if item.Unread {
 			dot = "\u25CF"
 		}
 
-		namePlain := displayName(item, multiRepo)
-		name := namePlain
+		namePlain := pickerNamePlain(item, multiRepo, activeSessions)
+		name := pickerNameANSI(item, multiRepo, activeSessions)
 		tags := staleTags(item)
 		if len(tags) > 0 {
 			namePlain += staleTagsPlain(item)
@@ -352,14 +356,14 @@ func formatPickerLines(items []PickerItem) []string {
 				name += fmt.Sprintf(" %s[%s]%s", colorDim, tag, colorReset)
 			}
 		}
-		padding := nameW - utf8.RuneCountInString(namePlain)
+		padding := nameW - termfmt.VisibleWidth(namePlain)
 		if padding < 0 {
 			padding = 0
 		}
 		nameCol := name + strings.Repeat(" ", padding)
 
-		line := fmt.Sprintf("%s%s %s%s%s%s | %s | %s%s%s",
-			color, icon, label, dot, colorReset, harnessLabel,
+		line := fmt.Sprintf("%s%s %s%s%s | %s | %s%s%s",
+			color, icon, label, dot, colorReset,
 			nameCol,
 			colorDim, shortenPathWithHome(item.WtPath, home), colorReset,
 		)
@@ -372,21 +376,9 @@ func formatPickerLines(items []PickerItem) []string {
 				subIcon := agent.StatusIcon(effStatus)
 				subLabel := fmt.Sprintf("%-6s", agent.StatusLabel(effStatus))
 
-				prefix := "\u2514 "
-				sid := truncate(ss.SessionID, 8)
-				if ss.Harness != "" {
-					sid = ss.Harness + ":" + sid
-				}
-				timeAgo := agent.TimeSince(ss.Timestamp)
-
-				plainLen := utf8.RuneCountInString(prefix) + len(sid)
-				infoAnsi := colorDim + prefix + sid
-				if ss.Tool != "" {
-					infoAnsi += fmt.Sprintf(" %s(%s)%s", colorDim, ss.Tool, colorReset)
-					plainLen += 2 + len(ss.Tool) + 1 // " (" + tool + ")"
-				}
-				infoAnsi += " " + timeAgo
-				plainLen += 1 + utf8.RuneCountInString(timeAgo)
+				infoPlain := pickerSessionInfoPlain(ss)
+				infoAnsi := pickerSessionInfoANSI(ss)
+				plainLen := termfmt.VisibleWidth(infoPlain)
 
 				pad := nameW - plainLen
 				if pad < 0 {
@@ -404,6 +396,53 @@ func formatPickerLines(items []PickerItem) []string {
 		}
 	}
 	return lines
+}
+
+func pickerNamePlain(item PickerItem, multiRepo bool, activeSessions []*agent.SessionStatus) string {
+	name := displayName(item, multiRepo)
+	if label := harnessSummaryLabel(activeSessions); label != "" {
+		return label + " " + name
+	}
+	return name
+}
+
+func pickerNameANSI(item PickerItem, multiRepo bool, activeSessions []*agent.SessionStatus) string {
+	name := displayName(item, multiRepo)
+	if label := harnessSummaryLabel(activeSessions); label != "" {
+		return fmt.Sprintf("%s%s%s %s", colorDim, label, colorReset, name)
+	}
+	return name
+}
+
+func pickerSessionInfoPlain(ss *agent.SessionStatus) string {
+	return pickerSessionInfo(ss, false)
+}
+
+func pickerSessionInfoANSI(ss *agent.SessionStatus) string {
+	return pickerSessionInfo(ss, true)
+}
+
+func pickerSessionInfo(ss *agent.SessionStatus, ansi bool) string {
+	prefix := "\u2514 "
+	sid := truncate(ss.SessionID, 8)
+	if ss.Harness != "" {
+		sid = ss.Harness + ":" + sid
+	}
+
+	var b strings.Builder
+	if ansi {
+		b.WriteString(colorDim)
+	}
+	b.WriteString(prefix)
+	b.WriteString(sid)
+	if ss.Tool != "" {
+		b.WriteString(" (")
+		b.WriteString(ss.Tool)
+		b.WriteString(")")
+	}
+	b.WriteString(" ")
+	b.WriteString(agent.TimeSince(ss.Timestamp))
+	return b.String()
 }
 
 func harnessSummaryLabel(sessions []*agent.SessionStatus) string {
