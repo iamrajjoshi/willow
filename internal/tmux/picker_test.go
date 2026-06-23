@@ -383,11 +383,16 @@ func TestFormatPickerLinesHarnessSummaryLabels(t *testing.T) {
 		want string
 	}{
 		{line: 0, want: "[codex]"},
-		{line: 5, want: "claude:claude-s"},
-		{line: 6, want: "codex:codex-se"},
+		{line: 5, want: "[claude] claude-s"},
+		{line: 6, want: "[codex] codex-se"},
 	} {
 		if !strings.Contains(plain[tt.line], tt.want) {
 			t.Fatalf("line %d missing %q:\n%s", tt.line, tt.want, strings.Join(plain, "\n"))
+		}
+	}
+	for _, line := range []int{5, 6} {
+		if strings.Contains(plain[line], "claude:") || strings.Contains(plain[line], "codex:") {
+			t.Fatalf("line %d should use bracketed harness labels, not colon labels:\n%s", line, plain[line])
 		}
 	}
 	firstSep := displayColumnBeforeSeparator(plain[0], strings.Index)

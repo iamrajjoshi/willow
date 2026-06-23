@@ -407,7 +407,7 @@ List worktrees with status. Uses the same urgency ordering as `ww sw`, while kee
 
 ### `ww status`
 
-Show agent status per worktree/session. Multiple sessions in the same worktree render with a `harness:session` label and unread indicators (`●`) for completed sessions you haven't reviewed.
+Show agent status per worktree/session. Multiple sessions in the same worktree render child rows with labels like `[claude] a044b2af` and unread indicators (`●`) for completed sessions you haven't reviewed.
 
 ![ww status](screenshots/demo-status.gif)
 
