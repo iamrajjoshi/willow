@@ -425,15 +425,14 @@ func pickerSessionInfoANSI(ss *agent.SessionStatus) string {
 func pickerSessionInfo(ss *agent.SessionStatus, ansi bool) string {
 	prefix := "\u2514 "
 	sid := truncate(ss.SessionID, 8)
-	if ss.Harness != "" {
-		sid = ss.Harness + ":" + sid
-	}
 
 	var b strings.Builder
 	if ansi {
 		b.WriteString(colorDim)
 	}
 	b.WriteString(prefix)
+	b.WriteString(harnessLabel(ss.Harness))
+	b.WriteString(" ")
 	b.WriteString(sid)
 	if ss.Tool != "" {
 		b.WriteString(" (")
@@ -449,7 +448,11 @@ func harnessSummaryLabel(sessions []*agent.SessionStatus) string {
 	if len(sessions) != 1 {
 		return ""
 	}
-	name := strings.TrimSpace(sessions[0].Harness)
+	return harnessLabel(sessions[0].Harness)
+}
+
+func harnessLabel(name string) string {
+	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "claude"
 	}
