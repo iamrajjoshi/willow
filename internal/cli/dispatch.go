@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/log"
@@ -19,7 +20,7 @@ import (
 func dispatchCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "dispatch",
-		Usage: "Create a worktree and launch Claude Code with a prompt",
+		Usage: "Create a worktree and launch an agent harness with a prompt",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:      "prompt",
@@ -47,7 +48,11 @@ func dispatchCmd() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:  "yolo",
-				Usage: "Run Claude with --dangerously-skip-permissions",
+				Usage: "Run the agent harness with its full-access permissions flag",
+			},
+			&cli.StringFlag{
+				Name:  "agent",
+				Usage: "Agent harness to launch (claude or codex; default from agent.default)",
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -75,6 +80,15 @@ func dispatchCmd() *cli.Command {
 				}
 			}
 			repoName := repoNameFromDir(bareDir)
+			cfg := config.Load(bareDir)
+			agentID := cmd.String("agent")
+			if agentID == "" {
+				agentID = harness.DefaultID(cfg)
+			}
+			h, err := harness.MustGet(agentID)
+			if err != nil {
+				return err
+			}
 
 			branch := cmd.String("name")
 			if branch == "" {
@@ -107,32 +121,29 @@ func dispatchCmd() *cli.Command {
 				return fmt.Errorf("no path returned from willow new")
 			}
 
-			meta := map[string]string{"prompt": truncatePrompt(prompt)}
+			meta := map[string]string{"prompt": truncatePrompt(prompt), "agent": h.ID()}
 			_ = log.Append(log.Event{Action: "dispatch", Repo: repoName, Branch: branch, Metadata: meta})
 
-			return dispatchForeground(u, wtPath, branch, prompt, cmd.Bool("yolo"))
+			return dispatchForeground(u, wtPath, branch, prompt, h, cfg, cmd.Bool("yolo"))
 		},
 	}
 }
 
-func dispatchForeground(u *ui.UI, wtPath, branch, prompt string, yolo bool) error {
-	if _, err := exec.LookPath("claude"); err != nil {
-		return errors.Userf("'claude' CLI not found — install Claude Code first")
+func dispatchForeground(u *ui.UI, wtPath, branch, prompt string, h harness.Harness, cfg *config.Config, yolo bool) error {
+	launch := h.BuildLaunch(harness.LaunchOptions{
+		Prompt:    prompt,
+		Yolo:      yolo,
+		Overrides: harness.OverridesFor(cfg, h.ID()),
+	})
+	if _, err := exec.LookPath(launch.Command); err != nil {
+		return errors.Userf("%q CLI not found — install %s first", launch.Command, h.DisplayName())
 	}
 
-	u.Success(fmt.Sprintf("Dispatched agent on %s (foreground)", u.Bold(branch)))
+	u.Success(fmt.Sprintf("Dispatched %s on %s (foreground)", h.DisplayName(), u.Bold(branch)))
 	u.Info(fmt.Sprintf("  path: %s", u.Dim(wtPath)))
 	u.Info("")
 
-	claudeArgs := "claude " + shellQuote(prompt)
-	if yolo {
-		claudeArgs += " --dangerously-skip-permissions"
-	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
-	cmd := exec.Command(shell, "-l", "-c", claudeArgs)
+	cmd := exec.Command(launch.Command, launch.Args...)
 	cmd.Dir = wtPath
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

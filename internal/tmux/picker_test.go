@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/stack"
 )
@@ -101,14 +101,14 @@ func TestTruncate(t *testing.T) {
 func TestStatusColor(t *testing.T) {
 	tests := []struct {
 		name   string
-		status claude.Status
+		status agent.Status
 		want   string
 	}{
-		{"BUSY is green", claude.StatusBusy, colorGreen},
-		{"WAIT is red", claude.StatusWait, colorRed},
-		{"DONE is blue", claude.StatusDone, colorBlue},
-		{"IDLE is yellow", claude.StatusIdle, colorYellow},
-		{"OFFLINE is dim", claude.StatusOffline, colorDim},
+		{"BUSY is green", agent.StatusBusy, colorGreen},
+		{"WAIT is red", agent.StatusWait, colorRed},
+		{"DONE is blue", agent.StatusDone, colorBlue},
+		{"IDLE is yellow", agent.StatusIdle, colorYellow},
+		{"OFFLINE is dim", agent.StatusOffline, colorDim},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,41 +185,41 @@ func TestFilterActiveSessions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		sessions []*claude.SessionStatus
+		sessions []*agent.SessionStatus
 		wantLen  int
 	}{
 		{
 			"mix of active and idle",
-			[]*claude.SessionStatus{
-				{Status: claude.StatusBusy, Timestamp: now},
-				{Status: claude.StatusIdle, Timestamp: now},
-				{Status: claude.StatusWait, Timestamp: now},
+			[]*agent.SessionStatus{
+				{Status: agent.StatusBusy, Timestamp: now},
+				{Status: agent.StatusIdle, Timestamp: now},
+				{Status: agent.StatusWait, Timestamp: now},
 			},
 			2,
 		},
 		{
 			"all idle returns empty",
-			[]*claude.SessionStatus{
-				{Status: claude.StatusIdle, Timestamp: now},
-				{Status: claude.StatusIdle, Timestamp: now},
+			[]*agent.SessionStatus{
+				{Status: agent.StatusIdle, Timestamp: now},
+				{Status: agent.StatusIdle, Timestamp: now},
 			},
 			0,
 		},
 		{
 			"all active",
-			[]*claude.SessionStatus{
-				{Status: claude.StatusBusy, Timestamp: now},
-				{Status: claude.StatusDone, Timestamp: now},
-				{Status: claude.StatusWait, Timestamp: now},
+			[]*agent.SessionStatus{
+				{Status: agent.StatusBusy, Timestamp: now},
+				{Status: agent.StatusDone, Timestamp: now},
+				{Status: agent.StatusWait, Timestamp: now},
 			},
 			3,
 		},
 		{
 			"stale BUSY/WAIT become idle, stale DONE stays",
-			[]*claude.SessionStatus{
-				{Status: claude.StatusBusy, Timestamp: stale},
-				{Status: claude.StatusDone, Timestamp: stale},
-				{Status: claude.StatusWait, Timestamp: stale},
+			[]*agent.SessionStatus{
+				{Status: agent.StatusBusy, Timestamp: stale},
+				{Status: agent.StatusDone, Timestamp: stale},
+				{Status: agent.StatusWait, Timestamp: stale},
 			},
 			1,
 		},
@@ -282,7 +282,7 @@ func TestFormatPickerLinesMultiRepoMergedUnreadAndSubSessions(t *testing.T) {
 			RepoName:  "repo-a",
 			Branch:    "done-branch",
 			WtPath:    "/fakehome/worktrees/repo-a/done-branch",
-			Status:    claude.StatusDone,
+			Status:    agent.StatusDone,
 			Unread:    true,
 			Merged:    true,
 			WtDirName: "done-branch",
@@ -291,11 +291,11 @@ func TestFormatPickerLinesMultiRepoMergedUnreadAndSubSessions(t *testing.T) {
 			RepoName:    "repo-b",
 			Branch:      "stack-child",
 			WtPath:      "/fakehome/worktrees/repo-b/stack-child",
-			Status:      claude.StatusBusy,
+			Status:      agent.StatusBusy,
 			StackPrefix: "└─ ",
-			Sessions: []*claude.SessionStatus{
-				{SessionID: "busy-session-123", Status: claude.StatusBusy, Tool: "Edit", Timestamp: now},
-				{SessionID: "done-session-456", Status: claude.StatusDone, Timestamp: now},
+			Sessions: []*agent.SessionStatus{
+				{SessionID: "busy-session-123", Status: agent.StatusBusy, Tool: "Edit", Timestamp: now},
+				{SessionID: "done-session-456", Status: agent.StatusDone, Timestamp: now},
 			},
 			WtDirName: "stack-child",
 		},
@@ -331,7 +331,7 @@ func TestBuildPickerItemsUsesRepoWorktreesAndStatuses(t *testing.T) {
 	if _, err := (&git.Git{Dir: bareDir}).Run("worktree", "add", wtPath, "main"); err != nil {
 		t.Fatalf("git worktree add: %v", err)
 	}
-	writePickerSessionStatus(t, "repo", "main", claude.StatusDone)
+	writePickerSessionStatus(t, "repo", "main", agent.StatusDone)
 
 	items, err := BuildPickerItemsWithOptions(contextBackground(), "repo", PickerBuildOptions{RefreshGitHubMerged: false})
 	if err != nil {
@@ -348,7 +348,7 @@ func TestBuildPickerItemsUsesRepoWorktreesAndStatuses(t *testing.T) {
 	if item.RepoName != "repo" || item.Branch != "main" || item.WtPath != resolvedWtPath {
 		t.Fatalf("picker item = %+v, want repo/main at %s", item, wtPath)
 	}
-	if item.Status != claude.StatusDone || !item.Unread {
+	if item.Status != agent.StatusDone || !item.Unread {
 		t.Fatalf("picker item status/unread = %s/%v, want DONE/unread", item.Status, item.Unread)
 	}
 }
@@ -431,13 +431,13 @@ func pickerTestBareRepo(t *testing.T, home, repo string) string {
 	return bareDir
 }
 
-func writePickerSessionStatus(t *testing.T, repo, wt string, status claude.Status) {
+func writePickerSessionStatus(t *testing.T, repo, wt string, status agent.Status) {
 	t.Helper()
-	dir := filepath.Join(claude.StatusDir(), repo, wt)
+	dir := filepath.Join(agent.StatusDir(), repo, wt)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
-	data, err := json.Marshal(claude.SessionStatus{
+	data, err := json.Marshal(agent.SessionStatus{
 		Status:    status,
 		SessionID: "session-1",
 		Timestamp: time.Now(),
@@ -471,12 +471,12 @@ func pickerBranches(items []PickerItem) []string {
 
 func TestSortPickerItems_UrgencyOrder(t *testing.T) {
 	items := []PickerItem{
-		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
-		{RepoName: "repo", Branch: "done-unread", Status: claude.StatusDone, Unread: true},
-		{RepoName: "repo", Branch: "wait", Status: claude.StatusWait},
-		{RepoName: "repo", Branch: "done-read", Status: claude.StatusDone},
-		{RepoName: "repo", Branch: "idle", Status: claude.StatusIdle},
-		{RepoName: "repo", Branch: "offline", Status: claude.StatusOffline},
+		{RepoName: "repo", Branch: "busy", Status: agent.StatusBusy},
+		{RepoName: "repo", Branch: "done-unread", Status: agent.StatusDone, Unread: true},
+		{RepoName: "repo", Branch: "wait", Status: agent.StatusWait},
+		{RepoName: "repo", Branch: "done-read", Status: agent.StatusDone},
+		{RepoName: "repo", Branch: "idle", Status: agent.StatusIdle},
+		{RepoName: "repo", Branch: "offline", Status: agent.StatusOffline},
 	}
 
 	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))
@@ -491,8 +491,8 @@ func TestSortPickerItems_UrgencyOrder(t *testing.T) {
 
 func TestSortPickerItems_MergedLast(t *testing.T) {
 	items := []PickerItem{
-		{RepoName: "repo", Branch: "merged-wait", Status: claude.StatusWait, Merged: true},
-		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "merged-wait", Status: agent.StatusWait, Merged: true},
+		{RepoName: "repo", Branch: "busy", Status: agent.StatusBusy},
 	}
 
 	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))
@@ -507,10 +507,10 @@ func TestSortPickerItems_MergedLast(t *testing.T) {
 
 func TestSortPickerItems_StackStaysContiguousAndRanksByUrgency(t *testing.T) {
 	items := []PickerItem{
-		{RepoName: "repo", Branch: "busy", Status: claude.StatusBusy},
-		{RepoName: "repo", Branch: "stack-a", Status: claude.StatusIdle},
-		{RepoName: "repo", Branch: "stack-b", Status: claude.StatusWait},
-		{RepoName: "repo", Branch: "done-read", Status: claude.StatusDone},
+		{RepoName: "repo", Branch: "busy", Status: agent.StatusBusy},
+		{RepoName: "repo", Branch: "stack-a", Status: agent.StatusIdle},
+		{RepoName: "repo", Branch: "stack-b", Status: agent.StatusWait},
+		{RepoName: "repo", Branch: "done-read", Status: agent.StatusDone},
 	}
 
 	got := sortPickerItems(items, []string{"repo"}, pickerLoader(map[string]*stack.Stack{
@@ -534,9 +534,9 @@ func TestSortPickerItems_StackStaysContiguousAndRanksByUrgency(t *testing.T) {
 
 func TestSortPickerItems_EqualPriorityKeepsStableOrder(t *testing.T) {
 	items := []PickerItem{
-		{RepoName: "repo", Branch: "busy-a", Status: claude.StatusBusy},
-		{RepoName: "repo", Branch: "busy-b", Status: claude.StatusBusy},
-		{RepoName: "repo", Branch: "busy-c", Status: claude.StatusBusy},
+		{RepoName: "repo", Branch: "busy-a", Status: agent.StatusBusy},
+		{RepoName: "repo", Branch: "busy-b", Status: agent.StatusBusy},
+		{RepoName: "repo", Branch: "busy-c", Status: agent.StatusBusy},
 	}
 
 	got := pickerBranches(sortPickerItems(items, []string{"repo"}, pickerLoader(nil)))

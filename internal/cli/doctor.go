@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/trace"
 	"github.com/urfave/cli/v3"
@@ -33,7 +34,7 @@ func doctorCmd() *cli.Command {
 			checkGitVersion(u)
 			checkBinary(u, "gh", "gh CLI", "https://cli.github.com")
 			checkBinary(u, "tmux", "tmux", "https://github.com/tmux/tmux")
-			checkClaudeHooks(u, cmd.Bool("fix"))
+			checkAgentHarnesses(u, cmd.Bool("fix"))
 			checkWillowDirs(u)
 			checkStaleSessions(u)
 			checkConfig(u)
@@ -125,21 +126,43 @@ func checkBinary(u binaryChecker, name, label, installURL string) {
 	u.Success(fmt.Sprintf("%s installed", label))
 }
 
-type claudeHooksUI interface {
+type agentHooksUI interface {
 	Success(string)
 	Warn(string)
 	Info(string)
 	Confirm(string) bool
 }
 
-func checkClaudeHooks(u claudeHooksUI, fix bool) {
-	if !claude.IsInstalled() {
-		u.Warn("Claude Code hooks not installed (run: ww cc-setup)")
-		return
-	}
-	u.Success("Claude Code hooks installed")
+func checkAgentHarnesses(u agentHooksUI, fix bool) {
+	cfg := config.Load("")
+	defaultID := harness.DefaultID(cfg)
+	for _, id := range []string{harness.ClaudeID, harness.CodexID} {
+		h, err := harness.MustGet(id)
+		if err != nil {
+			continue
+		}
+		commandName := h.ExecutableName()
+		if override := harness.OverridesFor(cfg, id); override.Command != "" {
+			commandName = override.Command
+		}
+		label := h.DisplayName()
+		if id == defaultID {
+			label += " (default)"
+		}
+		if _, err := exec.LookPath(commandName); err != nil {
+			u.Warn(fmt.Sprintf("%s CLI not found (run: %s after installing)", label, h.SetupCommandLabel()))
+		} else {
+			u.Success(fmt.Sprintf("%s CLI installed", label))
+		}
 
-	legacy := claude.UnmarkedLegacyHooks()
+		if !agent.IsHarnessInstalled(id) {
+			u.Warn(fmt.Sprintf("%s hooks not installed (run: %s)", h.DisplayName(), h.SetupCommandLabel()))
+		} else {
+			u.Success(fmt.Sprintf("%s hooks installed", h.DisplayName()))
+		}
+	}
+
+	legacy := agent.UnmarkedLegacyHooks()
 	if len(legacy) == 0 {
 		return
 	}
@@ -164,7 +187,7 @@ func checkClaudeHooks(u claudeHooksUI, fix bool) {
 		return
 	}
 
-	removed, _, err := claude.RemoveLegacyWillowHooks()
+	removed, _, err := agent.RemoveLegacyWillowHooks()
 	if err != nil {
 		u.Warn(fmt.Sprintf("could not remove legacy hooks: %v", err))
 		return
@@ -197,7 +220,7 @@ func checkStaleSessions(u interface {
 	Success(string)
 	Warn(string)
 }) {
-	sessions, err := claude.ScanAllSessions()
+	sessions, err := agent.ScanAllSessions()
 	if err != nil {
 		u.Warn(fmt.Sprintf("could not scan sessions: %v", err))
 		return

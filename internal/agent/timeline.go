@@ -1,4 +1,4 @@
-package claude
+package agent
 
 import (
 	"bufio"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 )
 
 type TimelineEntry struct {
@@ -16,7 +18,31 @@ type TimelineEntry struct {
 
 // TimelinePath returns the path to the timeline JSONL file for a session.
 func TimelinePath(repoName, worktreeDir, sessionID string) string {
-	return filepath.Join(StatusDir(), repoName, worktreeDir, sessionID+".timeline")
+	if path := LegacyTimelinePath(repoName, worktreeDir, sessionID); fileExists(path) {
+		return path
+	}
+	dir := StatusWorktreeDir(repoName, worktreeDir)
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			path := TimelinePathForHarness(repoName, worktreeDir, e.Name(), sessionID)
+			if fileExists(path) {
+				return path
+			}
+		}
+	}
+	return TimelinePathForHarness(repoName, worktreeDir, harness.ClaudeID, sessionID)
+}
+
+func TimelinePathForHarness(repoName, worktreeDir, harnessID, sessionID string) string {
+	return filepath.Join(SessionDir(repoName, worktreeDir, harnessID), sessionID+".timeline")
+}
+
+func LegacyTimelinePath(repoName, worktreeDir, sessionID string) string {
+	return filepath.Join(StatusWorktreeDir(repoName, worktreeDir), sessionID+".timeline")
 }
 
 // ReadTimeline reads timeline entries within a time window.

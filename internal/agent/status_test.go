@@ -1,4 +1,4 @@
-package claude
+package agent
 
 import (
 	"encoding/json"
@@ -103,7 +103,7 @@ func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
 	data, _ := json.Marshal(old)
 	os.WriteFile(filepath.Join(sessDir, old.SessionID+".json"), data, 0o644)
 	os.WriteFile(filepath.Join(sessDir, old.SessionID+".files"), []byte("/tmp/file\n"), 0o644)
-	os.WriteFile(TimelinePath(repoName, wtName, old.SessionID), []byte("{}\n"), 0o644)
+	os.WriteFile(LegacyTimelinePath(repoName, wtName, old.SessionID), []byte("{}\n"), 0o644)
 
 	got := ReadAllSessions(repoName, wtName)
 	if len(got) != 1 {
@@ -116,8 +116,111 @@ func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.files")); err != nil {
 		t.Fatalf("old session files sidecar should still exist: %v", err)
 	}
-	if _, err := os.Stat(TimelinePath(repoName, wtName, "old-sess")); err != nil {
+	if _, err := os.Stat(LegacyTimelinePath(repoName, wtName, "old-sess")); err != nil {
 		t.Fatalf("old session timeline should still exist: %v", err)
+	}
+}
+
+func TestReadAllSessionsRemovesCorruptLegacyFileOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
+
+	repoName := "myrepo"
+	wtName := "legacy-corrupt"
+	sessionID := "shared-sess"
+	sessDir := StatusWorktreeDir(repoName, wtName)
+	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+		t.Fatalf("mkdir status dir: %v", err)
+	}
+	if err := os.WriteFile(LegacySessionPath(repoName, wtName, sessionID), []byte("{bad json\n"), 0o644); err != nil {
+		t.Fatalf("write corrupt legacy session: %v", err)
+	}
+	if err := os.WriteFile(LegacyFilesPath(repoName, wtName, sessionID), []byte("/tmp/file\n"), 0o644); err != nil {
+		t.Fatalf("write legacy files sidecar: %v", err)
+	}
+	if err := os.WriteFile(LegacyTimelinePath(repoName, wtName, sessionID), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy timeline sidecar: %v", err)
+	}
+
+	valid := SessionStatus{Harness: "codex", Status: StatusBusy, SessionID: sessionID, Timestamp: time.Now().UTC()}
+	writeSessionFixture(t, SessionPath(repoName, wtName, "codex", sessionID), valid)
+
+	got := ReadAllSessions(repoName, wtName)
+	if len(got) != 1 {
+		t.Fatalf("ReadAllSessions returned %d sessions, want 1: %+v", len(got), got)
+	}
+	if got[0].Harness != "codex" {
+		t.Fatalf("remaining session harness = %q, want codex", got[0].Harness)
+	}
+	if _, err := os.Stat(LegacySessionPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
+		t.Fatalf("corrupt legacy session should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(LegacyFilesPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
+		t.Fatalf("legacy files sidecar should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(LegacyTimelinePath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
+		t.Fatalf("legacy timeline sidecar should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(SessionPath(repoName, wtName, "codex", sessionID)); err != nil {
+		t.Fatalf("codex session with same id should remain: %v", err)
+	}
+}
+
+func TestScanAllSessionsRemovesCorruptLegacyFileOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
+
+	repoName := "myrepo"
+	wtName := "legacy-scan-corrupt"
+	sessionID := "shared-sess"
+	sessDir := StatusWorktreeDir(repoName, wtName)
+	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+		t.Fatalf("mkdir status dir: %v", err)
+	}
+	if err := os.WriteFile(LegacySessionPath(repoName, wtName, sessionID), []byte("{bad json\n"), 0o644); err != nil {
+		t.Fatalf("write corrupt legacy session: %v", err)
+	}
+	if err := os.WriteFile(LegacyFilesPath(repoName, wtName, sessionID), []byte("/tmp/file\n"), 0o644); err != nil {
+		t.Fatalf("write legacy files sidecar: %v", err)
+	}
+	if err := os.WriteFile(LegacyTimelinePath(repoName, wtName, sessionID), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy timeline sidecar: %v", err)
+	}
+
+	valid := SessionStatus{Harness: "codex", Status: StatusBusy, SessionID: sessionID, Timestamp: time.Now().UTC()}
+	writeSessionFixture(t, SessionPath(repoName, wtName, "codex", sessionID), valid)
+
+	got, err := ScanAllSessions()
+	if err != nil {
+		t.Fatalf("ScanAllSessions: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ScanAllSessions returned %d sessions, want 1: %+v", len(got), got)
+	}
+	if got[0].Session.Harness != "codex" {
+		t.Fatalf("remaining session harness = %q, want codex", got[0].Session.Harness)
+	}
+	if _, err := os.Stat(LegacySessionPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
+		t.Fatalf("corrupt legacy session should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(SessionPath(repoName, wtName, "codex", sessionID)); err != nil {
+		t.Fatalf("codex session with same id should remain: %v", err)
+	}
+}
+
+func writeSessionFixture(t *testing.T, path string, session SessionStatus) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	data, err := json.Marshal(session)
+	if err != nil {
+		t.Fatalf("marshal session: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write session: %v", err)
 	}
 }
 

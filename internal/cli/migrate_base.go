@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	ierrors "github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -215,14 +215,14 @@ func rejectNonEmptyDestination(destBase string) error {
 }
 
 func rejectActiveSessions() error {
-	sessions, err := claude.ScanAllSessions()
+	sessions, err := agent.ScanAllSessions()
 	if err != nil {
 		return err
 	}
 
 	var active []string
 	for _, session := range sessions {
-		if !claude.IsActive(session.Session.Status) {
+		if !agent.IsActive(session.Session.Status) {
 			continue
 		}
 		active = append(active, fmt.Sprintf("  %s/%s %s (%s)",
@@ -237,7 +237,7 @@ func rejectActiveSessions() error {
 	}
 
 	sort.Strings(active)
-	return ierrors.Userf("cannot migrate while Claude status files are active:\n%s", strings.Join(active, "\n"))
+	return ierrors.Userf("cannot migrate while agent status files are active:\n%s", strings.Join(active, "\n"))
 }
 
 func discoverMigrateRepos(sourceBase, destBase string, verbose bool) ([]migrateRepo, error) {

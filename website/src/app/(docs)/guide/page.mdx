@@ -106,13 +106,15 @@ python3 skills/willow-autoresearch/scripts/bench_willow.py --reference-repo ~/co
 
 `--reference-repo` can be a local repo path, an existing Willow repo name, or a git URL. The harness treats it as read-only and mirrors branch/worktree shape into the benchmark fixture.
 
-## Claude Code status tracking
+## Agent status tracking
 
 ```bash
-ww cc-setup
+ww cc-setup                 # Claude Code hooks
+ww codex-setup              # Codex CLI hooks
+ww agent setup all          # both
 ```
 
-Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
+Installs hooks that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/<repo>/<worktree>/<harness>/`. Claude hooks live in `~/.claude/settings.json`; Codex hooks live in `~/.codex/hooks.json` and may need review in Codex with `/hooks`. Multiple harnesses can run in the same worktree at the same time. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -123,8 +125,9 @@ ww clone git@github.com:org/myrepo.git
 # Create a worktree and cd into it
 wwn auth-refactor
 
-# Start Claude Code
+# Start Claude Code or Codex
 claude
+# or: codex
 
 # In another terminal — create a second worktree
 wwn payments-fix
@@ -151,7 +154,7 @@ If you use tmux, willow can manage sessions per worktree with a popup picker:
 ww tmux install    # prints tmux.conf lines to add
 ```
 
-Then `prefix + w` opens a popup with all worktrees, live Claude output preview, and status colors. See [Tmux Integration](/tmux/) for full details.
+Then `prefix + w` opens a popup with all worktrees, live agent output preview, and status colors. See [Tmux Integration](/tmux/) for full details.
 
 ## Terminal setup
 
@@ -161,7 +164,7 @@ Recommended Ghostty layout per worktree:
 ┌─────────────────────────────────────┐
 │ Tab: myrepo/auth-refactor           │
 ├──────────────────┬──────────────────┤
-│  claude          │  claude          │
+│  claude          │  codex           │
 │  (agent 1)       │  (agent 2)       │
 ├──────────────────┴──────────────────┤
 │  shell (git diff, tests, etc.)      │

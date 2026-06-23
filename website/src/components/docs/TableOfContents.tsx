@@ -4,16 +4,11 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useScrollSpy } from "@/hooks/use-scroll-spy";
 import { cn } from "@/lib/cn";
-
-interface TocItem {
-  id: string;
-  text: string;
-  level: number;
-}
+import type { TocHeading } from "@/lib/docs-nav";
 
 export function TableOfContents() {
   const pathname = usePathname();
-  const [headings, setHeadings] = useState<TocItem[]>([]);
+  const [headings, setHeadings] = useState<TocHeading[]>([]);
 
   useEffect(() => {
     // Re-scan headings whenever the page changes
@@ -22,11 +17,14 @@ export function TableOfContents() {
       if (!article) return;
 
       const elements = article.querySelectorAll("h2[id], h3[id]");
-      const items: TocItem[] = Array.from(elements).map((el) => ({
-        id: el.id,
-        text: el.textContent || "",
-        level: el.tagName === "H2" ? 2 : 3,
-      }));
+      const items: TocHeading[] = Array.from(elements).map((el) => {
+        const level: TocHeading["level"] = el.tagName === "H2" ? 2 : 3;
+        return {
+          id: el.id,
+          text: el.textContent || "",
+          level,
+        };
+      });
 
       setHeadings(items);
     }, 100); // small delay to ensure DOM is updated after navigation

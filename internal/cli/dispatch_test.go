@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
+	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/ui"
 )
 
@@ -84,13 +86,11 @@ func TestDispatchCmdCreatesWorktreeAndRunsForegroundClaude(t *testing.T) {
 	t.Setenv("WILLOW_TEST_HELPER_LOG", helperLog)
 
 	binDir := t.TempDir()
-	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nexit 0\n")
-	shellLog := filepath.Join(t.TempDir(), "shell.log")
-	shellPath := writeTestExecutable(t, binDir, "fake-shell", "#!/bin/sh\n"+
-		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(shellLog)+"\n"+
-		"printf 'args=%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> "+shellQuote(shellLog)+"\n")
+	agentLog := filepath.Join(t.TempDir(), "agent.log")
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(agentLog)+"\n"+
+		"printf 'args=%s\\n' \"$*\" >> "+shellQuote(agentLog)+"\n")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("SHELL", shellPath)
 
 	if err := runApp("dispatch", "Fix dispatch command", "--repo", "repo", "--name", "dispatch-test", "--base", "main", "--no-fetch", "--yolo"); err != nil {
 		t.Fatalf("dispatch command failed: %v", err)
@@ -100,31 +100,84 @@ func TestDispatchCmdCreatesWorktreeAndRunsForegroundClaude(t *testing.T) {
 	if !strings.Contains(helperText, "new --cd --repo repo --base main --no-fetch -- dispatch-test") {
 		t.Fatalf("helper log missing dispatch new command:\n%s", helperText)
 	}
-	shellText := readTestFile(t, shellLog)
+	agentText := readTestFile(t, agentLog)
 	for _, want := range []string{
 		filepath.Join(home, ".willow", "worktrees", "repo", "dispatch-test"),
-		"claude 'Fix dispatch command' --dangerously-skip-permissions",
+		"Fix dispatch command --dangerously-skip-permissions",
 	} {
-		if !strings.Contains(shellText, want) {
-			t.Fatalf("shell log missing %q:\n%s", want, shellText)
+		if !strings.Contains(agentText, want) {
+			t.Fatalf("agent log missing %q:\n%s", want, agentText)
 		}
+	}
+}
+
+func TestDispatchCmdUsesConfiguredDefaultAgent(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	writeGlobalConfigFile(t, `{"agent":{"default":"codex"},"telemetry":false}`)
+	helperLog := filepath.Join(t.TempDir(), "willow-helper.log")
+	t.Setenv("WILLOW_TEST_HELPER_PROCESS", "willow")
+	t.Setenv("WILLOW_TEST_HELPER_WT_ROOT", filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("WILLOW_TEST_HELPER_LOG", helperLog)
+
+	binDir := t.TempDir()
+	codexLog := filepath.Join(t.TempDir(), "codex.log")
+	writeTestExecutable(t, binDir, "codex", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(codexLog)+"\n"+
+		"printf 'args=%s\\n' \"$*\" >> "+shellQuote(codexLog)+"\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := runApp("dispatch", "Use configured agent", "--repo", "repo", "--name", "dispatch-codex"); err != nil {
+		t.Fatalf("dispatch command failed: %v", err)
+	}
+
+	codexText := readTestFile(t, codexLog)
+	if !strings.Contains(codexText, "Use configured agent") {
+		t.Fatalf("codex log missing prompt:\n%s", codexText)
+	}
+	if !strings.Contains(codexText, filepath.Join(home, ".willow", "worktrees", "repo", "dispatch-codex")) {
+		t.Fatalf("codex log missing worktree cwd:\n%s", codexText)
+	}
+}
+
+func TestDispatchCmdAgentOverrideWinsOverConfigDefault(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	writeGlobalConfigFile(t, `{"agent":{"default":"codex"},"telemetry":false}`)
+	helperLog := filepath.Join(t.TempDir(), "willow-helper.log")
+	t.Setenv("WILLOW_TEST_HELPER_PROCESS", "willow")
+	t.Setenv("WILLOW_TEST_HELPER_WT_ROOT", filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("WILLOW_TEST_HELPER_LOG", helperLog)
+
+	binDir := t.TempDir()
+	claudeLog := filepath.Join(t.TempDir(), "claude.log")
+	codexLog := filepath.Join(t.TempDir(), "codex.log")
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nprintf 'args=%s\\n' \"$*\" >> "+shellQuote(claudeLog)+"\n")
+	writeTestExecutable(t, binDir, "codex", "#!/bin/sh\nprintf 'args=%s\\n' \"$*\" >> "+shellQuote(codexLog)+"\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := runApp("dispatch", "Override agent", "--repo", "repo", "--name", "dispatch-override", "--agent", "claude"); err != nil {
+		t.Fatalf("dispatch command failed: %v", err)
+	}
+
+	if got := readTestFile(t, claudeLog); !strings.Contains(got, "Override agent") {
+		t.Fatalf("claude log missing prompt:\n%s", got)
+	}
+	if _, err := os.Stat(codexLog); !os.IsNotExist(err) {
+		t.Fatalf("codex should not have been launched")
 	}
 }
 
 func TestDispatchForegroundRunsClaudeInWorktree(t *testing.T) {
 	binDir := t.TempDir()
-	logPath := filepath.Join(t.TempDir(), "shell.log")
-	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nexit 0\n")
-	shellPath := writeTestExecutable(t, binDir, "fake-shell", "#!/bin/sh\n"+
-		"printf 'cwd=%s\\n' \"$PWD\" >> "+logPath+"\n"+
-		"printf 'args=%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> "+logPath+"\n")
+	logPath := filepath.Join(t.TempDir(), "agent.log")
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(logPath)+"\n"+
+		"printf 'args=%s\\n' \"$*\" >> "+shellQuote(logPath)+"\n")
 	t.Setenv("PATH", binDir)
-	t.Setenv("SHELL", shellPath)
 
 	wtPath := t.TempDir()
 	var buf bytes.Buffer
 	u := &ui.UI{Out: &buf}
-	if err := dispatchForeground(u, wtPath, "dispatch--thing", "fix don't panic", true); err != nil {
+	if err := dispatchForeground(u, wtPath, "dispatch--thing", "fix don't panic", harness.Claude{}, config.DefaultConfig(), true); err != nil {
 		t.Fatalf("dispatchForeground: %v", err)
 	}
 
@@ -136,23 +189,23 @@ func TestDispatchForegroundRunsClaudeInWorktree(t *testing.T) {
 	if !strings.Contains(logText, "cwd="+wtPath) {
 		t.Fatalf("shell log missing cwd %q:\n%s", wtPath, logText)
 	}
-	for _, want := range []string{"-l", "-c", "claude 'fix don'\\''t panic'", "--dangerously-skip-permissions"} {
+	for _, want := range []string{"fix don't panic --dangerously-skip-permissions"} {
 		if !strings.Contains(logText, want) {
 			t.Fatalf("shell log missing %q:\n%s", want, logText)
 		}
 	}
-	if !strings.Contains(buf.String(), "Dispatched agent") {
+	if !strings.Contains(buf.String(), "Dispatched Claude Code") {
 		t.Fatalf("UI output missing dispatch success:\n%s", buf.String())
 	}
 }
 
 func TestDispatchForegroundMissingClaude(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	err := dispatchForeground(&ui.UI{}, t.TempDir(), "branch", "prompt", false)
+	err := dispatchForeground(&ui.UI{}, t.TempDir(), "branch", "prompt", harness.Claude{}, config.DefaultConfig(), false)
 	if err == nil {
 		t.Fatal("dispatchForeground should fail without claude in PATH")
 	}
-	if !strings.Contains(err.Error(), "'claude' CLI not found") {
+	if !strings.Contains(err.Error(), `"claude" CLI not found`) {
 		t.Fatalf("error = %v, want missing claude message", err)
 	}
 }

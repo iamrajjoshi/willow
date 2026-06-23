@@ -1,4 +1,4 @@
-package claude
+package agent
 
 import (
 	"bytes"
@@ -46,7 +46,7 @@ func TestHandleHook_UserPromptSubmitWritesBusy(t *testing.T) {
 		t.Fatalf("HandleHook: %v", err)
 	}
 
-	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+	got := readSession(SessionPath(repo, wt, "claude", "s1"))
 	if got.Status != StatusBusy {
 		t.Errorf("status = %q, want %q", got.Status, StatusBusy)
 	}
@@ -72,7 +72,7 @@ func TestHandleHook_PreToolUseIncrementsCount(t *testing.T) {
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Read"})
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Read"})
 
-	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+	got := readSession(SessionPath(repo, wt, "claude", "s1"))
 	if got.ToolCount != 3 {
 		t.Errorf("tool_count = %d, want 3", got.ToolCount)
 	}
@@ -104,7 +104,7 @@ func TestHandleHook_WaitTools(t *testing.T) {
 			if err := HandleHook(bytes.NewReader(raw)); err != nil {
 				t.Fatalf("HandleHook: %v", err)
 			}
-			got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+			got := readSession(SessionPath(repo, wt, "claude", "s1"))
 			if got.Status != tc.want {
 				t.Errorf("status = %q, want %q", got.Status, tc.want)
 			}
@@ -121,7 +121,7 @@ func TestHandleHook_StopSetsDone(t *testing.T) {
 		t.Fatalf("HandleHook: %v", err)
 	}
 
-	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+	got := readSession(SessionPath(repo, wt, "claude", "s1"))
 	if got.Status != StatusDone {
 		t.Errorf("status = %q, want %q", got.Status, StatusDone)
 	}
@@ -158,7 +158,7 @@ func TestHandleHook_NotificationRespectsBusy(t *testing.T) {
 	raw, _ = json.Marshal(HookInput{SessionID: "s1", HookEventName: "Notification"})
 	HandleHook(bytes.NewReader(raw))
 
-	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+	got := readSession(SessionPath(repo, wt, "claude", "s1"))
 	if got.Status != StatusBusy {
 		t.Errorf("status = %q, want BUSY (Notification should not override)", got.Status)
 	}
@@ -170,7 +170,7 @@ func TestHandleHook_NotificationSetsWaitWhenIdle(t *testing.T) {
 	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "Notification"})
 	HandleHook(bytes.NewReader(raw))
 
-	got := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json"))
+	got := readSession(SessionPath(repo, wt, "claude", "s1"))
 	if got.Status != StatusWait {
 		t.Errorf("status = %q, want WAIT", got.Status)
 	}
@@ -188,7 +188,7 @@ func TestHandleHook_TracksWriteFiles(t *testing.T) {
 	// Duplicate should be skipped
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Write", FilePath: "/a"})
 
-	data, err := os.ReadFile(filepath.Join(StatusDir(), repo, wt, "s1.files"))
+	data, err := os.ReadFile(FilesPathForHarness(repo, wt, "claude", "s1"))
 	if err != nil {
 		t.Fatalf("read files list: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestHandleHook_TimelineDedupes(t *testing.T) {
 	// DONE -> second entry
 	send(HookInput{SessionID: "s1", HookEventName: "Stop"})
 
-	data, err := os.ReadFile(filepath.Join(StatusDir(), repo, wt, "s1.timeline"))
+	data, err := os.ReadFile(TimelinePathForHarness(repo, wt, "claude", "s1"))
 	if err != nil {
 		t.Fatalf("read timeline: %v", err)
 	}
@@ -265,10 +265,10 @@ func TestHandleHook_PreservesStartTime(t *testing.T) {
 		HandleHook(bytes.NewReader(raw))
 	}
 	send(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
-	first := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json")).StartTime
+	first := readSession(SessionPath(repo, wt, "claude", "s1")).StartTime
 
 	send(HookInput{SessionID: "s1", HookEventName: "PreToolUse", ToolName: "Read"})
-	second := readSession(filepath.Join(StatusDir(), repo, wt, "s1.json")).StartTime
+	second := readSession(SessionPath(repo, wt, "claude", "s1")).StartTime
 
 	if !first.Equal(second) {
 		t.Errorf("start_time changed: %v → %v", first, second)

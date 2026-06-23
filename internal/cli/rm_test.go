@@ -1,10 +1,16 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/trace"
+	"github.com/iamrajjoshi/willow/internal/ui"
+	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
 func TestReadGitAdminDir_Absolute(t *testing.T) {
@@ -114,10 +120,8 @@ func TestReadGitAdminDir_BadFormat(t *testing.T) {
 	}
 }
 
-// Regression test for #95: when git appends a numeric suffix to the admin dir
-// name (e.g. "my-branch1" instead of "my-branch"), the old code computed the
-// wrong path and os.RemoveAll silently succeeded on a non-existent dir.
-// The fix reads the actual path from the worktree's .git file.
+// When Git suffixes the admin dir to avoid a collision, read the actual gitdir
+// target from the worktree's .git file.
 func TestReadGitAdminDir_CollisionSuffix(t *testing.T) {
 	root := t.TempDir()
 
@@ -145,7 +149,6 @@ func TestReadGitAdminDir_CollisionSuffix(t *testing.T) {
 		t.Errorf("got %q, want %q (the collision-suffixed admin dir)", got, correctAdmin)
 	}
 
-	// The old code would have computed the WRONG path:
 	guessedAdmin := filepath.Join(bareDir, "worktrees", filepath.Base(wtPath))
 	if guessedAdmin == correctAdmin {
 		t.Fatal("test setup error: guessed and correct paths should differ")
@@ -158,9 +161,8 @@ func TestReadGitAdminDir_CollisionSuffix(t *testing.T) {
 	}
 }
 
-// Regression test for #95: the old code removed the admin dir BEFORE moving
-// the worktree directory. If the move failed, the admin dir was already gone
-// (inconsistent state). The fix swaps the order: move first, then remove admin.
+// Removal must move the worktree to trash before deleting the admin dir so a
+// failed move remains retryable.
 func TestRemoveWorktree_OrderOfOperations(t *testing.T) {
 	root := t.TempDir()
 
@@ -192,8 +194,7 @@ func TestRemoveWorktree_OrderOfOperations(t *testing.T) {
 		t.Fatalf("rename failed: %v", err)
 	}
 
-	// After the move, admin dir must STILL exist (this was the bug — old code
-	// already deleted it before this point)
+	// The admin dir remains until the worktree move succeeds.
 	if _, err := os.Stat(filepath.Join(adminDir, "HEAD")); err != nil {
 		t.Fatal("admin dir should still exist after moving worktree to trash")
 	}
@@ -210,5 +211,31 @@ func TestRemoveWorktree_OrderOfOperations(t *testing.T) {
 
 	if _, err := os.Stat(adminDir); !os.IsNotExist(err) {
 		t.Fatal("admin dir should be gone after removal")
+	}
+}
+
+func TestRemoveWorktreeFailsWhenGitAdminDirCannotBeRead(t *testing.T) {
+	root := t.TempDir()
+	bareDir := filepath.Join(root, "repo.git")
+	if err := os.MkdirAll(filepath.Join(bareDir, "worktrees", "test-branch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wtPath := filepath.Join(root, "worktrees", "test-branch")
+	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtPath, "somefile.txt"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wt := &worktree.Worktree{Path: wtPath, Branch: "test-branch"}
+	err := removeWorktree(context.Background(), trace.New(false), &ui.UI{}, nil, wt, bareDir, &config.Config{}, true, true, false)
+	if err == nil || !strings.Contains(err.Error(), "failed to read worktree git admin dir") {
+		t.Fatalf("removeWorktree error = %v, want git admin dir read failure", err)
+	}
+
+	if _, statErr := os.Stat(wtPath); statErr != nil {
+		t.Fatalf("worktree path was changed after admin dir read failure: %v", statErr)
 	}
 }

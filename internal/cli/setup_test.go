@@ -38,6 +38,28 @@ func TestSetupCmdInstallsHooksWithExistingTelemetryPreference(t *testing.T) {
 	}
 }
 
+func TestCodexSetupCmdInstallsHooksWithExistingTelemetryPreference(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeGlobalConfigFile(t, `{"telemetry":false}`)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("codex-setup")
+	})
+	if err != nil {
+		t.Fatalf("codex-setup failed: %v", err)
+	}
+
+	for _, want := range []string{"Installed Codex CLI hooks", "hook:", "status:", "/hooks"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("codex-setup output missing %q:\n%s", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "hooks.json")); err != nil {
+		t.Fatalf("hooks.json not written: %v", err)
+	}
+}
+
 func TestSetupCmdPromptsForTelemetryWhenUnset(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

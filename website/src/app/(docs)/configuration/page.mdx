@@ -43,6 +43,15 @@ The local config lives inside the bare repo directory, so it's private to your m
     "desktop": true,
     "command": ""
   },
+  "agent": {
+    "default": "claude",
+    "harnesses": {
+      "codex": {
+        "command": "codex",
+        "args": []
+      }
+    }
+  },
   "tmux": {
     "notification": true,
     "notifyCommand": "afplay /System/Library/Sounds/Glass.aiff",
@@ -71,6 +80,10 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
 | `notify.desktop` | `boolean` | Send desktop notifications from Claude Code hooks when an agent finishes or needs input (default: `true`) |
 | `notify.command` | `string` | Custom command for non-tmux notifications. Receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` |
+| `agent.default` | `string` | Default harness for `ww dispatch` and tmux `Ctrl-G` (`claude` or `codex`; default: `claude`) |
+| `agent.harnesses.<id>.command` | `string` | Override the executable used for a harness |
+| `agent.harnesses.<id>.args` | `string[]` | Extra args passed before the prompt when launching a harness |
+| `agent.harnesses.<id>.yoloArgs` | `string[]` | Override the args used by `--yolo` for that harness |
 | `tmux.notification` | `boolean` | Play sound on BUSY→DONE transitions (default: `true`) |
 | `tmux.notifyCommand` | `string` | Command to run for notifications (default: `afplay Glass.aiff`) |
 | `tmux.switcherPreview` | `boolean` | Show the right-side live preview in the tmux picker. Set to `false` for an fzf-only picker and compact `ww tmux install` popup binding (default: `true`) |
@@ -92,10 +105,13 @@ When telemetry is enabled, Willow only reports system errors and panics, along w
 │       ├── main/
 │       ├── auth-refactor/
 │       └── payments/
-└── status/                      # Claude Code agent status
+└── status/                      # Agent status
     └── myrepo/
-        ├── main.json
-        └── auth-refactor.json
+        └── auth-refactor/
+            ├── claude/
+            │   └── <session_id>.json
+            └── codex/
+                └── <session_id>.json
 ```
 
 ### `<willow-base>/repos/`
@@ -108,17 +124,23 @@ Each worktree is a fully isolated directory with its own working copy. Grouped b
 
 ### `<willow-base>/status/`
 
-Created by `ww cc-setup`. Contains JSON files with Claude Code agent status for each worktree.
+Created by `ww cc-setup`, `ww codex-setup`, or `ww agent setup`. Contains JSON files with agent status for each worktree and harness. Willow still reads legacy flat Claude files from older installs.
 
 ```jsonc
-// <willow-base>/status/myrepo/auth-refactor.json
+// <willow-base>/status/myrepo/auth-refactor/codex/<session_id>.json
 {
+  "harness": "codex",
+  "session_id": "<session_id>",
   "status": "BUSY",
   "timestamp": "2024-01-15T10:30:00Z",
-  "worktree": "auth-refactor"
+  "worktree": "auth-refactor",
+  "model": "gpt-5.5",
+  "turn_id": "turn_123"
 }
 ```
 
-### Claude Code hooks
+### Agent hooks
 
-`ww cc-setup` registers the hidden `willow hook` subcommand in `~/.claude/settings.json`. When Claude Code fires a hook event, it invokes the willow binary directly — there is no intermediate shell script or background daemon.
+`ww cc-setup` registers the hidden `willow hook --harness claude` subcommand in `~/.claude/settings.json`. `ww codex-setup` registers `willow hook --harness codex` in `~/.codex/hooks.json`. When an agent fires a hook event, it invokes the willow binary directly — there is no intermediate shell script or background daemon.
+
+Codex treats user-level command hooks as reviewable hooks. If Codex warns about hooks that need review, open `/hooks` inside the Codex CLI and trust the Willow hook.

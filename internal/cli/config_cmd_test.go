@@ -421,32 +421,41 @@ func TestBaseDirSource(t *testing.T) {
 	})
 }
 
-func TestFormatValue(t *testing.T) {
-	tests := []struct {
-		name string
-		val  any
-		want string
-	}{
-		{"string", "hello", `"hello"`},
-		{"empty string", "", `""`},
-		{"nil bool ptr", (*bool)(nil), "<nil>"},
-		{"true bool ptr", config.BoolPtr(true), "true"},
-		{"false bool ptr", config.BoolPtr(false), "false"},
-		{"nil slice", ([]string)(nil), "[]"},
-		{"empty slice", []string{}, "[]"},
-		{"string slice", []string{"a", "b"}, "[a b]"},
-		{"int", 42, "42"},
-		{"zero int", 0, "0"},
-		{"nil panes", ([]config.PaneConfig)(nil), "[]"},
-		{"panes", []config.PaneConfig{{}, {Command: "x"}}, "[2 panes]"},
+func TestFormatConfigValues(t *testing.T) {
+	if got := formatStringValue("hello"); got != `"hello"` {
+		t.Errorf("formatStringValue = %q, want %q", got, `"hello"`)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatValue(tt.val)
-			if got != tt.want {
-				t.Errorf("formatValue(%v) = %q, want %q", tt.val, got, tt.want)
-			}
-		})
+	if got := formatStringValue(""); got != `""` {
+		t.Errorf("formatStringValue empty = %q, want %q", got, `""`)
+	}
+	if got := formatBoolPtrValue(nil); got != "<nil>" {
+		t.Errorf("formatBoolPtrValue nil = %q, want %q", got, "<nil>")
+	}
+	if got := formatBoolPtrValue(config.BoolPtr(true)); got != "true" {
+		t.Errorf("formatBoolPtrValue true = %q, want %q", got, "true")
+	}
+	if got := formatBoolPtrValue(config.BoolPtr(false)); got != "false" {
+		t.Errorf("formatBoolPtrValue false = %q, want %q", got, "false")
+	}
+	if got := formatStringSliceValue(nil); got != "[]" {
+		t.Errorf("formatStringSliceValue nil = %q, want %q", got, "[]")
+	}
+	if got := formatStringSliceValue([]string{}); got != "[]" {
+		t.Errorf("formatStringSliceValue empty = %q, want %q", got, "[]")
+	}
+	if got := formatStringSliceValue([]string{"a", "b"}); got != "[a b]" {
+		t.Errorf("formatStringSliceValue = %q, want %q", got, "[a b]")
+	}
+	if got := formatIntValue(42); got != "42" {
+		t.Errorf("formatIntValue = %q, want %q", got, "42")
+	}
+	if got := formatIntValue(0); got != "0" {
+		t.Errorf("formatIntValue zero = %q, want %q", got, "0")
+	}
+	if got := formatPaneSliceValue(nil); got != "[]" {
+		t.Errorf("formatPaneSliceValue nil = %q, want %q", got, "[]")
+	}
+	if got := formatPaneSliceValue([]config.PaneConfig{{}, {Command: "x"}}); got != "[2 panes]" {
+		t.Errorf("formatPaneSliceValue = %q, want %q", got, "[2 panes]")
 	}
 }

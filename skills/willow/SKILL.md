@@ -1,6 +1,6 @@
 ---
 name: willow
-description: "Git worktree manager for AI agent workflows. Use this skill whenever the user wants to work on a branch in isolation, check out a PR, run parallel tasks, manage stacked PRs, sync branches, or dispatch a Claude Code agent to a task. Also trigger when the project uses willow — look for a ~/.willow directory, ww commands in shell history, or a willow.json config. Prefer ww commands over raw git checkout/branch/worktree."
+description: "Git worktree manager for AI agent workflows. Use this skill whenever the user wants to work on a branch in isolation, check out a PR, run parallel tasks, manage stacked PRs, sync branches, or dispatch a local agent harness such as Claude Code or Codex CLI to a task. Also trigger when the project uses willow — look for a ~/.willow directory, ww commands in shell history, or a willow.json config. Prefer ww commands over raw git checkout/branch/worktree."
 user_invocable: false
 ---
 
@@ -20,7 +20,7 @@ Use willow (`ww`) commands instead of `git checkout`, `git branch`, or `git work
 | Work on a branch (don't know if worktree exists) | `ww checkout <branch>` |
 | Create a new feature branch | `ww new <branch>` |
 | Check out someone's PR | `ww checkout --pr <number>` |
-| Hand a task to a fresh Claude agent | `ww dispatch "<prompt>"` |
+| Hand a task to a fresh local agent | `ww dispatch "<prompt>"` |
 | Stack a branch on another | `ww new <child> -b <parent>` |
 | Rebase a stack after upstream changes | `ww sync` |
 | Turn the current branch or stack into PRs | `ww pr create [--stack]` |
@@ -43,7 +43,7 @@ ww clone git@github.com:org/repo.git myrepo   # custom name
 
 ### `ww checkout <branch>` (alias: `co`)
 
-The go-to command. Figures out the right action automatically:
+Switch to an existing worktree, create one for a remote branch, or create a new branch:
 1. Worktree already exists for that branch? Switches to it.
 2. Branch exists on remote but no worktree? Creates a worktree for it.
 3. Branch doesn't exist anywhere? Creates a new branch + worktree.
@@ -112,19 +112,20 @@ Use this when the user says "open a PR", "publish this branch", or "create PRs f
 
 ### `ww dispatch <prompt>`
 
-Create a worktree and launch Claude Code with a prompt in one step. The branch name is auto-slugified from the prompt. Use this when the user says "spin up an agent to do X" or when you'd otherwise create a worktree and immediately start Claude yourself.
+Create a worktree and launch the configured agent harness with a prompt in one step. The branch name is auto-slugified from the prompt. Use this when the user says "spin up an agent to do X" or when you'd otherwise create a worktree and immediately start an agent yourself.
 
 ```bash
 ww dispatch "Fix the login validation bug"
 ww dispatch "Add retry logic" --name add-retries
 ww dispatch "Write tests for auth" -b feature/auth   # stacked on a branch
+ww dispatch "Fix auth" --agent codex                  # one-off Codex dispatch
 ```
 
-From a terminal, Claude runs in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session so the user can keep working.
+From a terminal, the selected harness runs in the foreground. From the tmux picker, `Ctrl-G` launches the configured default in a background session and `Ctrl-O` lets the user pick a one-off harness.
 
 ### `ww sw [name]`
 
-Switch between existing worktrees via fzf picker. Shows Claude Code agent status per worktree (BUSY/DONE/WAIT/IDLE). If a name is given, switches directly without the picker.
+Switch between existing worktrees via fzf picker. Shows agent status per worktree (BUSY/DONE/WAIT/IDLE). If a name is given, switches directly without the picker.
 
 ### `ww rm [branch]`
 
@@ -145,7 +146,7 @@ List worktrees with status. Shows tree structure for stacked branches and `[merg
 
 ### `ww status`
 
-Rich view of Claude Code agent activity. Shows per-session status when multiple agents run in the same worktree.
+Show agent status per worktree/session.
 
 ### `ww gc [--prune] [--dry-run]`
 

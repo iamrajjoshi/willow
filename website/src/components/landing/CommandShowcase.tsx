@@ -16,13 +16,12 @@ export function CommandShowcase() {
         <ScrollReveal>
           <SectionHeading
             title="Commands"
-            subtitle="Everything you need to manage worktrees and monitor AI agents."
+            subtitle="Create, switch, monitor, and clean up worktrees."
           />
         </ScrollReveal>
 
         <ScrollReveal className="mt-12">
           <div className="overflow-hidden rounded-xl border border-willow-border bg-willow-bg-code">
-            {/* Tab bar */}
             <div className="flex items-stretch border-b border-willow-border bg-willow-bg-mute">
               <div className="flex items-center gap-2 px-4">
                 <span className="h-3 w-3 rounded-full bg-willow-text-dim" />
@@ -47,7 +46,6 @@ export function CommandShowcase() {
               </div>
             </div>
 
-            {/* Tab content */}
             <div className="p-5 font-mono text-sm leading-[1.7]">
               <AnimatePresence mode="wait">
                 <motion.div

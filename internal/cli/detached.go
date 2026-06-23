@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/git"
 	"github.com/iamrajjoshi/willow/internal/tmux"
@@ -44,7 +44,7 @@ func detachedGeneratedNameAvailable(repoName, dirName string) bool {
 	if pathExists(wtPath) {
 		return false
 	}
-	if pathExists(claude.StatusWorktreeDir(repoName, dirName)) {
+	if pathExists(agent.StatusWorktreeDir(repoName, dirName)) {
 		return false
 	}
 	return !tmux.SessionExists(tmux.SessionNameForWorktree(repoName, dirName))

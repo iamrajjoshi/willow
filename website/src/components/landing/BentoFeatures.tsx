@@ -14,7 +14,7 @@ export function BentoFeatures() {
         <ScrollReveal>
           <SectionHeading
             title="Features"
-            subtitle="Everything you need to manage worktrees and monitor AI agents."
+            subtitle="Create, switch, monitor, and clean up worktrees."
           />
         </ScrollReveal>
 

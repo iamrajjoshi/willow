@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Spin up isolated worktrees for Claude Code sessions.<br>
+  Spin up isolated worktrees for Claude Code or Codex CLI sessions.<br>
   Switch between them instantly with fzf.<br>
   See which agents are busy, waiting, or idle.<br><br>
   <a href="https://getwillow.dev">Documentation</a>
@@ -32,7 +32,7 @@
 
 ## Why willow?
 
-Running multiple Claude Code sessions on the same repo means constant context-switching, stashing, and branch juggling. Willow fixes this by giving every task its own isolated directory via git worktrees, then adding fzf-based switching and live agent status tracking on top.
+Running multiple agent sessions on the same repo means constant context-switching, stashing, and branch juggling. Willow fixes this by giving every task its own isolated directory via git worktrees, then adding fzf-based switching and live agent status tracking on top.
 
 ```
 <willow-base>/
@@ -41,14 +41,16 @@ Running multiple Claude Code sessions on the same repo means constant context-sw
 ├── worktrees/
 │   └── myrepo/
 │       ├── main/                 # each branch = isolated directory
-│       ├── auth-refactor/        # Claude Code running here
+│       ├── auth-refactor/        # Claude Code or Codex running here
 │       └── payments/             # another agent running here
 └── status/
     └── myrepo/
         ├── auth-refactor/
-        │   └── <session_id>.json   # {"status": "BUSY", ...}
+        │   └── claude/
+        │       └── <session_id>.json   # {"status": "BUSY", ...}
         └── payments/
-            └── <session_id>.json   # {"status": "WAIT", ...}
+            └── codex/
+                └── <session_id>.json   # {"status": "WAIT", ...}
 ```
 
 `<willow-base>` defaults to `~/.willow`. You can override it with `WILLOW_BASE_DIR` or the global `baseDir` config, and move an existing setup with `ww migrate-base <path>`.
@@ -135,13 +137,15 @@ python3 skills/willow-autoresearch/scripts/bench_willow.py --reference-repo ~/co
 
 `--reference-repo` accepts a local repo path, an existing Willow repo name, or a git URL. The source repo is only used as a read-only fixture template.
 
-### 4. Claude Code status tracking (optional)
+### 4. Agent status tracking (optional)
 
 ```bash
-ww cc-setup
+ww cc-setup                 # Claude Code hooks
+ww codex-setup              # Codex CLI hooks
+ww agent setup all          # both
 ```
 
-Installs hooks into `~/.claude/settings.json` that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/`. Supports multiple Claude sessions per worktree. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
+Installs hooks that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/<repo>/<worktree>/<harness>/`. Claude hooks live in `~/.claude/settings.json`; Codex hooks live in `~/.codex/hooks.json` and may need review in Codex with `/hooks`. Multiple harnesses can run in the same worktree at the same time. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -152,8 +156,9 @@ ww clone git@github.com:org/myrepo.git
 # Create a worktree and cd into it
 ww new auth-refactor
 
-# Start Claude Code
+# Start Claude Code or Codex
 claude
+# or: codex
 
 # In another terminal — create a second worktree
 ww new payments-fix
@@ -199,7 +204,7 @@ ww new feature/auth -r myrepo          # target a specific repo
 ww new feature/auth                    # auto-cd via shell integration (tmux-aware)
 ```
 
-From the tmux picker, `Ctrl-T` creates a detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree to a branch, `Ctrl-B` creates a stacked worktree from a picked base branch, and `Ctrl-E` opens the existing-branch flow from cached refs first, then refreshes remote branches in the background so large repos feel instant to open.
+From the tmux picker, `Ctrl-T` creates a detached worktree from the selected HEAD, `Ctrl-U` promotes a selected detached worktree to a branch, `Ctrl-B` creates a stacked worktree from a picked base branch, and `Ctrl-E` opens the existing-branch flow from cached refs first, then refreshes remote branches in the background so opening the picker does not wait on a remote fetch.
 
 | Flag | Description |
 |------|-------------|
@@ -214,7 +219,7 @@ From the tmux picker, `Ctrl-T` creates a detached worktree from the selected HEA
 
 ### `ww promote [worktree] <branch>`
 
-Promote a detached worktree to a normal branch-backed worktree. Nameless detached worktrees use generated labels like `detached-a13f09c`; when promoted, Willow moves their directory, Claude status dir, and tmux session to the promoted branch identity. Explicitly named detached worktrees keep their directory and tmux session name unless you rename them.
+Promote a detached worktree to a normal branch-backed worktree. Nameless detached worktrees use generated labels like `detached-a13f09c`; when promoted, Willow moves their directory, agent status dir, and tmux session to the promoted branch identity. Explicitly named detached worktrees keep their directory and tmux session name unless you rename them.
 
 ```bash
 ww promote feature/auth                 # from inside a detached worktree
@@ -230,7 +235,7 @@ ww promote scratch-repro                # promote to branch scratch-repro
 
 ### `ww rename [worktree] <name>` (alias: `mv`)
 
-Rename a worktree safely. For branch-backed worktrees, Willow renames the local branch and moves the worktree directory. For detached worktrees, Willow only renames the worktree directory. Claude status files and matching tmux sessions move with the worktree.
+Rename a worktree safely. For branch-backed worktrees, Willow renames the local branch and moves the worktree directory. For detached worktrees, Willow only renames the worktree directory. Agent status files and matching tmux sessions move with the worktree.
 
 ```bash
 ww rename better-name              # rename the current worktree
@@ -248,7 +253,7 @@ Willow refuses to overwrite existing branches, worktree paths, status directorie
 
 ### `ww checkout <branch-or-pr-url>` (alias: `co`)
 
-Smart switch-or-create. If a worktree exists for the branch, switch to it. If the branch exists on the remote, create a worktree for it. Otherwise, create a new branch and worktree. Worktrees whose exact current-head PR is merged show a `[merged]` indicator in `ww ls` and the tmux picker. The tmux picker uses cached GitHub PR-state results on open so slow PR lookups don't block rendering.
+Switch to an existing worktree, create one for a remote branch, or create a new branch. Worktrees whose exact current-head PR is merged show a `[merged]` indicator in `ww ls` and the tmux picker. The tmux picker uses cached GitHub PR-state results on open so slow PR lookups don't block rendering.
 
 ```bash
 ww checkout auth-refactor                # switch if exists, create if not
@@ -339,7 +344,7 @@ Requires the [GitHub CLI](https://cli.github.com/) (`gh`) and must be run from i
 
 ### `ww sw`
 
-Switch worktrees via fzf. Shows Claude Code agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
+Switch worktrees via fzf. Shows agent status per worktree, sorted by urgency: `WAIT`, unread `DONE`, `BUSY`, read `DONE`, `IDLE`, then offline.
 
 ```
 ⏳ WAIT   payments             <willow-base>/worktrees/repo/payments
@@ -402,7 +407,7 @@ List worktrees with status. Uses the same urgency ordering as `ww sw`, while kee
 
 ### `ww status`
 
-Rich view of Claude Code agent status. Shows per-session rows when multiple agents run in the same worktree, with a short session ID on each session row and unread indicators (`●`) for completed sessions you haven't reviewed.
+Show agent status per worktree/session. Multiple sessions in the same worktree render with a `harness:session` label and unread indicators (`●`) for completed sessions you haven't reviewed.
 
 ![ww status](screenshots/demo-status.gif)
 
@@ -446,19 +451,20 @@ ww log --json                   # raw JSON output
 
 ### Desktop notifications
 
-Desktop notifications fire directly from Claude Code's hook system — no daemon, no polling. Run `ww cc-setup` once; whenever an agent transitions from BUSY to DONE or WAIT, a macOS Notification Center alert appears within ~200ms.
+Desktop notifications fire directly from agent hook systems — no daemon, no polling. Run `ww agent setup all` once; whenever an agent transitions from BUSY to DONE or WAIT, a macOS Notification Center alert appears within ~200ms.
 
 Desktop notifications are enabled by default. Set `"notify": {"desktop": false}` to disable them, or set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
 
 ### `ww dispatch <prompt> [flags]`
 
-Create a worktree and launch Claude Code with a prompt. From the terminal, Claude runs interactively in the foreground. From the tmux picker (`Ctrl-G`), it launches in a background session.
+Create a worktree and launch the configured agent harness with a prompt. From the terminal, the agent runs interactively in the foreground. From the tmux picker, `Ctrl-G` launches the configured default in a background session and `Ctrl-O` lets you pick a one-off harness.
 
 ```bash
 ww dispatch "Fix the login validation bug"                  # auto-name branch
 ww dispatch "Add retry logic" --name add-retries             # explicit branch name
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
+ww dispatch "Fix auth" --agent codex                         # one-off Codex dispatch
 ```
 
 ![ww dispatch](screenshots/demo-dispatch.gif)
@@ -469,15 +475,24 @@ ww dispatch "Refactor payments" --repo myrepo                # target specific r
 | `-r, --repo` | Target repo by name |
 | `-b, --base` | Base branch to fork from |
 | `--no-fetch` | Skip fetching from remote |
-| `--yolo` | Run Claude with `--dangerously-skip-permissions` |
+| `--agent` | Override `agent.default` (`claude` or `codex`) |
+| `--yolo` | Run with the harness's full-access flag (`claude`: `--dangerously-skip-permissions`; `codex`: `--dangerously-bypass-approvals-and-sandbox`) |
 
 ### `ww cc-setup`
 
 One-time hook installation for Claude Code status tracking.
 
+### `ww codex-setup`
+
+One-time hook installation for Codex CLI status tracking. Codex may ask you to review and trust the hook with `/hooks`.
+
+### `ww agent setup [claude|codex|all]`
+
+Install hooks for one harness or both.
+
 ### `ww doctor`
 
-Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy willow hooks left over from older releases.
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude/Codex CLIs and hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy Claude hooks left over from older releases.
 
 ```bash
 ww doctor          # report issues only
@@ -519,7 +534,7 @@ Print shell integration script.
 
 ## Agent status
 
-After running `ww cc-setup`, Claude Code automatically reports its state:
+After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supported agents automatically report their state:
 
 | Icon | Status | Meaning |
 |------|--------|---------|
@@ -555,6 +570,15 @@ Config merges two tiers (local wins):
   "notify": {
     "desktop": true,
     "command": ""
+  },
+  "agent": {
+    "default": "claude",
+    "harnesses": {
+      "codex": {
+        "command": "codex",
+        "args": []
+      }
+    }
   },
   "tmux": {
     "switcherPreview": true,
@@ -603,7 +627,7 @@ Recommended Ghostty layout per worktree:
 ┌─────────────────────────────────────┐
 │ Tab: myrepo/auth-refactor           │
 ├──────────────────┬──────────────────┤
-│  claude          │  claude          │
+│  claude          │  codex           │
 │  (agent 1)       │  (agent 2)       │
 ├──────────────────┴──────────────────┤
 │  shell (git diff, tests, etc.)      │

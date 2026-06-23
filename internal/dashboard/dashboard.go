@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/tmux"
 	"github.com/iamrajjoshi/willow/internal/ui"
@@ -30,7 +30,7 @@ type row struct {
 	Detached    bool
 	WtDirName   string
 	Path        string
-	Status      claude.Status
+	Status      agent.Status
 	Unread      bool
 	Merged      bool
 	StackPrefix string
@@ -69,7 +69,7 @@ func Run(ctx context.Context, cfg Config) error {
 	defer ticker.Stop()
 
 	frame := 0
-	prevStatus := map[string]claude.Status{}
+	prevStatus := map[string]agent.Status{}
 	flashUntil := map[string]time.Time{}
 
 	rows, sum := collectData(ctx)
@@ -103,13 +103,13 @@ func rowKey(r row) string {
 	return r.Repo + "/" + r.WtDirName
 }
 
-func updateFlashes(rows []row, prev map[string]claude.Status, flashUntil map[string]time.Time) {
+func updateFlashes(rows []row, prev map[string]agent.Status, flashUntil map[string]time.Time) {
 	seen := map[string]struct{}{}
 	now := time.Now()
 	for _, r := range rows {
 		key := rowKey(r)
 		seen[key] = struct{}{}
-		if p, ok := prev[key]; ok && p == claude.StatusBusy && r.Status == claude.StatusDone {
+		if p, ok := prev[key]; ok && p == agent.StatusBusy && r.Status == agent.StatusDone {
 			flashUntil[key] = now.Add(2 * time.Second)
 		}
 		prev[key] = r.Status
@@ -141,7 +141,6 @@ func collectData(ctx context.Context) ([]row, summary) {
 
 	rows := make([]row, 0, len(items))
 	for _, item := range items {
-		unread := claude.CountUnreadIn(item.RepoName, item.WtDirName, item.Sessions) > 0
 		r := row{
 			Repo:        item.RepoName,
 			Branch:      item.Branch,
@@ -150,16 +149,16 @@ func collectData(ctx context.Context) ([]row, summary) {
 			WtDirName:   item.WtDirName,
 			Path:        item.WtPath,
 			Status:      item.Status,
-			Unread:      unread,
+			Unread:      item.Unread,
 			Merged:      item.Merged,
 			StackPrefix: item.StackPrefix,
 		}
 		rows = append(rows, r)
 		sum.Worktrees++
-		if claude.IsActive(item.Status) {
+		if agent.IsActive(item.Status) {
 			sum.Active++
 		}
-		if unread {
+		if item.Unread {
 			sum.Unread++
 		}
 	}
@@ -254,8 +253,8 @@ func render(rows []row, sum summary, width int, frame int, flashUntil map[string
 
 	now := time.Now()
 	for i, r := range rows {
-		icon := claude.StatusIcon(r.Status)
-		if r.Status == claude.StatusBusy {
+		icon := agent.StatusIcon(r.Status)
+		if r.Status == agent.StatusBusy {
 			icon = u.Cyan(u.SpinnerFrame(frame))
 		}
 
@@ -321,15 +320,15 @@ func hasMultipleRepos(rows []row) bool {
 	return false
 }
 
-func colorStatus(u *ui.UI, status claude.Status, text string) string {
+func colorStatus(u *ui.UI, status agent.Status, text string) string {
 	switch status {
-	case claude.StatusBusy:
+	case agent.StatusBusy:
 		return u.Green(text)
-	case claude.StatusWait:
+	case agent.StatusWait:
 		return u.Red(text)
-	case claude.StatusDone:
+	case agent.StatusDone:
 		return u.Cyan(text)
-	case claude.StatusIdle:
+	case agent.StatusIdle:
 		return u.Yellow(text)
 	default:
 		return u.Dim(text)

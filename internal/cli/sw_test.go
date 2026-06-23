@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/worktree"
 )
 
@@ -33,14 +33,14 @@ func TestExtractPathFromLine(t *testing.T) {
 	}
 }
 
-func writeSessionStatus(t *testing.T, home, repo, wt string, status claude.Status, ts time.Time) {
+func writeSessionStatus(t *testing.T, home, repo, wt string, status agent.Status, ts time.Time) {
 	t.Helper()
 	dir := filepath.Join(home, ".willow", "status", repo, wt)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
 
-	data, err := json.Marshal(claude.SessionStatus{
+	data, err := json.Marshal(agent.SessionStatus{
 		Status:    status,
 		SessionID: wt + "-session",
 		Timestamp: ts,
@@ -54,7 +54,7 @@ func writeSessionStatus(t *testing.T, home, repo, wt string, status claude.Statu
 	}
 }
 func TestBuildWorktreeLines(t *testing.T) {
-	// Use a temp HOME so claude.ReadStatus returns offline for all
+	// Use a temp HOME so agent.ReadStatus returns offline for all
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -80,10 +80,10 @@ func TestBuildWorktreeLines_UrgencyOrder(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	now := time.Now().UTC()
-	writeSessionStatus(t, home, "repo", "busy", claude.StatusBusy, now)
-	writeSessionStatus(t, home, "repo", "done-unread", claude.StatusDone, now)
-	writeSessionStatus(t, home, "repo", "wait", claude.StatusWait, now)
-	writeSessionStatus(t, home, "repo", "done-read", claude.StatusDone, now.Add(-2*time.Minute))
+	writeSessionStatus(t, home, "repo", "busy", agent.StatusBusy, now)
+	writeSessionStatus(t, home, "repo", "done-unread", agent.StatusDone, now)
+	writeSessionStatus(t, home, "repo", "wait", agent.StatusWait, now)
+	writeSessionStatus(t, home, "repo", "done-read", agent.StatusDone, now.Add(-2*time.Minute))
 	readPath := filepath.Join(home, ".willow", "status", "repo", "done-read", ".lastread")
 	if err := os.WriteFile(readPath, []byte(now.UTC().Format(time.RFC3339)+"\n"), 0o644); err != nil {
 		t.Fatalf("write lastread: %v", err)
@@ -172,9 +172,9 @@ func TestBuildCrossRepoWorktreeLines_UrgencyOrder(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	now := time.Now().UTC()
-	writeSessionStatus(t, home, "alpha", "busy", claude.StatusBusy, now)
-	writeSessionStatus(t, home, "beta", "done-unread", claude.StatusDone, now)
-	writeSessionStatus(t, home, "gamma", "wait", claude.StatusWait, now)
+	writeSessionStatus(t, home, "alpha", "busy", agent.StatusBusy, now)
+	writeSessionStatus(t, home, "beta", "done-unread", agent.StatusDone, now)
+	writeSessionStatus(t, home, "gamma", "wait", agent.StatusWait, now)
 
 	rwts := []repoWorktree{
 		{

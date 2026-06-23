@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/stack"
 )
@@ -30,7 +30,7 @@ func TestRenderWorktreeRows(t *testing.T) {
 		{
 			Repo:      "myrepo",
 			Branch:    "feat--thing",
-			Status:    claude.StatusBusy,
+			Status:    agent.StatusBusy,
 			Path:      "/tmp/worktrees/myrepo/feat--thing",
 			WtDirName: "feat--thing",
 		},
@@ -54,7 +54,7 @@ func TestRenderUnreadMarker(t *testing.T) {
 		{
 			Repo:      "myrepo",
 			Branch:    "feat--done",
-			Status:    claude.StatusDone,
+			Status:    agent.StatusDone,
 			Unread:    true,
 			Path:      "/tmp/worktrees/myrepo/feat--done",
 			WtDirName: "feat--done",
@@ -72,14 +72,14 @@ func TestRenderStackPrefixAndMergedMarker(t *testing.T) {
 		{
 			Repo:      "repo",
 			Branch:    "parent",
-			Status:    claude.StatusIdle,
+			Status:    agent.StatusIdle,
 			Path:      "/tmp/worktrees/repo/parent",
 			WtDirName: "parent",
 		},
 		{
 			Repo:        "repo",
 			Branch:      "child",
-			Status:      claude.StatusDone,
+			Status:      agent.StatusDone,
 			Path:        "/tmp/worktrees/repo/child",
 			WtDirName:   "child",
 			Merged:      true,
@@ -101,14 +101,14 @@ func TestRenderMultiRepoStackNameMatchesPickerStyle(t *testing.T) {
 		{
 			Repo:      "repo-a",
 			Branch:    "main",
-			Status:    claude.StatusOffline,
+			Status:    agent.StatusOffline,
 			Path:      "/tmp/worktrees/repo-a/main",
 			WtDirName: "main",
 		},
 		{
 			Repo:        "repo-b",
 			Branch:      "stack-child",
-			Status:      claude.StatusWait,
+			Status:      agent.StatusWait,
 			Path:        "/tmp/worktrees/repo-b/stack-child",
 			WtDirName:   "stack-child",
 			StackPrefix: "\u2514\u2500 ",
@@ -179,14 +179,14 @@ func addDashboardWorktree(t *testing.T, bareDir, branch, base string) string {
 	return wtPath
 }
 
-func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status claude.Status, tool string, ts time.Time) {
+func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status agent.Status, tool string, ts time.Time) {
 	t.Helper()
 
-	dir := filepath.Join(claude.StatusDir(), repo, wtDir)
+	dir := filepath.Join(agent.StatusDir(), repo, wtDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
-	data, err := json.Marshal(claude.SessionStatus{
+	data, err := json.Marshal(agent.SessionStatus{
 		Status:    status,
 		SessionID: sessionID,
 		Tool:      tool,
@@ -215,9 +215,9 @@ func TestCollectDataIncludesAllWorktreesUnreadAndStackPrefixes(t *testing.T) {
 	}
 
 	now := time.Now()
-	writeDashboardSession(t, "dashrepo", "feature-a", "done-session", claude.StatusDone, "", now)
-	writeDashboardSession(t, "dashrepo", "feature-b", "busy-session", claude.StatusBusy, "Edit", now)
-	writeDashboardSession(t, "dashrepo", "feature-b", "done-session", claude.StatusDone, "", now)
+	writeDashboardSession(t, "dashrepo", "feature-a", "done-session", agent.StatusDone, "", now)
+	writeDashboardSession(t, "dashrepo", "feature-b", "busy-session", agent.StatusBusy, "Edit", now)
+	writeDashboardSession(t, "dashrepo", "feature-b", "done-session", agent.StatusDone, "", now)
 
 	rows, sum := collectData(context.Background())
 	if sum.Repos != 1 {
@@ -229,8 +229,8 @@ func TestCollectDataIncludesAllWorktreesUnreadAndStackPrefixes(t *testing.T) {
 	if sum.Active != 2 {
 		t.Fatalf("Active = %d, want 2", sum.Active)
 	}
-	if sum.Unread != 2 {
-		t.Fatalf("Unread = %d, want 2", sum.Unread)
+	if sum.Unread != 1 {
+		t.Fatalf("Unread = %d, want 1", sum.Unread)
 	}
 	if len(rows) != 3 {
 		t.Fatalf("len(rows) = %d, want 3: %+v", len(rows), rows)
@@ -241,7 +241,7 @@ func TestCollectDataIncludesAllWorktreesUnreadAndStackPrefixes(t *testing.T) {
 		switch r.Branch {
 		case "main":
 			sawMain = true
-			if r.Status != claude.StatusOffline {
+			if r.Status != agent.StatusOffline {
 				t.Fatalf("main status = %s, want offline", r.Status)
 			}
 		case "feature-a":
@@ -251,11 +251,11 @@ func TestCollectDataIncludesAllWorktreesUnreadAndStackPrefixes(t *testing.T) {
 			}
 		case "feature-b":
 			sawFeatureB = true
-			if r.Status != claude.StatusBusy {
+			if r.Status != agent.StatusBusy {
 				t.Fatalf("feature-b status = %s, want BUSY", r.Status)
 			}
-			if !r.Unread {
-				t.Fatalf("feature-b should show unread marker despite BUSY aggregate status: %+v", r)
+			if r.Unread {
+				t.Fatalf("feature-b should not show unread marker while BUSY: %+v", r)
 			}
 			if r.StackPrefix == "" {
 				t.Fatalf("feature-b should have stack prefix: %+v", r)
@@ -271,15 +271,15 @@ func TestUpdateFlashesRecordsBusyToDoneAndPrunesMissingRows(t *testing.T) {
 	doneRow := row{
 		Repo:      "repo",
 		Branch:    "feature",
-		Status:    claude.StatusDone,
+		Status:    agent.StatusDone,
 		WtDirName: "feature",
 	}
 	key := rowKey(doneRow)
-	prev := map[string]claude.Status{key: claude.StatusBusy}
+	prev := map[string]agent.Status{key: agent.StatusBusy}
 	flashUntil := map[string]time.Time{}
 
 	updateFlashes([]row{doneRow}, prev, flashUntil)
-	if prev[key] != claude.StatusDone {
+	if prev[key] != agent.StatusDone {
 		t.Fatalf("prev[%q] = %s, want DONE", key, prev[key])
 	}
 	if until, ok := flashUntil[key]; !ok || time.Now().After(until) {

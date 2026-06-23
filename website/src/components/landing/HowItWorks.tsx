@@ -13,7 +13,7 @@ export function HowItWorks() {
         <ScrollReveal>
           <SectionHeading
             title="How it works"
-            subtitle="Three steps from clone to full agent orchestration."
+            subtitle="Three steps from clone to isolated local sessions."
           />
         </ScrollReveal>
 
@@ -24,7 +24,6 @@ export function HowItWorks() {
           viewport={{ once: true, margin: "-80px" }}
           className="relative mt-16 grid gap-6 md:grid-cols-3"
         >
-          {/* Connecting line (desktop only) */}
           <div className="absolute top-14 left-[16.67%] right-[16.67%] hidden h-px md:block">
             <motion.div
               className="h-full bg-gradient-to-r from-transparent via-willow-accent/30 to-transparent"

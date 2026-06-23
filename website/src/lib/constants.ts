@@ -8,9 +8,9 @@ export const NAV_ITEMS = [
 export const FEATURES = [
   {
     icon: "🤖",
-    title: "AI-Agent Optimized",
+    title: "Parallel agent worktrees",
     description:
-      "Built for running multiple Claude Code sessions in parallel. Each agent gets its own isolated worktree.",
+      "Run multiple local Claude Code or Codex sessions in isolated worktrees.",
     large: true,
     gif: "/demo-workflow.gif",
   },
@@ -18,7 +18,7 @@ export const FEATURES = [
     icon: "📡",
     title: "Live Status Tracking",
     description:
-      "See which agents are BUSY, WAIT, DONE, or IDLE in real time with Claude Code hook integration.",
+      "See which agents are BUSY, WAIT, DONE, or IDLE in real time with Claude Code and Codex hook integration.",
     large: true,
     gif: "/demo-status.gif",
   },
@@ -38,7 +38,7 @@ export const FEATURES = [
     icon: "🖥️",
     title: "Tmux Integration",
     description:
-      "Popup worktree picker, live Claude output preview, status bar widget. One keybinding.",
+      "Popup worktree picker, live agent output preview, status bar widget. One keybinding.",
   },
   {
     icon: "📚",
@@ -96,8 +96,8 @@ export const STEPS = [
   {
     title: "Create worktrees",
     description:
-      "Spin up isolated directories for each task. Start Claude Code in each.",
-    command: "wwn feature/auth && claude",
+      "Spin up isolated directories for each task. Start Claude Code or Codex in each.",
+    command: "wwn feature/auth && codex",
   },
   {
     title: "Monitor agents",

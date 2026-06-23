@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -127,7 +127,7 @@ func promoteCmd() *cli.Command {
 				done()
 
 				done = tr.StartCtx(ctx, "move promoted status dir")
-				if err := claude.MoveStatusDir(rwt.Repo.Name, oldDir, newDir); err != nil {
+				if err := agent.MoveStatusDir(rwt.Repo.Name, oldDir, newDir); err != nil {
 					return fmt.Errorf("failed to move status directory: %w", err)
 				}
 				done()
@@ -201,8 +201,8 @@ func checkGeneratedPromotionCollisions(repoName, oldDir, newDir, oldPath, newPat
 	if comparablePath(oldPath) != comparablePath(newPath) && pathExists(newPath) {
 		return errors.Userf("worktree path already exists: %s", newPath)
 	}
-	oldStatus := claude.StatusWorktreeDir(repoName, oldDir)
-	newStatus := claude.StatusWorktreeDir(repoName, newDir)
+	oldStatus := agent.StatusWorktreeDir(repoName, oldDir)
+	newStatus := agent.StatusWorktreeDir(repoName, newDir)
 	if comparablePath(oldStatus) != comparablePath(newStatus) && pathExists(newStatus) {
 		return errors.Userf("status directory already exists: %s", newStatus)
 	}

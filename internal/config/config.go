@@ -17,9 +17,21 @@ type Config struct {
 	Setup            []string     `json:"setup,omitempty"`
 	Teardown         []string     `json:"teardown,omitempty"`
 	Defaults         Defaults     `json:"defaults"`
+	Agent            AgentConfig  `json:"agent,omitempty"`
 	Tmux             TmuxConfig   `json:"tmux,omitempty"`
 	Notify           NotifyConfig `json:"notify,omitempty"`
 	Telemetry        *bool        `json:"telemetry,omitempty"`
+}
+
+type AgentConfig struct {
+	Default   string                        `json:"default,omitempty"`
+	Harnesses map[string]AgentHarnessConfig `json:"harnesses,omitempty"`
+}
+
+type AgentHarnessConfig struct {
+	Command  string   `json:"command,omitempty"`
+	Args     []string `json:"args,omitempty"`
+	YoloArgs []string `json:"yoloArgs,omitempty"`
 }
 
 type NotifyConfig struct {
@@ -54,6 +66,9 @@ func DefaultConfig() *Config {
 		Defaults: Defaults{
 			Fetch:           BoolPtr(true),
 			AutoSetupRemote: BoolPtr(true),
+		},
+		Agent: AgentConfig{
+			Default: "claude",
 		},
 		Tmux: TmuxConfig{
 			SwitcherPreview: BoolPtr(true),
@@ -263,6 +278,27 @@ func merge(base, overlay *Config) {
 	}
 	if overlay.Defaults.AutoSetupRemote != nil {
 		base.Defaults.AutoSetupRemote = overlay.Defaults.AutoSetupRemote
+	}
+	if overlay.Agent.Default != "" {
+		base.Agent.Default = overlay.Agent.Default
+	}
+	if overlay.Agent.Harnesses != nil {
+		if base.Agent.Harnesses == nil {
+			base.Agent.Harnesses = make(map[string]AgentHarnessConfig)
+		}
+		for id, h := range overlay.Agent.Harnesses {
+			current := base.Agent.Harnesses[id]
+			if h.Command != "" {
+				current.Command = h.Command
+			}
+			if h.Args != nil {
+				current.Args = h.Args
+			}
+			if h.YoloArgs != nil {
+				current.YoloArgs = h.YoloArgs
+			}
+			base.Agent.Harnesses[id] = current
+		}
 	}
 	if overlay.Tmux.ReloadInterval != 0 {
 		base.Tmux.ReloadInterval = overlay.Tmux.ReloadInterval

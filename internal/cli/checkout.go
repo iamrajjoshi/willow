@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iamrajjoshi/willow/internal/claude"
+	"github.com/iamrajjoshi/willow/internal/agent"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/errors"
 	"github.com/iamrajjoshi/willow/internal/git"
@@ -113,7 +113,7 @@ func checkoutCmd() *cli.Command {
 
 			if rwt != nil {
 				wtDir := filepath.Base(rwt.Worktree.Path)
-				claude.MarkRead(rwt.Repo.Name, wtDir)
+				agent.MarkRead(rwt.Repo.Name, wtDir)
 
 				if cdOnly {
 					fmt.Println(rwt.Worktree.Path)

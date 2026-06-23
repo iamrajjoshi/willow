@@ -1,8 +1,7 @@
-package claude
+package agent
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,12 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
 	"github.com/iamrajjoshi/willow/internal/notify"
 	"github.com/iamrajjoshi/willow/internal/telemetry"
 )
 
-// HookInput is the JSON payload Claude Code pipes to stdin for every hook event.
+// HookInput models the Claude-shaped hook payload. It stays exported for tests
+// and callers that construct hook JSON directly; production handling is
+// normalized per harness.
 type HookInput struct {
 	SessionID     string `json:"session_id"`
 	HookEventName string `json:"hook_event_name"`
@@ -29,17 +31,22 @@ type HookInput struct {
 // Returns nil when there's nothing to do (not a willow worktree, missing
 // session_id, etc.) so the hook never blocks Claude Code. Notification
 // dispatch errors are captured via Sentry.
-func HandleHook(r io.Reader) error {
+func HandleHook(r io.Reader, harnessIDs ...string) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
 	}
 
-	var in HookInput
-	if err := json.Unmarshal(bytes.TrimSpace(raw), &in); err != nil {
-		return nil
+	harnessID := harness.ClaudeID
+	if len(harnessIDs) > 0 && harnessIDs[0] != "" {
+		harnessID = harness.NormalizeID(harnessIDs[0])
 	}
-	if in.SessionID == "" {
+	h, err := harness.MustGet(harnessID)
+	if err != nil {
+		return err
+	}
+	in, ok := h.NormalizeHook(raw)
+	if !ok || in.SessionID == "" {
 		return nil
 	}
 
@@ -48,17 +55,18 @@ func HandleHook(r io.Reader) error {
 		return nil
 	}
 
-	destDir := filepath.Join(StatusDir(), repo, wt)
-	destFile := filepath.Join(destDir, in.SessionID+".json")
+	destDir := SessionDir(repo, wt, h.ID())
+	destFile := SessionPath(repo, wt, h.ID(), in.SessionID)
 
-	if in.HookEventName == "SessionEnd" {
-		os.Remove(destFile)
-		os.Remove(filepath.Join(destDir, in.SessionID+".files"))
-		os.Remove(filepath.Join(destDir, in.SessionID+".timeline"))
+	if in.EventName == "SessionEnd" {
+		_ = removeSessionArtifacts(repo, wt, h.ID(), in.SessionID)
+		if h.ID() == harness.ClaudeID {
+			_ = removeSessionArtifacts(repo, wt, "", in.SessionID)
+		}
 		return nil
 	}
 
-	status, skip := computeStatus(in, destFile)
+	status, skip := computeStatus(h.ID(), in, destFile)
 	if skip {
 		return nil
 	}
@@ -71,7 +79,7 @@ func HandleHook(r io.Reader) error {
 	prev := readSession(destFile)
 
 	toolCount := prev.ToolCount
-	if in.HookEventName == "PreToolUse" {
+	if in.EventName == "PreToolUse" {
 		toolCount++
 	}
 
@@ -81,28 +89,32 @@ func HandleHook(r io.Reader) error {
 	}
 
 	toolField := ""
-	if in.HookEventName == "PreToolUse" {
+	if in.EventName == "PreToolUse" || in.EventName == "PermissionRequest" {
 		toolField = in.ToolName
 	}
 
-	if in.HookEventName == "PreToolUse" && isWriteTool(in.ToolName) && in.FilePath != "" {
-		appendFileList(filepath.Join(destDir, in.SessionID+".files"), in.FilePath)
+	for _, filePath := range in.FilesTouched {
+		appendFileList(FilesPathForHarness(repo, wt, h.ID(), in.SessionID), filePath)
 	}
 
 	session := SessionStatus{
-		Status:    status,
-		SessionID: in.SessionID,
-		Tool:      toolField,
-		ToolCount: toolCount,
-		Timestamp: now,
-		StartTime: startTime,
-		Worktree:  wt,
+		Harness:        h.ID(),
+		Status:         status,
+		SessionID:      in.SessionID,
+		Tool:           toolField,
+		ToolCount:      toolCount,
+		Model:          nonEmpty(in.Model, prev.Model),
+		TurnID:         nonEmpty(in.TurnID, prev.TurnID),
+		PermissionMode: nonEmpty(in.PermissionMode, prev.PermissionMode),
+		Timestamp:      now,
+		StartTime:      startTime,
+		Worktree:       wt,
 	}
 	if err := writeSession(destFile, session); err != nil {
 		return fmt.Errorf("write session: %w", err)
 	}
 
-	appendTimeline(filepath.Join(destDir, in.SessionID+".timeline"), status, now)
+	appendTimeline(TimelinePathForHarness(repo, wt, h.ID(), in.SessionID), status, now)
 
 	fireNotifications(repo, wt)
 	return nil
@@ -111,17 +123,29 @@ func HandleHook(r io.Reader) error {
 // computeStatus returns the new status for this event plus a skip flag.
 // Skip=true means the event should not touch the status file
 // (e.g. Notification arriving while session is already DONE or BUSY).
-func computeStatus(in HookInput, destFile string) (Status, bool) {
-	switch in.HookEventName {
+func computeStatus(harnessID string, in harness.NormalizedHook, destFile string) (Status, bool) {
+	if harnessID == harness.CodexID {
+		switch in.EventName {
+		case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+			return StatusBusy, false
+		case "PermissionRequest":
+			return StatusWait, false
+		case "Stop":
+			return StatusDone, false
+		}
+		return StatusBusy, false
+	}
+
+	switch in.EventName {
 	case "UserPromptSubmit":
 		return StatusBusy, false
 	case "PreToolUse":
-		if isWaitTool(in.ToolName) {
+		if isClaudeWaitTool(in.ToolName) {
 			return StatusWait, false
 		}
 		return StatusBusy, false
 	case "PostToolUse":
-		if isWaitTool(in.ToolName) {
+		if isClaudeWaitTool(in.ToolName) {
 			return StatusWait, false
 		}
 		return StatusBusy, false
@@ -137,15 +161,17 @@ func computeStatus(in HookInput, destFile string) (Status, bool) {
 	return StatusBusy, false
 }
 
-// isWaitTool reports whether a tool invocation should transition the session
-// to WAIT instead of BUSY. These tools block on the user for input and must
-// surface as "needs input" in the picker and notifications.
-func isWaitTool(name string) bool {
+// isClaudeWaitTool reports whether a Claude Code tool invocation should
+// transition the session to WAIT instead of BUSY.
+func isClaudeWaitTool(name string) bool {
 	return name == "AskUserQuestion" || name == "ExitPlanMode"
 }
 
-func isWriteTool(name string) bool {
-	return name == "Write" || name == "Edit" || name == "NotebookEdit"
+func nonEmpty(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 // resolveWorktree returns (repo, worktreeDir) if cwd is under willow's
