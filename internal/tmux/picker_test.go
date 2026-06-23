@@ -382,13 +382,22 @@ func TestFormatPickerLinesHarnessSummaryLabels(t *testing.T) {
 		want string
 	}{
 		{line: 0, want: "[codex]"},
-		{line: 1, want: "[claude x2]"},
-		{line: 4, want: "[mixed]"},
 		{line: 5, want: "claude:claude-s"},
 		{line: 6, want: "codex:codex-se"},
 	} {
 		if !strings.Contains(plain[tt.line], tt.want) {
 			t.Fatalf("line %d missing %q:\n%s", tt.line, tt.want, strings.Join(plain, "\n"))
+		}
+	}
+	for _, tt := range []struct {
+		line  int
+		label string
+	}{
+		{line: 1, label: "[claude x2]"},
+		{line: 4, label: "[mixed]"},
+	} {
+		if strings.Contains(plain[tt.line], tt.label) {
+			t.Fatalf("multi-session parent line %d should not show %q:\n%s", tt.line, tt.label, plain[tt.line])
 		}
 	}
 	if strings.Contains(plain[7], "[codex]") {

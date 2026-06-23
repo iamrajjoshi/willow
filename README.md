@@ -544,7 +544,7 @@ After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supporte
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. In the tmux picker, active parent rows include a harness label like `[claude]` or `[codex]`; multiple same-harness sessions show `[claude x2]`, and mixed harnesses show `[mixed]` with per-session sub-rows. Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
+Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. In the tmux picker, active parent rows with one session include a harness label like `[claude]` or `[codex]`; multi-session rows rely on the labeled child rows. Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
 
 ## Configuration
 
