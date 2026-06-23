@@ -313,9 +313,14 @@ func FormatPickerLines(items []PickerItem) []string {
 
 	var lines []string
 	for _, item := range items {
+		activeSessions := filterActiveSessions(item.Sessions)
 		color := statusColor(item.Status)
 		icon := agent.StatusIcon(item.Status)
 		label := fmt.Sprintf("%-7s", agent.StatusLabel(item.Status))
+		harnessLabel := harnessSummaryLabel(activeSessions)
+		if harnessLabel != "" {
+			harnessLabel = " " + colorDim + harnessLabel + colorReset
+		}
 
 		dot := " "
 		if item.Unread {
@@ -337,14 +342,13 @@ func FormatPickerLines(items []PickerItem) []string {
 		}
 		nameCol := name + strings.Repeat(" ", padding)
 
-		line := fmt.Sprintf("%s%s %s%s%s | %s | %s%s%s",
-			color, icon, label, dot, colorReset,
+		line := fmt.Sprintf("%s%s %s%s%s%s | %s | %s%s%s",
+			color, icon, label, dot, colorReset, harnessLabel,
 			nameCol,
 			colorDim, shortenPathWithHome(item.WtPath, home), colorReset,
 		)
 		lines = append(lines, line)
 
-		activeSessions := filterActiveSessions(item.Sessions)
 		if len(activeSessions) > 1 {
 			for _, ss := range activeSessions {
 				effStatus := agent.EffectiveStatus(ss.Status, ss.Timestamp)
@@ -384,6 +388,32 @@ func FormatPickerLines(items []PickerItem) []string {
 		}
 	}
 	return lines
+}
+
+func harnessSummaryLabel(sessions []*agent.SessionStatus) string {
+	if len(sessions) == 0 {
+		return ""
+	}
+
+	counts := map[string]int{}
+	for _, ss := range sessions {
+		name := strings.TrimSpace(ss.Harness)
+		if name == "" {
+			name = "claude"
+		}
+		counts[name]++
+	}
+	if len(counts) != 1 {
+		return "[mixed]"
+	}
+
+	for name, count := range counts {
+		if count > 1 {
+			return fmt.Sprintf("[%s x%d]", name, count)
+		}
+		return "[" + name + "]"
+	}
+	return ""
 }
 
 func filterActiveSessions(sessions []*agent.SessionStatus) []*agent.SessionStatus {
