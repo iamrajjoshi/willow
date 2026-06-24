@@ -182,11 +182,12 @@ func addDashboardWorktree(t *testing.T, bareDir, branch, base string) string {
 func writeDashboardSession(t *testing.T, repo, wtDir, sessionID string, status agent.Status, tool string, ts time.Time) {
 	t.Helper()
 
-	dir := filepath.Join(agent.StatusDir(), repo, wtDir)
+	dir := filepath.Join(agent.StatusDir(), repo, wtDir, "claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
 	data, err := json.Marshal(agent.SessionStatus{
+		Harness:   "claude",
 		Status:    status,
 		SessionID: sessionID,
 		Tool:      tool,

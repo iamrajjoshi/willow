@@ -105,7 +105,7 @@ func TestReadTimeline(t *testing.T) {
 	wtDir := "feat-auth"
 	sessionID := "sess-1"
 
-	dir := filepath.Join(home, ".willow", "status", repoName, wtDir)
+	dir := filepath.Join(home, ".willow", "status", repoName, wtDir, "claude")
 	os.MkdirAll(dir, 0o755)
 
 	now := time.Now().UTC()

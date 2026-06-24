@@ -30,8 +30,8 @@ func TestReadAllSessions_MultipleSessions(t *testing.T) {
 		{Status: StatusDone, SessionID: "sess-2", Timestamp: now.Add(-1 * time.Minute), Worktree: wtName},
 	}
 	for _, ss := range sessions {
-		data, _ := json.Marshal(ss)
-		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+		ss.Harness = "claude"
+		writeSessionFixture(t, SessionPath(repoName, wtName, "claude", ss.SessionID), ss)
 	}
 
 	got := ReadAllSessions(repoName, wtName)
@@ -77,8 +77,8 @@ func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
 		{Status: StatusDone, SessionID: "s1", Timestamp: now},
 		{Status: StatusBusy, SessionID: "s2", Timestamp: now},
 	} {
-		data, _ := json.Marshal(ss)
-		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
+		ss.Harness = "claude"
+		writeSessionFixture(t, SessionPath(repoName, wtName, "claude", ss.SessionID), ss)
 	}
 
 	got := ReadStatus(repoName, wtName)
@@ -87,106 +87,42 @@ func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
 	}
 }
 
-func TestReadAllSessions_PreservesOldFiles(t *testing.T) {
+func TestReadAllSessions_IgnoresFlatSessionFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
 
 	repoName := "myrepo"
-	wtName := "old-sessions"
+	wtName := "flat-sessions"
 	sessDir := filepath.Join(StatusDir(), repoName, wtName)
 	os.MkdirAll(sessDir, 0o755)
 
-	// Old session files should still be readable until an explicit liveness
-	// cleanup path removes them.
-	old := SessionStatus{Status: StatusDone, SessionID: "old-sess", Timestamp: time.Now().UTC().Add(-2 * time.Hour)}
-	data, _ := json.Marshal(old)
-	os.WriteFile(filepath.Join(sessDir, old.SessionID+".json"), data, 0o644)
-	os.WriteFile(filepath.Join(sessDir, old.SessionID+".files"), []byte("/tmp/file\n"), 0o644)
-	os.WriteFile(LegacyTimelinePath(repoName, wtName, old.SessionID), []byte("{}\n"), 0o644)
+	flat := SessionStatus{Status: StatusDone, SessionID: "flat-sess", Timestamp: time.Now().UTC().Add(-2 * time.Hour)}
+	data, _ := json.Marshal(flat)
+	os.WriteFile(filepath.Join(sessDir, flat.SessionID+".json"), data, 0o644)
+	os.WriteFile(filepath.Join(sessDir, flat.SessionID+".files"), []byte("/tmp/file\n"), 0o644)
+	os.WriteFile(filepath.Join(sessDir, flat.SessionID+".timeline"), []byte("{}\n"), 0o644)
 
 	got := ReadAllSessions(repoName, wtName)
-	if len(got) != 1 {
-		t.Fatalf("ReadAllSessions returned %d sessions, want 1", len(got))
-	}
-
-	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.json")); err != nil {
-		t.Fatalf("old session json should still exist: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(sessDir, "old-sess.files")); err != nil {
-		t.Fatalf("old session files sidecar should still exist: %v", err)
-	}
-	if _, err := os.Stat(LegacyTimelinePath(repoName, wtName, "old-sess")); err != nil {
-		t.Fatalf("old session timeline should still exist: %v", err)
+	if len(got) != 0 {
+		t.Fatalf("ReadAllSessions returned %d sessions, want 0", len(got))
 	}
 }
 
-func TestReadAllSessionsRemovesCorruptLegacyFileOnly(t *testing.T) {
+func TestScanAllSessions_IgnoresFlatSessionFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
 
 	repoName := "myrepo"
-	wtName := "legacy-corrupt"
+	wtName := "flat-scan"
 	sessionID := "shared-sess"
 	sessDir := StatusWorktreeDir(repoName, wtName)
 	if err := os.MkdirAll(sessDir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
-	if err := os.WriteFile(LegacySessionPath(repoName, wtName, sessionID), []byte("{bad json\n"), 0o644); err != nil {
-		t.Fatalf("write corrupt legacy session: %v", err)
-	}
-	if err := os.WriteFile(LegacyFilesPath(repoName, wtName, sessionID), []byte("/tmp/file\n"), 0o644); err != nil {
-		t.Fatalf("write legacy files sidecar: %v", err)
-	}
-	if err := os.WriteFile(LegacyTimelinePath(repoName, wtName, sessionID), []byte("{}\n"), 0o644); err != nil {
-		t.Fatalf("write legacy timeline sidecar: %v", err)
-	}
-
-	valid := SessionStatus{Harness: "codex", Status: StatusBusy, SessionID: sessionID, Timestamp: time.Now().UTC()}
-	writeSessionFixture(t, SessionPath(repoName, wtName, "codex", sessionID), valid)
-
-	got := ReadAllSessions(repoName, wtName)
-	if len(got) != 1 {
-		t.Fatalf("ReadAllSessions returned %d sessions, want 1: %+v", len(got), got)
-	}
-	if got[0].Harness != "codex" {
-		t.Fatalf("remaining session harness = %q, want codex", got[0].Harness)
-	}
-	if _, err := os.Stat(LegacySessionPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
-		t.Fatalf("corrupt legacy session should be removed, stat err = %v", err)
-	}
-	if _, err := os.Stat(LegacyFilesPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
-		t.Fatalf("legacy files sidecar should be removed, stat err = %v", err)
-	}
-	if _, err := os.Stat(LegacyTimelinePath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
-		t.Fatalf("legacy timeline sidecar should be removed, stat err = %v", err)
-	}
-	if _, err := os.Stat(SessionPath(repoName, wtName, "codex", sessionID)); err != nil {
-		t.Fatalf("codex session with same id should remain: %v", err)
-	}
-}
-
-func TestScanAllSessionsRemovesCorruptLegacyFileOnly(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("WILLOW_BASE_DIR", filepath.Join(home, ".willow"))
-
-	repoName := "myrepo"
-	wtName := "legacy-scan-corrupt"
-	sessionID := "shared-sess"
-	sessDir := StatusWorktreeDir(repoName, wtName)
-	if err := os.MkdirAll(sessDir, 0o755); err != nil {
-		t.Fatalf("mkdir status dir: %v", err)
-	}
-	if err := os.WriteFile(LegacySessionPath(repoName, wtName, sessionID), []byte("{bad json\n"), 0o644); err != nil {
-		t.Fatalf("write corrupt legacy session: %v", err)
-	}
-	if err := os.WriteFile(LegacyFilesPath(repoName, wtName, sessionID), []byte("/tmp/file\n"), 0o644); err != nil {
-		t.Fatalf("write legacy files sidecar: %v", err)
-	}
-	if err := os.WriteFile(LegacyTimelinePath(repoName, wtName, sessionID), []byte("{}\n"), 0o644); err != nil {
-		t.Fatalf("write legacy timeline sidecar: %v", err)
+	if err := os.WriteFile(filepath.Join(sessDir, sessionID+".json"), []byte("{bad json\n"), 0o644); err != nil {
+		t.Fatalf("write flat session: %v", err)
 	}
 
 	valid := SessionStatus{Harness: "codex", Status: StatusBusy, SessionID: sessionID, Timestamp: time.Now().UTC()}
@@ -201,9 +137,6 @@ func TestScanAllSessionsRemovesCorruptLegacyFileOnly(t *testing.T) {
 	}
 	if got[0].Session.Harness != "codex" {
 		t.Fatalf("remaining session harness = %q, want codex", got[0].Session.Harness)
-	}
-	if _, err := os.Stat(LegacySessionPath(repoName, wtName, sessionID)); !os.IsNotExist(err) {
-		t.Fatalf("corrupt legacy session should be removed, stat err = %v", err)
 	}
 	if _, err := os.Stat(SessionPath(repoName, wtName, "codex", sessionID)); err != nil {
 		t.Fatalf("codex session with same id should remain: %v", err)
@@ -233,7 +166,10 @@ func TestMoveStatusDir(t *testing.T) {
 	if err := os.MkdirAll(oldDir, 0o755); err != nil {
 		t.Fatalf("mkdir old status dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(oldDir, "s1.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(oldDir, "claude"), 0o755); err != nil {
+		t.Fatalf("mkdir harness status dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(oldDir, "claude", "s1.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatalf("write status file: %v", err)
 	}
 
@@ -243,7 +179,7 @@ func TestMoveStatusDir(t *testing.T) {
 	if _, err := os.Stat(StatusWorktreeDir("repo", "old")); !os.IsNotExist(err) {
 		t.Fatalf("old status dir should be gone, err=%v", err)
 	}
-	if _, err := os.Stat(filepath.Join(StatusWorktreeDir("repo", "new"), "s1.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(StatusWorktreeDir("repo", "new"), "claude", "s1.json")); err != nil {
 		t.Fatalf("new status file missing: %v", err)
 	}
 }
@@ -370,7 +306,7 @@ func TestReadStatus_WaitAggregation(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "wait-test"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	now := time.Now().UTC()
@@ -422,7 +358,7 @@ func TestReadFilesTouched(t *testing.T) {
 	repoName := "myrepo"
 	wtName := "wt1"
 	sessionID := "sess-1"
-	dir := filepath.Join(StatusDir(), repoName, wtName)
+	dir := SessionDir(repoName, wtName, "claude")
 	os.MkdirAll(dir, 0o755)
 
 	// Write a .files sidecar

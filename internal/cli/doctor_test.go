@@ -293,11 +293,12 @@ func TestCheckStaleSessions(t *testing.T) {
 		t.Fatalf("successes = %v, want no stale sessions", u.successes)
 	}
 
-	statusDir := filepath.Join(agent.StatusDir(), "repo", "worktree")
+	statusDir := filepath.Join(agent.StatusDir(), "repo", "worktree", "claude")
 	if err := os.MkdirAll(statusDir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
 	session := agent.SessionStatus{
+		Harness:   "claude",
 		Status:    agent.StatusBusy,
 		SessionID: "s1",
 		Timestamp: time.Now().Add(-31 * time.Minute),

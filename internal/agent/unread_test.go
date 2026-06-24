@@ -14,7 +14,7 @@ func TestUnreadCount_NoDoneSessionsReturnsZero(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "wt1"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	ss := SessionStatus{Status: StatusBusy, SessionID: "s1", Timestamp: time.Now().UTC()}
@@ -32,7 +32,7 @@ func TestUnreadCount_DoneSessionIsUnread(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "wt2"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	ss := SessionStatus{Status: StatusDone, SessionID: "s1", Timestamp: time.Now().UTC()}
@@ -53,7 +53,7 @@ func TestMarkRead_ClearsUnread(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "wt3"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	past := time.Now().UTC().Add(-1 * time.Minute)

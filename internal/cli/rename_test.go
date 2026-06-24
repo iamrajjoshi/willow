@@ -190,7 +190,7 @@ func TestRename_MovesStatusDirAndRejectsCollision(t *testing.T) {
 	if err := runApp("rename", "old", "new"); err != nil {
 		t.Fatalf("rename failed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(agent.StatusWorktreeDir(repo.RepoName, "new"), "s1.json")); err != nil {
+	if _, err := os.Stat(agent.SessionPath(repo.RepoName, "new", "claude", "s1")); err != nil {
 		t.Fatalf("new status file missing: %v", err)
 	}
 	if _, err := os.Stat(agent.StatusWorktreeDir(repo.RepoName, "old")); !os.IsNotExist(err) {

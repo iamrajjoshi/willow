@@ -35,7 +35,7 @@ func TestExtractPathFromLine(t *testing.T) {
 
 func writeSessionStatus(t *testing.T, home, repo, wt string, status agent.Status, ts time.Time) {
 	t.Helper()
-	dir := filepath.Join(home, ".willow", "status", repo, wt)
+	dir := filepath.Join(home, ".willow", "status", repo, wt, "claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}

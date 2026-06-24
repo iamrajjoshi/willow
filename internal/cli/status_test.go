@@ -51,7 +51,7 @@ func TestCollectRepoStatus_WithSessions(t *testing.T) {
 	wtName := "feature"
 
 	// Create session files
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	now := time.Now().UTC()
@@ -142,7 +142,7 @@ func TestCollectRepoStatus_UnreadMarking(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "done-wt"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	// Use a past timestamp so MarkRead (which writes "now") is strictly after it
@@ -180,7 +180,7 @@ func TestCollectRepoStatus_MarksOnlyUnreadDoneSession(t *testing.T) {
 
 	repoName := "myrepo"
 	wtName := "done-wt"
-	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName)
+	sessDir := filepath.Join(home, ".willow", "status", repoName, wtName, "claude")
 	os.MkdirAll(sessDir, 0o755)
 
 	base := time.Now().UTC().Add(-10 * time.Minute)
@@ -193,7 +193,7 @@ func TestCollectRepoStatus_MarksOnlyUnreadDoneSession(t *testing.T) {
 		os.WriteFile(filepath.Join(sessDir, ss.SessionID+".json"), data, 0o644)
 	}
 	lastRead := base.Add(1*time.Minute).Format(time.RFC3339) + "\n"
-	os.WriteFile(filepath.Join(sessDir, ".lastread"), []byte(lastRead), 0o644)
+	os.WriteFile(filepath.Join(home, ".willow", "status", repoName, wtName, ".lastread"), []byte(lastRead), 0o644)
 
 	rs := collectRepoStatus(repoName, []worktree.Worktree{
 		{Branch: "done-branch", Path: "/wt/myrepo/" + wtName},
