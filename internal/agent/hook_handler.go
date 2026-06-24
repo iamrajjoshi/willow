@@ -60,9 +60,6 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 
 	if in.EventName == "SessionEnd" {
 		_ = removeSessionArtifacts(repo, wt, h.ID(), in.SessionID)
-		if h.ID() == harness.ClaudeID {
-			_ = removeSessionArtifacts(repo, wt, "", in.SessionID)
-		}
 		return nil
 	}
 

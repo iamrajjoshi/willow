@@ -91,11 +91,12 @@ func writeGlobalConfigFile(t *testing.T, contents string) {
 func writeActiveSessionFile(t *testing.T, repo, wt, sessionID string, status agent.Status) {
 	t.Helper()
 
-	dir := filepath.Join(agent.StatusDir(), repo, wt)
+	dir := filepath.Join(agent.StatusDir(), repo, wt, "claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir session dir: %v", err)
 	}
 	data, err := json.Marshal(agent.SessionStatus{
+		Harness:   "claude",
 		Status:    status,
 		SessionID: sessionID,
 		Timestamp: time.Now(),
@@ -711,7 +712,7 @@ func TestPromote_GeneratedDetachedWorktreeMovesToBranchName(t *testing.T) {
 	if _, err := os.Stat(agent.StatusWorktreeDir("testrepo", oldDir)); !os.IsNotExist(err) {
 		t.Fatalf("old status dir should be gone, err=%v", err)
 	}
-	if _, err := os.Stat(filepath.Join(agent.StatusWorktreeDir("testrepo", "feature-generated"), "s1.json")); err != nil {
+	if _, err := os.Stat(agent.SessionPath("testrepo", "feature-generated", "claude", "s1")); err != nil {
 		t.Fatalf("new status file missing: %v", err)
 	}
 	if !strings.Contains(readTestFile(t, tmuxLog), "rename-session|-t|testrepo/"+oldDir+"|testrepo/feature-generated") {

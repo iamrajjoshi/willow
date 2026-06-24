@@ -18,9 +18,6 @@ type TimelineEntry struct {
 
 // TimelinePath returns the path to the timeline JSONL file for a session.
 func TimelinePath(repoName, worktreeDir, sessionID string) string {
-	if path := LegacyTimelinePath(repoName, worktreeDir, sessionID); fileExists(path) {
-		return path
-	}
 	dir := StatusWorktreeDir(repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
 	if err == nil {
@@ -39,10 +36,6 @@ func TimelinePath(repoName, worktreeDir, sessionID string) string {
 
 func TimelinePathForHarness(repoName, worktreeDir, harnessID, sessionID string) string {
 	return filepath.Join(SessionDir(repoName, worktreeDir, harnessID), sessionID+".timeline")
-}
-
-func LegacyTimelinePath(repoName, worktreeDir, sessionID string) string {
-	return filepath.Join(StatusWorktreeDir(repoName, worktreeDir), sessionID+".timeline")
 }
 
 // ReadTimeline reads timeline entries within a time window.

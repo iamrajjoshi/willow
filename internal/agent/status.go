@@ -43,7 +43,6 @@ type SessionStatus struct {
 	TurnID         string    `json:"turn_id,omitempty"`
 	PermissionMode string    `json:"permission_mode,omitempty"`
 	Worktree       string    `json:"worktree,omitempty"`
-	Legacy         bool      `json:"-"`
 }
 
 func StatusDir() string {
@@ -52,8 +51,6 @@ func StatusDir() string {
 
 // ReadAllSessions reads all session status files from:
 // <willow-base>/status/<repo>/<worktree>/<harness>/*.json.
-// It also reads legacy flat Claude files at <repo>/<worktree>/*.json so
-// existing installs keep their status after upgrading.
 func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 	dir := StatusWorktreeDir(repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
@@ -63,17 +60,11 @@ func ReadAllSessions(repoName, worktreeDir string) []*SessionStatus {
 
 	var sessions []*SessionStatus
 	for _, e := range entries {
-		if e.IsDir() {
-			harnessID := e.Name()
-			sessions = append(sessions, readHarnessSessions(repoName, worktreeDir, harnessID)...)
+		if !e.IsDir() {
 			continue
 		}
-		if strings.HasSuffix(e.Name(), ".json") {
-			sessionID := strings.TrimSuffix(e.Name(), ".json")
-			if ss := readSessionFile(repoName, worktreeDir, "", sessionID, filepath.Join(dir, e.Name()), true); ss != nil {
-				sessions = append(sessions, ss)
-			}
-		}
+		harnessID := e.Name()
+		sessions = append(sessions, readHarnessSessions(repoName, worktreeDir, harnessID)...)
 	}
 	return sessions
 }
@@ -90,14 +81,14 @@ func readHarnessSessions(repoName, worktreeDir, harnessID string) []*SessionStat
 			continue
 		}
 		sessionID := strings.TrimSuffix(e.Name(), ".json")
-		if ss := readSessionFile(repoName, worktreeDir, harnessID, sessionID, filepath.Join(dir, e.Name()), false); ss != nil {
+		if ss := readSessionFile(repoName, worktreeDir, harnessID, sessionID, filepath.Join(dir, e.Name())); ss != nil {
 			sessions = append(sessions, ss)
 		}
 	}
 	return sessions
 }
 
-func readSessionFile(repoName, worktreeDir, harnessID, sessionID, path string, legacy bool) *SessionStatus {
+func readSessionFile(repoName, worktreeDir, harnessID, sessionID, path string) *SessionStatus {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -108,7 +99,6 @@ func readSessionFile(repoName, worktreeDir, harnessID, sessionID, path string, l
 		return nil
 	}
 	applySessionDefaults(&ss, harnessID, sessionID, worktreeDir)
-	ss.Legacy = legacy
 	return &ss
 }
 
@@ -236,14 +226,11 @@ type SessionFileInfo struct {
 }
 
 func RemoveSessionFileForSession(repoName, worktreeDir string, session SessionStatus) error {
-	if session.Legacy || session.Harness == "" {
-		return removeSessionArtifacts(repoName, worktreeDir, "", session.SessionID)
-	}
 	return removeSessionArtifacts(repoName, worktreeDir, session.Harness, session.SessionID)
 }
 
 func removeSessionArtifacts(repoName, worktreeDir, harnessID, sessionID string) error {
-	if sessionID == "" {
+	if harnessID == "" || sessionID == "" {
 		return nil
 	}
 
@@ -257,17 +244,10 @@ func removeSessionArtifacts(repoName, worktreeDir, harnessID, sessionID string) 
 }
 
 func sessionArtifactPaths(repoName, worktreeDir, harnessID, sessionID string) []string {
-	if harnessID != "" {
-		return []string{
-			SessionPath(repoName, worktreeDir, harnessID, sessionID),
-			FilesPathForHarness(repoName, worktreeDir, harnessID, sessionID),
-			TimelinePathForHarness(repoName, worktreeDir, harnessID, sessionID),
-		}
-	}
 	return []string{
-		LegacySessionPath(repoName, worktreeDir, sessionID),
-		LegacyFilesPath(repoName, worktreeDir, sessionID),
-		LegacyTimelinePath(repoName, worktreeDir, sessionID),
+		SessionPath(repoName, worktreeDir, harnessID, sessionID),
+		FilesPathForHarness(repoName, worktreeDir, harnessID, sessionID),
+		TimelinePathForHarness(repoName, worktreeDir, harnessID, sessionID),
 	}
 }
 
@@ -304,29 +284,16 @@ func ScanAllSessions() ([]SessionFileInfo, error) {
 				continue
 			}
 			for _, se := range sessEntries {
-				if se.IsDir() {
-					for _, ss := range readHarnessSessions(repoName, wtDir, se.Name()) {
-						results = append(results, SessionFileInfo{
-							RepoName:    repoName,
-							WorktreeDir: wtDir,
-							Session:     *ss,
-						})
-					}
+				if !se.IsDir() {
 					continue
 				}
-				if !strings.HasSuffix(se.Name(), ".json") {
-					continue
+				for _, ss := range readHarnessSessions(repoName, wtDir, se.Name()) {
+					results = append(results, SessionFileInfo{
+						RepoName:    repoName,
+						WorktreeDir: wtDir,
+						Session:     *ss,
+					})
 				}
-				sessionID := strings.TrimSuffix(se.Name(), ".json")
-				ss := readSessionFile(repoName, wtDir, "", sessionID, filepath.Join(wtPath, se.Name()), true)
-				if ss == nil {
-					continue
-				}
-				results = append(results, SessionFileInfo{
-					RepoName:    repoName,
-					WorktreeDir: wtDir,
-					Session:     *ss,
-				})
 			}
 		}
 	}
@@ -354,13 +321,10 @@ func ReadFilesTouched(repoName, worktreeDir, sessionID string) []string {
 }
 
 func findFilesPath(repoName, worktreeDir, sessionID string) string {
-	if path := LegacyFilesPath(repoName, worktreeDir, sessionID); fileExists(path) {
-		return path
-	}
 	dir := StatusWorktreeDir(repoName, worktreeDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return LegacyFilesPath(repoName, worktreeDir, sessionID)
+		return FilesPathForHarness(repoName, worktreeDir, harness.ClaudeID, sessionID)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -371,7 +335,7 @@ func findFilesPath(repoName, worktreeDir, sessionID string) string {
 			return path
 		}
 	}
-	return LegacyFilesPath(repoName, worktreeDir, sessionID)
+	return FilesPathForHarness(repoName, worktreeDir, harness.ClaudeID, sessionID)
 }
 
 // CleanEmptyStatusDirs removes empty worktree/repo directories under StatusDir().
@@ -442,16 +406,8 @@ func SessionPath(repoName, worktreeDir, harnessID, sessionID string) string {
 	return filepath.Join(SessionDir(repoName, worktreeDir, harnessID), sessionID+".json")
 }
 
-func LegacySessionPath(repoName, worktreeDir, sessionID string) string {
-	return filepath.Join(StatusWorktreeDir(repoName, worktreeDir), sessionID+".json")
-}
-
 func FilesPathForHarness(repoName, worktreeDir, harnessID, sessionID string) string {
 	return filepath.Join(SessionDir(repoName, worktreeDir, harnessID), sessionID+".files")
-}
-
-func LegacyFilesPath(repoName, worktreeDir, sessionID string) string {
-	return filepath.Join(StatusWorktreeDir(repoName, worktreeDir), sessionID+".files")
 }
 
 func fileExists(path string) bool {

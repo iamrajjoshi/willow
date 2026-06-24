@@ -15,7 +15,7 @@ func TestRefreshStatusDryRunAndRemoval(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	writeActiveSessionFile(t, "repo", "feature", "s1", agent.StatusBusy)
-	sessionPath := filepath.Join(agent.StatusDir(), "repo", "feature", "s1.json")
+	sessionPath := agent.SessionPath("repo", "feature", "claude", "s1")
 
 	dryRunOut, err := captureStdout(t, func() error {
 		return runApp("refresh-status", "--dry-run")

@@ -130,7 +130,7 @@ func TestHandleHook_StopSetsDone(t *testing.T) {
 
 func TestHandleHook_SessionEndRemovesFiles(t *testing.T) {
 	repo, wt := setupWorktreeHome(t)
-	dir := filepath.Join(StatusDir(), repo, wt)
+	dir := SessionDir(repo, wt, "claude")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "s1.json"), []byte("{}"), 0o644)
 	os.WriteFile(filepath.Join(dir, "s1.files"), []byte("/x"), 0o644)

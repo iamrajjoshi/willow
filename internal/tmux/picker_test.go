@@ -567,11 +567,12 @@ func pickerTestBareRepo(t *testing.T, home, repo string) string {
 
 func writePickerSessionStatus(t *testing.T, repo, wt string, status agent.Status) {
 	t.Helper()
-	dir := filepath.Join(agent.StatusDir(), repo, wt)
+	dir := filepath.Join(agent.StatusDir(), repo, wt, "claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir status dir: %v", err)
 	}
 	data, err := json.Marshal(agent.SessionStatus{
+		Harness:   "claude",
 		Status:    status,
 		SessionID: "session-1",
 		Timestamp: time.Now(),
