@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -272,6 +273,44 @@ func TestHandleHook_PreservesStartTime(t *testing.T) {
 
 	if !first.Equal(second) {
 		t.Errorf("start_time changed: %v → %v", first, second)
+	}
+}
+
+func TestWriteSessionConcurrentWriters(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "session.json")
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := 0; i < cap(errs); i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- writeSession(path, SessionStatus{
+				SessionID: "s1",
+				Status:    StatusBusy,
+				ToolCount: i,
+			})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("writeSession returned error under concurrent writes: %v", err)
+		}
+	}
+
+	if got := readSession(path); got.SessionID != "s1" {
+		t.Fatalf("session_id = %q, want s1", got.SessionID)
+	}
+	matches, err := filepath.Glob(filepath.Join(home, "session.json.*.tmp"))
+	if err != nil {
+		t.Fatalf("glob temp files: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("leftover temp files: %v", matches)
 	}
 }
 
