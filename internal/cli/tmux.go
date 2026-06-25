@@ -560,7 +560,7 @@ func existingBranchesForRepo(repo string, refresh bool) ([]string, error) {
 
 	repoGit := &git.Git{Dir: bareDir}
 	if refresh {
-		_, _ = repoGit.Run("fetch", "origin")
+		_, _ = repoGit.Run("fetch", "--no-tags", "origin")
 	}
 
 	remoteBranches, err := repoGit.RemoteBranches()

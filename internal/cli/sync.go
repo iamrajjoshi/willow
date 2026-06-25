@@ -124,7 +124,7 @@ func syncCmd() *cli.Command {
 			if !cmd.Bool("no-fetch") {
 				done = tr.StartCtx(ctx, "git fetch")
 				if err := u.Spin("Fetching origin", func() error {
-					_, err := repoGit.Run("fetch", "origin")
+					_, err := repoGit.Run("fetch", "--no-tags", "origin")
 					return err
 				}); err != nil {
 					u.Warn(fmt.Sprintf("fetch failed: %v (continuing anyway)", err))

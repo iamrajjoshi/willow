@@ -75,7 +75,7 @@ func gcCmd() *cli.Command {
 				cfg := config.Load(repo.BareDir)
 				repoGit := &git.Git{Dir: repo.BareDir, Verbose: flags.Verbose}
 				if *cfg.Defaults.Fetch && !cmd.Bool("no-fetch") {
-					if _, err := repoGit.Run("fetch", "--prune", "origin"); err != nil {
+					if _, err := repoGit.Run("fetch", "--no-tags", "--prune", "origin"); err != nil {
 						u.Warn(fmt.Sprintf("Skipping remote refresh for %s: %v", repo.Name, err))
 					}
 				}
