@@ -417,7 +417,7 @@ func fetchRemoteBranchRef(repoGit *git.Git, remote, branch string) (bool, error)
 		return false, nil
 	}
 	refspec := "+refs/heads/" + branch + ":refs/remotes/" + remote + "/" + branch
-	if _, err := repoGit.Run("fetch", remote, refspec); err != nil {
+	if _, err := repoGit.Run("fetch", "--no-tags", remote, refspec); err != nil {
 		return false, fmt.Errorf("failed to fetch %s/%s before remote rename: %w", remote, branch, err)
 	}
 	return true, nil

@@ -145,10 +145,10 @@ func checkoutCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "git fetch")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Fetching from origin...\n")
-					repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin")
+					repoGit.RunStream(os.Stderr, "fetch", "--no-tags", "--progress", "origin")
 				} else {
 					_ = u.Spin("Fetching from origin", func() error {
-						_, err := repoGit.Run("fetch", "origin")
+						_, err := repoGit.Run("fetch", "--no-tags", "origin")
 						return err
 					})
 				}

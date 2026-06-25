@@ -119,13 +119,13 @@ func resolveDetachedRef(ctx context.Context, tr *trace.Tracer, cmd *cli.Command,
 		done = tr.StartCtx(ctx, "git fetch detached ref")
 		if cdOnly {
 			fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", baseBranch)
-			if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", baseBranch); err != nil {
+			if _, err := repoGit.RunStream(os.Stderr, "fetch", "--no-tags", "--progress", "origin", baseBranch); err != nil {
 				done()
 				return "", "", fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 			}
 		} else {
 			if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(baseBranch)), func() error {
-				_, err := repoGit.Run("fetch", "origin", baseBranch)
+				_, err := repoGit.Run("fetch", "--no-tags", "origin", baseBranch)
 				return err
 			}); err != nil {
 				done()
@@ -312,7 +312,7 @@ func newCmd() *cli.Command {
 				shouldFetch := *cfg.Defaults.Fetch && !cmd.Bool("no-fetch")
 				if shouldFetch {
 					if err := u.Spin("Fetching latest branches from origin", func() error {
-						_, err := repoGit.Run("fetch", "origin")
+						_, err := repoGit.Run("fetch", "--no-tags", "origin")
 						return err
 					}); err != nil {
 						u.Warn(fmt.Sprintf("Failed to fetch: %v", err))
@@ -339,12 +339,12 @@ func newCmd() *cli.Command {
 					done = tr.StartCtx(ctx, "git fetch branch")
 					if cdOnly {
 						fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", branch)
-						if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", branch); err != nil {
+						if _, err := repoGit.RunStream(os.Stderr, "fetch", "--no-tags", "--progress", "origin", branch); err != nil {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
 						}
 					} else {
 						if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(branch)), func() error {
-							_, err := repoGit.Run("fetch", "origin", branch)
+							_, err := repoGit.Run("fetch", "--no-tags", "origin", branch)
 							return err
 						}); err != nil {
 							return fmt.Errorf("failed to fetch origin/%s: %w", branch, err)
@@ -404,12 +404,12 @@ func newCmd() *cli.Command {
 				done = tr.StartCtx(ctx, "git fetch")
 				if cdOnly {
 					fmt.Fprintf(os.Stderr, "Fetching %s from origin...\n", baseBranch)
-					if _, err := repoGit.RunStream(os.Stderr, "fetch", "--progress", "origin", baseBranch); err != nil {
+					if _, err := repoGit.RunStream(os.Stderr, "fetch", "--no-tags", "--progress", "origin", baseBranch); err != nil {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
 					}
 				} else {
 					if err := u.Spin(fmt.Sprintf("Fetching %s from origin", u.Bold(baseBranch)), func() error {
-						_, err := repoGit.Run("fetch", "origin", baseBranch)
+						_, err := repoGit.Run("fetch", "--no-tags", "origin", baseBranch)
 						return err
 					}); err != nil {
 						return fmt.Errorf("failed to fetch origin/%s: %w", baseBranch, err)
