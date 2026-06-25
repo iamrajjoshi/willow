@@ -34,6 +34,17 @@ func codexSetupCmd() *cli.Command {
 	}
 }
 
+func cursorSetupCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "cursor-setup",
+		Usage: "Install Cursor Agent hooks for status tracking",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			defer trace.Span(ctx, "cli.cursor-setup")()
+			return runAgentSetup(cmd, []string{harness.CursorID})
+		},
+	}
+}
+
 func agentCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "agent",
@@ -41,11 +52,11 @@ func agentCmd() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:  "setup",
-				Usage: "Install agent hooks for claude, codex, or all",
+				Usage: "Install agent hooks for claude, codex, cursor, or all",
 				Arguments: []cli.Argument{
 					&cli.StringArg{
 						Name:      "harness",
-						UsageText: "[claude|codex|all]",
+						UsageText: "[claude|codex|cursor|all]",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -66,16 +77,14 @@ func agentCmd() *cli.Command {
 }
 
 func setupTargets(target string) ([]string, error) {
-	switch harness.NormalizeID(target) {
-	case "all":
-		return []string{harness.ClaudeID, harness.CodexID}, nil
-	case harness.ClaudeID:
-		return []string{harness.ClaudeID}, nil
-	case harness.CodexID:
-		return []string{harness.CodexID}, nil
-	default:
-		return nil, fmt.Errorf("unknown agent harness %q (expected claude, codex, or all)", target)
+	normalized := harness.NormalizeID(target)
+	if normalized == "all" {
+		return harness.IDs(), nil
 	}
+	if _, ok := harness.Get(normalized); ok {
+		return []string{normalized}, nil
+	}
+	return nil, fmt.Errorf("unknown agent harness %q (expected %s, or all)", target, strings.Join(harness.IDs(), ", "))
 }
 
 func runAgentSetup(cmd *cli.Command, ids []string) error {

@@ -128,6 +128,96 @@ func TestHandleHook_StopSetsDone(t *testing.T) {
 	}
 }
 
+func TestHandleHook_CursorWorkEventSetsBusy(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+
+	raw := []byte(`{
+		"session_id": "cursor-s1",
+		"hook_event_name": "preToolUse",
+		"tool_name": "Shell"
+	}`)
+	if err := HandleHook(bytes.NewReader(raw), "cursor"); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+
+	got := readSession(SessionPath(repo, wt, "cursor", "cursor-s1"))
+	if got.Status != StatusBusy {
+		t.Errorf("status = %q, want %q", got.Status, StatusBusy)
+	}
+	if got.ToolCount != 1 {
+		t.Errorf("tool_count = %d, want 1", got.ToolCount)
+	}
+	if got.Tool != "Shell" {
+		t.Errorf("tool = %q, want Shell", got.Tool)
+	}
+}
+
+func TestHandleHook_CursorStopSetsDone(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+
+	raw := []byte(`{
+		"conversation_id": "cursor-conv",
+		"generation_id": "gen-1",
+		"hook_event_name": "stop",
+		"model": "gpt-5"
+	}`)
+	if err := HandleHook(bytes.NewReader(raw), "cursor"); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+
+	got := readSession(SessionPath(repo, wt, "cursor", "cursor-conv"))
+	if got.Status != StatusDone {
+		t.Errorf("status = %q, want %q", got.Status, StatusDone)
+	}
+	if got.TurnID != "gen-1" || got.Model != "gpt-5" {
+		t.Errorf("metadata = %#v, want turn/model preserved", got)
+	}
+}
+
+func TestHandleHook_CursorSessionEndRemovesFiles(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+	dir := SessionDir(repo, wt, "cursor")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "s1.json"), []byte("{}"), 0o644)
+	os.WriteFile(filepath.Join(dir, "s1.files"), []byte("/x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "s1.timeline"), []byte("{}"), 0o644)
+
+	raw := []byte(`{
+		"session_id": "s1",
+		"hook_event_name": "sessionEnd"
+	}`)
+	if err := HandleHook(bytes.NewReader(raw), "cursor"); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+
+	for _, ext := range []string{".json", ".files", ".timeline"} {
+		if _, err := os.Stat(filepath.Join(dir, "s1"+ext)); !os.IsNotExist(err) {
+			t.Errorf("%s should be removed", ext)
+		}
+	}
+}
+
+func TestHandleHook_CursorTracksEditedFiles(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+
+	raw := []byte(`{
+		"session_id": "s1",
+		"hook_event_name": "afterFileEdit",
+		"file_path": "/tmp/a.go"
+	}`)
+	if err := HandleHook(bytes.NewReader(raw), "cursor"); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+
+	data, err := os.ReadFile(FilesPathForHarness(repo, wt, "cursor", "s1"))
+	if err != nil {
+		t.Fatalf("read files list: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "/tmp/a.go" {
+		t.Fatalf("files list = %q, want edited path", data)
+	}
+}
+
 func TestHandleHook_SessionEndRemovesFiles(t *testing.T) {
 	repo, wt := setupWorktreeHome(t)
 	dir := SessionDir(repo, wt, "claude")

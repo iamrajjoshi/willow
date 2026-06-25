@@ -44,10 +44,10 @@ The local config lives inside the bare repo directory, so it's private to your m
     "command": ""
   },
   "agent": {
-    "default": "claude",
+    "default": "cursor",
     "harnesses": {
-      "codex": {
-        "command": "codex",
+      "cursor": {
+        "command": "cursor-agent",
         "args": []
       }
     }
@@ -78,9 +78,9 @@ The local config lives inside the bare repo directory, so it's private to your m
 | `teardown` | `string[]` | Commands to run before removing a worktree |
 | `defaults.fetch` | `boolean` | Whether to fetch before creating a worktree |
 | `defaults.autoSetupRemote` | `boolean` | Auto-configure remote tracking for new branches |
-| `notify.desktop` | `boolean` | Send desktop notifications from Claude Code hooks when an agent finishes or needs input (default: `true`) |
+| `notify.desktop` | `boolean` | Send desktop notifications from agent hooks when an agent finishes or needs input (default: `true`) |
 | `notify.command` | `string` | Custom command for non-tmux notifications. Receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` |
-| `agent.default` | `string` | Default harness for `ww dispatch` and tmux `Ctrl-G` (`claude` or `codex`; default: `claude`) |
+| `agent.default` | `string` | Default harness for `ww dispatch` and tmux `Ctrl-G` (`claude`, `codex`, or `cursor`; default: `claude`) |
 | `agent.harnesses.<id>.command` | `string` | Override the executable used for a harness |
 | `agent.harnesses.<id>.args` | `string[]` | Extra args passed before the prompt when launching a harness |
 | `agent.harnesses.<id>.yoloArgs` | `string[]` | Override the args used by `--yolo` for that harness |
@@ -110,7 +110,9 @@ When telemetry is enabled, Willow only reports system errors and panics, along w
         └── auth-refactor/
             ├── claude/
             │   └── <session_id>.json
-            └── codex/
+            ├── codex/
+            │   └── <session_id>.json
+            └── cursor/
                 └── <session_id>.json
 ```
 
@@ -124,7 +126,7 @@ Each worktree is a fully isolated directory with its own working copy. Grouped b
 
 ### `<willow-base>/status/`
 
-Created by `ww cc-setup`, `ww codex-setup`, or `ww agent setup`. Contains JSON files with agent status for each worktree and harness.
+Created by `ww cc-setup`, `ww codex-setup`, `ww cursor-setup`, or `ww agent setup`. Contains JSON files with agent status for each worktree and harness.
 
 ```jsonc
 // <willow-base>/status/myrepo/auth-refactor/codex/<session_id>.json
@@ -141,6 +143,8 @@ Created by `ww cc-setup`, `ww codex-setup`, or `ww agent setup`. Contains JSON f
 
 ### Agent hooks
 
-`ww cc-setup` registers the hidden `willow hook --harness claude` subcommand in `~/.claude/settings.json`. `ww codex-setup` registers `willow hook --harness codex` in `~/.codex/hooks.json`. When an agent fires a hook event, it invokes the willow binary directly — there is no intermediate shell script or background daemon.
+`ww cc-setup` registers the hidden `willow hook --harness claude` subcommand in `~/.claude/settings.json`. `ww codex-setup` registers `willow hook --harness codex` in `~/.codex/hooks.json`. `ww cursor-setup` registers `willow hook --harness cursor` in `~/.cursor/hooks.json`. When an agent fires a hook event, it invokes the willow binary directly — there is no intermediate shell script or background daemon.
 
 Codex treats user-level command hooks as reviewable hooks. If Codex warns about hooks that need review, open `/hooks` inside the Codex CLI and trust the Willow hook.
+
+Cursor hooks are installed as direct hook entries with a short timeout and fail open. Willow preserves unrelated Cursor hook rules and replaces only earlier Willow Cursor entries.

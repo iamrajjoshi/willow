@@ -914,6 +914,32 @@ func TestTmuxPickDispatchForRepoStartsCodex(t *testing.T) {
 	}
 }
 
+func TestTmuxPickDispatchForRepoStartsCursor(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	tmuxLog := installFakeTmuxForCLI(t)
+	self, willowLog := installFakeWillowForTmux(t, filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("TMUX", "/tmp/tmux.sock")
+
+	cfg := config.DefaultConfig()
+	if err := tmuxPickDispatchForRepo(self, "Fix via cursor", "repo", "cursor", cfg); err != nil {
+		t.Fatalf("tmuxPickDispatchForRepo: %v", err)
+	}
+
+	willowText := readTestFile(t, willowLog)
+	if !strings.Contains(willowText, "new --cd --repo repo -- dispatch--fix-via-cursor") {
+		t.Fatalf("willow log missing dispatch new:\n%s", willowText)
+	}
+	tmuxText := readTestFile(t, tmuxLog)
+	for _, want := range []string{
+		"send-keys -t repo/dispatch--fix-via-cursor",
+		"'cursor-agent' \"$(cat",
+	} {
+		if !strings.Contains(tmuxText, want) {
+			t.Fatalf("tmux log missing %q:\n%s", want, tmuxText)
+		}
+	}
+}
+
 func TestTmuxPickDeleteKillsSessionAndRunsWillowRm(t *testing.T) {
 	setupTmuxCommandHome(t, "repo")
 	tmuxLog := installFakeTmuxForCLI(t)

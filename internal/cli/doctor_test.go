@@ -258,6 +258,30 @@ func TestCheckAgentHarnesses(t *testing.T) {
 	}
 }
 
+func TestCheckAgentHarnessesIncludesCursor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binDir := t.TempDir()
+	writeTestExecutable(t, binDir, "claude", "#!/bin/sh\nexit 0\n")
+	writeTestExecutable(t, binDir, "codex", "#!/bin/sh\nexit 0\n")
+	writeTestExecutable(t, binDir, "cursor-agent", "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+
+	for _, id := range []string{harness.ClaudeID, harness.CodexID, harness.CursorID} {
+		if _, err := agent.InstallHarness(id); err != nil {
+			t.Fatalf("install %s hooks: %v", id, err)
+		}
+	}
+
+	u := &fakeDoctorUI{}
+	checkAgentHarnesses(u, false)
+	for _, want := range []string{"Claude Code (default) CLI installed", "Codex CLI installed", "Cursor Agent CLI installed", "Cursor Agent hooks installed"} {
+		if !u.hasSuccess(want) {
+			t.Fatalf("successes = %v, want %q", u.successes, want)
+		}
+	}
+}
+
 func TestCheckWillowDirs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

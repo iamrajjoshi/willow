@@ -52,7 +52,7 @@ func dispatchCmd() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "agent",
-				Usage: "Agent harness to launch (claude or codex; default from agent.default)",
+				Usage: "Agent harness to launch (claude, codex, or cursor; default from agent.default)",
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {

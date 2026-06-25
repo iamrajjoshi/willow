@@ -58,7 +58,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 	destDir := SessionDir(repo, wt, h.ID())
 	destFile := SessionPath(repo, wt, h.ID(), in.SessionID)
 
-	if in.EventName == "SessionEnd" {
+	if in.EventName == "SessionEnd" || in.EventName == "sessionEnd" {
 		_ = removeSessionArtifacts(repo, wt, h.ID(), in.SessionID)
 		return nil
 	}
@@ -76,7 +76,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 	prev := readSession(destFile)
 
 	toolCount := prev.ToolCount
-	if in.EventName == "PreToolUse" {
+	if in.EventName == "PreToolUse" || in.EventName == "preToolUse" {
 		toolCount++
 	}
 
@@ -86,7 +86,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 	}
 
 	toolField := ""
-	if in.EventName == "PreToolUse" || in.EventName == "PermissionRequest" {
+	if in.EventName == "PreToolUse" || in.EventName == "preToolUse" || in.EventName == "PermissionRequest" {
 		toolField = in.ToolName
 	}
 
@@ -128,6 +128,13 @@ func computeStatus(harnessID string, in harness.NormalizedHook, destFile string)
 		case "PermissionRequest":
 			return StatusWait, false
 		case "Stop":
+			return StatusDone, false
+		}
+		return StatusBusy, false
+	}
+
+	if harnessID == harness.CursorID {
+		if in.EventName == "stop" {
 			return StatusDone, false
 		}
 		return StatusBusy, false
