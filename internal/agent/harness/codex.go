@@ -207,7 +207,35 @@ func extractCodexFiles(topLevelFile string, toolInput json.RawMessage) []string 
 			extractPatchFilesFromText(v, add)
 		}
 	}
+	extractPathLikeStrings(input, add)
 	return files
+}
+
+func extractPathLikeStrings(value any, add func(string)) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			lower := strings.ToLower(key)
+			if strings.Contains(lower, "path") || lower == "file" || lower == "filename" {
+				switch typed := child.(type) {
+				case string:
+					add(typed)
+					continue
+				case []any:
+					for _, item := range typed {
+						if s, ok := item.(string); ok {
+							add(s)
+						}
+					}
+				}
+			}
+			extractPathLikeStrings(child, add)
+		}
+	case []any:
+		for _, child := range v {
+			extractPathLikeStrings(child, add)
+		}
+	}
 }
 
 func extractPatchFilesFromText(text string, add func(string)) {

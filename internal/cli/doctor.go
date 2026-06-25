@@ -136,7 +136,7 @@ type agentHooksUI interface {
 func checkAgentHarnesses(u agentHooksUI, fix bool) {
 	cfg := config.Load("")
 	defaultID := harness.DefaultID(cfg)
-	for _, id := range []string{harness.ClaudeID, harness.CodexID} {
+	for _, id := range harness.IDs() {
 		h, err := harness.MustGet(id)
 		if err != nil {
 			continue
@@ -145,14 +145,11 @@ func checkAgentHarnesses(u agentHooksUI, fix bool) {
 		if override := harness.OverridesFor(cfg, id); override.Command != "" {
 			commandName = override.Command
 		}
-		label := h.DisplayName()
-		if id == defaultID {
-			label += " (default)"
-		}
+		label := agentBinaryLabel(h.DisplayName(), id == defaultID)
 		if _, err := exec.LookPath(commandName); err != nil {
-			u.Warn(fmt.Sprintf("%s CLI not found (run: %s after installing)", label, h.SetupCommandLabel()))
+			u.Warn(fmt.Sprintf("%s not found (run: %s after installing)", label, h.SetupCommandLabel()))
 		} else {
-			u.Success(fmt.Sprintf("%s CLI installed", label))
+			u.Success(fmt.Sprintf("%s installed", label))
 		}
 
 		if !agent.IsHarnessInstalled(id) {
@@ -214,6 +211,17 @@ func checkWillowDirs(u interface {
 		}
 		u.Success(fmt.Sprintf("%s exists", d.path))
 	}
+}
+
+func agentBinaryLabel(displayName string, isDefault bool) string {
+	label := displayName
+	if isDefault {
+		label += " (default)"
+	}
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(displayName)), "cli") {
+		return label
+	}
+	return label + " CLI"
 }
 
 func checkStaleSessions(u interface {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,82 @@ func TestCodexSetupCmdInstallsHooksWithExistingTelemetryPreference(t *testing.T)
 	}
 }
 
+func TestCursorSetupCmdInstallsHooksWithExistingTelemetryPreference(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeGlobalConfigFile(t, `{"telemetry":false}`)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("cursor-setup")
+	})
+	if err != nil {
+		t.Fatalf("cursor-setup failed: %v", err)
+	}
+
+	for _, want := range []string{"Installed Cursor Agent hooks", "hook:", "status:", "~/.cursor/hooks.json"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("cursor-setup output missing %q:\n%s", want, out)
+		}
+	}
+	path := filepath.Join(home, ".cursor", "hooks.json")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("hooks.json not written: %v", err)
+	}
+	settings := readSetupJSON(t, path)
+	if settings["version"] != float64(1) {
+		t.Fatalf("version = %#v, want 1", settings["version"])
+	}
+	hooks := settings["hooks"].(map[string]any)
+	if _, ok := hooks["sessionStart"]; !ok {
+		t.Fatalf("sessionStart hook missing: %#v", hooks)
+	}
+}
+
+func TestAgentSetupAllIncludesCursor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeGlobalConfigFile(t, `{"telemetry":false}`)
+
+	out, err := captureStdout(t, func() error {
+		return runApp("agent", "setup", "all")
+	})
+	if err != nil {
+		t.Fatalf("agent setup all failed: %v", err)
+	}
+	for _, want := range []string{"Claude Code hooks", "Codex CLI hooks", "Cursor Agent hooks"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("agent setup all output missing %q:\n%s", want, out)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(home, ".claude", "settings.json"),
+		filepath.Join(home, ".codex", "hooks.json"),
+		filepath.Join(home, ".cursor", "hooks.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s not written: %v", path, err)
+		}
+	}
+}
+
+func TestSetupTargetsAcceptCursor(t *testing.T) {
+	ids, err := setupTargets("cursor")
+	if err != nil {
+		t.Fatalf("setupTargets(cursor): %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "cursor" {
+		t.Fatalf("ids = %v, want [cursor]", ids)
+	}
+
+	ids, err = setupTargets("all")
+	if err != nil {
+		t.Fatalf("setupTargets(all): %v", err)
+	}
+	if !containsString(ids, "cursor") {
+		t.Fatalf("ids = %v, want cursor included", ids)
+	}
+}
+
 func TestSetupCmdPromptsForTelemetryWhenUnset(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -98,4 +175,17 @@ func TestSetupCmdPromptsForTelemetryWhenUnset(t *testing.T) {
 	if cfg.Telemetry == nil || !*cfg.Telemetry {
 		t.Fatalf("telemetry preference = %v, want true", cfg.Telemetry)
 	}
+}
+
+func readSetupJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return out
 }

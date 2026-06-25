@@ -159,6 +159,7 @@ func NewApp() *cli.Command {
 			agentCmd(),
 			setupCmd(),
 			codexSetupCmd(),
+			cursorSetupCmd(),
 			hookCmd(),
 			shellInitCmd(),
 			gcCmd(),

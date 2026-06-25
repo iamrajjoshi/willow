@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Spin up isolated worktrees for Claude Code or Codex CLI sessions.<br>
+  Spin up isolated worktrees for Claude Code, Codex CLI, or Cursor Agent sessions.<br>
   Switch between them instantly with fzf.<br>
   See which agents are busy, waiting, or idle.<br><br>
   <a href="https://getwillow.dev">Documentation</a>
@@ -41,7 +41,7 @@ Running multiple agent sessions on the same repo means constant context-switchin
 ├── worktrees/
 │   └── myrepo/
 │       ├── main/                 # each branch = isolated directory
-│       ├── auth-refactor/        # Claude Code or Codex running here
+│       ├── auth-refactor/        # Claude Code, Codex, or Cursor running here
 │       └── payments/             # another agent running here
 └── status/
     └── myrepo/
@@ -49,8 +49,10 @@ Running multiple agent sessions on the same repo means constant context-switchin
         │   └── claude/
         │       └── <session_id>.json   # {"status": "BUSY", ...}
         └── payments/
-            └── codex/
-                └── <session_id>.json   # {"status": "WAIT", ...}
+            ├── codex/
+            │   └── <session_id>.json   # {"status": "DONE", ...}
+            └── cursor/
+                └── <session_id>.json   # {"status": "BUSY", ...}
 ```
 
 `<willow-base>` defaults to `~/.willow`. You can override it with `WILLOW_BASE_DIR` or the global `baseDir` config, and move an existing setup with `ww migrate-base <path>`.
@@ -142,10 +144,11 @@ python3 skills/willow-autoresearch/scripts/bench_willow.py --reference-repo ~/co
 ```bash
 ww cc-setup                 # Claude Code hooks
 ww codex-setup              # Codex CLI hooks
-ww agent setup all          # both
+ww cursor-setup             # Cursor Agent hooks
+ww agent setup all          # all built-in harnesses
 ```
 
-Installs hooks that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/<repo>/<worktree>/<harness>/`. Claude hooks live in `~/.claude/settings.json`; Codex hooks live in `~/.codex/hooks.json` and may need review in Codex with `/hooks`. Multiple harnesses can run in the same worktree at the same time. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
+Installs hooks that write per-session agent status (`BUSY` / `DONE` / `WAIT` / `IDLE`) to `<willow-base>/status/<repo>/<worktree>/<harness>/`. Claude hooks live in `~/.claude/settings.json`; Codex hooks live in `~/.codex/hooks.json` and may need review in Codex with `/hooks`; Cursor hooks live in `~/.cursor/hooks.json`. Cursor currently reports `BUSY`, `DONE`, and cleanup events, but not `WAIT`. Multiple harnesses can run in the same worktree at the same time. This powers the status column in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`.
 
 ## Quick start
 
@@ -156,9 +159,10 @@ ww clone git@github.com:org/myrepo.git
 # Create a worktree and cd into it
 ww new auth-refactor
 
-# Start Claude Code or Codex
+# Start Claude Code, Codex, or Cursor Agent
 claude
 # or: codex
+# or: cursor-agent
 
 # In another terminal — create a second worktree
 ww new payments-fix
@@ -465,6 +469,7 @@ ww dispatch "Add retry logic" --name add-retries             # explicit branch n
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
 ww dispatch "Fix auth" --agent codex                         # one-off Codex dispatch
+ww dispatch "Fix auth" --agent cursor                        # one-off Cursor dispatch
 ```
 
 ![ww dispatch](screenshots/demo-dispatch.gif)
@@ -475,8 +480,10 @@ ww dispatch "Fix auth" --agent codex                         # one-off Codex dis
 | `-r, --repo` | Target repo by name |
 | `-b, --base` | Base branch to fork from |
 | `--no-fetch` | Skip fetching from remote |
-| `--agent` | Override `agent.default` (`claude` or `codex`) |
-| `--yolo` | Run with the harness's full-access flag (`claude`: `--dangerously-skip-permissions`; `codex`: `--dangerously-bypass-approvals-and-sandbox`) |
+| `--agent` | Override `agent.default` (`claude`, `codex`, or `cursor`) |
+| `--yolo` | Run with the harness's full-access flag (`claude`: `--dangerously-skip-permissions`; `codex`: `--dangerously-bypass-approvals-and-sandbox`; `cursor`: `--force`) |
+
+Willow owns worktree creation for dispatches. Cursor's own `--worktree` path is not used because Willow has already created and selected the isolated worktree before launching `cursor-agent`.
 
 ### `ww cc-setup`
 
@@ -486,13 +493,17 @@ One-time hook installation for Claude Code status tracking.
 
 One-time hook installation for Codex CLI status tracking. Codex may ask you to review and trust the hook with `/hooks`.
 
-### `ww agent setup [claude|codex|all]`
+### `ww cursor-setup`
 
-Install hooks for one harness or both.
+One-time hook installation for Cursor Agent status tracking. Willow writes direct Cursor hook entries to `~/.cursor/hooks.json`, preserves unrelated hooks, and leaves hooks fail open.
+
+### `ww agent setup [claude|codex|cursor|all]`
+
+Install hooks for one harness or all built-in harnesses.
 
 ### `ww doctor`
 
-Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude/Codex CLIs and hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy Claude hooks left over from older releases.
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code, Codex CLI, and Cursor Agent binaries and hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy Claude hooks left over from older releases.
 
 ```bash
 ww doctor          # report issues only
@@ -534,7 +545,7 @@ Print shell integration script.
 
 ## Agent status
 
-After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supported agents automatically report their state:
+After running `ww cc-setup`, `ww codex-setup`, `ww cursor-setup`, or `ww agent setup all`, supported agents automatically report their state:
 
 | Icon | Status | Meaning |
 |------|--------|---------|
@@ -544,7 +555,7 @@ After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supporte
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. In the tmux picker, active parent rows with one session include a harness label like `[claude]` or `[codex]`; multi-session rows rely on the labeled child rows. Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
+Status appears in `ww ls`, `ww sw`, `ww status`, and `ww dashboard`. In the tmux picker, active parent rows with one session include a harness label like `[claude]`, `[codex]`, or `[cursor]`; multi-session rows rely on the labeled child rows. Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`.
 
 ## Configuration
 
@@ -572,10 +583,10 @@ Config merges two tiers (local wins):
     "command": ""
   },
   "agent": {
-    "default": "claude",
+    "default": "cursor",
     "harnesses": {
-      "codex": {
-        "command": "codex",
+      "cursor": {
+        "command": "cursor-agent",
         "args": []
       }
     }
@@ -627,7 +638,7 @@ Recommended Ghostty layout per worktree:
 ┌─────────────────────────────────────┐
 │ Tab: myrepo/auth-refactor           │
 ├──────────────────┬──────────────────┤
-│  claude          │  codex           │
+│  claude/codex    │  cursor-agent    │
 │  (agent 1)       │  (agent 2)       │
 ├──────────────────┴──────────────────┤
 │  shell (git diff, tests, etc.)      │

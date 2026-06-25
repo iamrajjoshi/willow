@@ -166,6 +166,35 @@ func TestDispatchCmdAgentOverrideWinsOverConfigDefault(t *testing.T) {
 	}
 }
 
+func TestDispatchCmdRunsCursorWithYolo(t *testing.T) {
+	home := setupTmuxCommandHome(t, "repo")
+	helperLog := filepath.Join(t.TempDir(), "willow-helper.log")
+	t.Setenv("WILLOW_TEST_HELPER_PROCESS", "willow")
+	t.Setenv("WILLOW_TEST_HELPER_WT_ROOT", filepath.Join(home, ".willow", "worktrees"))
+	t.Setenv("WILLOW_TEST_HELPER_LOG", helperLog)
+
+	binDir := t.TempDir()
+	cursorLog := filepath.Join(t.TempDir(), "cursor.log")
+	writeTestExecutable(t, binDir, "cursor-agent", "#!/bin/sh\n"+
+		"printf 'cwd=%s\\n' \"$PWD\" >> "+shellQuote(cursorLog)+"\n"+
+		"printf 'args=%s\\n' \"$*\" >> "+shellQuote(cursorLog)+"\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := runApp("dispatch", "Fix auth", "--repo", "repo", "--name", "dispatch-cursor", "--agent", "cursor", "--yolo"); err != nil {
+		t.Fatalf("dispatch command failed: %v", err)
+	}
+
+	cursorText := readTestFile(t, cursorLog)
+	for _, want := range []string{
+		filepath.Join(home, ".willow", "worktrees", "repo", "dispatch-cursor"),
+		"args=--force Fix auth",
+	} {
+		if !strings.Contains(cursorText, want) {
+			t.Fatalf("cursor log missing %q:\n%s", want, cursorText)
+		}
+	}
+}
+
 func TestDispatchForegroundRunsClaudeInWorktree(t *testing.T) {
 	binDir := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "agent.log")

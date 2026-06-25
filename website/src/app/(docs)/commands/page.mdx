@@ -341,10 +341,11 @@ Requires the [GitHub CLI](https://cli.github.com/) (`gh`).
 Show agent status per worktree/session. Multiple sessions in the same worktree render child rows with labels like `[claude] a044b2af`.
 
 ```
-myrepo (4 worktrees, 3 sessions active, 1 unread)
+myrepo (4 worktrees, 4 sessions active, 1 unread)
 
   🤖 auth-refactor [claude:4f2c9a1b]  BUSY    2m ago
   🤖 auth-refactor [codex:9b7d2e44]   BUSY    5m ago
+  🤖 auth-refactor [cursor:8c1f5a20]  BUSY    6m ago
   ✅ payments      [claude:3ac18f02]  DONE●   12m ago
   🟡 main                     IDLE    1h ago
      old-feature              --
@@ -429,7 +430,7 @@ Without `--prune`, willow only empties the trash directory and prints the comman
 
 ### Desktop notifications
 
-Desktop notifications fire directly from agent hook systems after you run `ww cc-setup`, `ww codex-setup`, or `ww agent setup all` — there's no daemon, no polling, and no `ww notify` subcommand. Whenever an agent transitions from `BUSY` to `DONE` or `WAIT`, the hook fires a macOS Notification Center alert within ~200ms.
+Desktop notifications fire directly from agent hook systems after you run `ww cc-setup`, `ww codex-setup`, `ww cursor-setup`, or `ww agent setup all` — there's no daemon, no polling, and no `ww notify` subcommand. Whenever an agent transitions from `BUSY` to `DONE` or `WAIT`, the hook fires a macOS Notification Center alert within ~200ms.
 
 **Desktop notifications:** Enabled by default. Set `"notify": {"desktop": false}` in config to disable them. The tmux status bar is a separate channel and is unaffected.
 
@@ -447,6 +448,7 @@ ww dispatch "Add retry logic" --name add-retries             # explicit branch n
 ww dispatch "Write tests for auth" --base feature/auth       # stacked on a branch
 ww dispatch "Refactor payments" --repo myrepo                # target specific repo
 ww dispatch "Fix auth" --agent codex                         # one-off Codex dispatch
+ww dispatch "Fix auth" --agent cursor                        # one-off Cursor dispatch
 ```
 
 | Flag | Description | Default |
@@ -455,15 +457,19 @@ ww dispatch "Fix auth" --agent codex                         # one-off Codex dis
 | `-r, --repo` | Target repo by name | Auto-detected from cwd |
 | `-b, --base` | Base branch to fork from | Config default |
 | `--no-fetch` | Skip fetching from remote | `false` |
-| `--agent` | Override `agent.default` (`claude` or `codex`) | Config default |
+| `--agent` | Override `agent.default` (`claude`, `codex`, or `cursor`) | Config default |
 | `--yolo` | Run with the harness's full-access flag | `false` |
+
+`--yolo` maps to the selected harness: Claude uses `--dangerously-skip-permissions`, Codex uses `--dangerously-bypass-approvals-and-sandbox`, and Cursor uses `--force`.
 
 **How it works:**
 1. Creates a new worktree (reuses `ww new` internally)
-2. Launches the selected harness (`claude "<prompt>"` or `codex "<prompt>"`)
+2. Launches the selected harness (`claude "<prompt>"`, `codex "<prompt>"`, or `cursor-agent "<prompt>"`)
 3. Logs a `dispatch` event (visible in `ww log`)
 
 The agent appears in `ww status`, `ww dashboard`, and the tmux picker. Switch to it anytime with `ww sw`.
+
+Willow owns worktree creation for dispatches. Cursor's own `--worktree` path is not used because Willow has already created and selected the isolated worktree before launching `cursor-agent`.
 
 ### `ww cc-setup`
 
@@ -480,9 +486,15 @@ Hook installation for Codex CLI status tracking. Safe to re-run: each invocation
 
 The hook tracks `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop`, writing status to `<willow-base>/status/<repo>/<worktree>/codex/<session_id>.json`.
 
+### `ww cursor-setup`
+
+Hook installation for Cursor Agent status tracking. Safe to re-run: each invocation overwrites Willow's entries in `~/.cursor/hooks.json` with the current binary path and leaves unrelated hook rules untouched. Willow uses direct Cursor hook entries and omits fail-closed behavior so hooks fail open.
+
+The hook tracks `sessionStart`, `beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `beforeShellExecution`, `afterShellExecution`, `afterFileEdit`, `stop`, and `sessionEnd`, writing status to `<willow-base>/status/<repo>/<worktree>/cursor/<session_id>.json`. Cursor currently reports `BUSY`, `DONE`, and cleanup events, but not `WAIT`.
+
 ### `ww agent setup`
 
-Install hooks for one harness or both. With no argument, this installs all built-in harnesses.
+Install hooks for `claude`, `codex`, `cursor`, or all built-in harnesses. With no argument, this installs all built-in harnesses.
 
 The hook also tracks enriched session data:
 - **`tool_count`** — number of tool invocations in the session
@@ -491,7 +503,7 @@ The hook also tracks enriched session data:
 
 ### Agent status
 
-After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supported agents automatically report their state:
+After running `ww cc-setup`, `ww codex-setup`, `ww cursor-setup`, or `ww agent setup all`, supported agents automatically report their state:
 
 | Icon | Status | Meaning |
 |------|--------|---------|
@@ -501,7 +513,7 @@ After running `ww cc-setup`, `ww codex-setup`, or `ww agent setup all`, supporte
 | 🟡 | `IDLE` | Agent session ended |
 | | `--` | No activity detected |
 
-Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`. The tmux picker labels active parent rows with one session (`[claude]` or `[codex]`) so single-session worktrees are easy to distinguish; multi-session rows rely on the labeled child rows.
+Stale `BUSY`/`WAIT` status (>2 min) automatically degrades to `IDLE`. Completed sessions stay `DONE` until the session ends. Completed sessions show a `●` unread indicator until you switch to that worktree via `ww sw`. The tmux picker labels active parent rows with one session (`[claude]`, `[codex]`, or `[cursor]`) so single-session worktrees are easy to distinguish; multi-session rows rely on the labeled child rows.
 
 ## Configuration
 
@@ -580,6 +592,8 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 ✔ Claude Code hooks installed
 ✔ Codex CLI installed
 ✔ Codex CLI hooks installed
+✔ Cursor Agent CLI installed
+✔ Cursor Agent hooks installed
 ✔ <willow-base> exists
 ✔ <willow-base>/repos exists
 ✔ <willow-base>/worktrees exists
@@ -592,7 +606,7 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 | git version | Warns if &lt; 2.30 |
 | gh CLI | Optional — warns if missing |
 | tmux | Optional — warns if missing |
-| Agent CLIs and hooks | Checks Claude Code and Codex CLI binaries plus Willow hook installation |
+| Agent CLIs and hooks | Checks Claude Code, Codex CLI, and Cursor Agent binaries plus Willow hook installation |
 | Claude legacy hooks | Flags unmarked entries from older Willow releases in `~/.claude/settings.json` |
 | Willow directories | `<willow-base>`, `repos/`, `worktrees/` |
 | Stale sessions | Session files older than 30 minutes |

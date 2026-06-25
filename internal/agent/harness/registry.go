@@ -12,6 +12,7 @@ import (
 const (
 	ClaudeID = "claude"
 	CodexID  = "codex"
+	CursorID = "cursor"
 )
 
 type Capabilities struct {
