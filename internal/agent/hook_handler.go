@@ -12,6 +12,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/focus"
 	"github.com/iamrajjoshi/willow/internal/notify"
 	"github.com/iamrajjoshi/willow/internal/telemetry"
 )
@@ -115,6 +116,28 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 
 	fireNotifications(repo, wt)
 	return nil
+}
+
+// clickForKey builds the notification click action for a worktree transition.
+// The target is captured from the live hook environment ($TMUX,
+// __CFBundleIdentifier) because the click handler runs later, detached, with no
+// inherited environment. Returns nil when willow can't locate its own binary,
+// in which case the notification still fires without a click action.
+func clickForKey(key string) *notify.Click {
+	willowPath, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	target := focus.Target{
+		Session:    key,
+		TmuxSocket: focus.SocketFromEnv(os.Getenv("TMUX")),
+		TermBundle: os.Getenv("__CFBundleIdentifier"),
+	}
+	return &notify.Click{
+		Execute: focus.ExecuteCommand(willowPath, target),
+		Sender:  target.TermBundle,
+		Group:   "willow-" + key,
+	}
 }
 
 // computeStatus returns the new status for this event plus a skip flag.
@@ -355,7 +378,7 @@ func fireNotifications(repo, wt string) {
 		case cfg.Notify.Command != "":
 			err = notify.SendCustom(cfg.Notify.Command, "willow", body)
 		case cfg.Notify.Desktop == nil || *cfg.Notify.Desktop:
-			err = notify.Send("willow", body)
+			err = notify.SendWithClick("willow", body, clickForKey(tr.Key))
 		}
 		if err != nil {
 			telemetry.CaptureException(err)

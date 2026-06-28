@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ func doctorCmd() *cli.Command {
 			checkGitVersion(u)
 			checkBinary(u, "gh", "gh CLI", "https://cli.github.com")
 			checkBinary(u, "tmux", "tmux", "https://github.com/tmux/tmux")
+			checkClickableNotifications(u)
 			checkAgentHarnesses(u, cmd.Bool("fix"))
 			checkWillowDirs(u)
 			checkStaleSessions(u)
@@ -124,6 +126,20 @@ func checkBinary(u binaryChecker, name, label, installURL string) {
 		return
 	}
 	u.Success(fmt.Sprintf("%s installed", label))
+}
+
+// checkClickableNotifications reports whether terminal-notifier is available.
+// Without it, desktop notifications still fire via osascript but can't focus
+// the agent's session on click. macOS-only; silent elsewhere.
+func checkClickableNotifications(u binaryChecker) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	if _, err := exec.LookPath("terminal-notifier"); err != nil {
+		u.Warn("terminal-notifier not found; notification clicks won't focus the session (install: brew install terminal-notifier)")
+		return
+	}
+	u.Success("terminal-notifier installed (clickable notifications)")
 }
 
 type agentHooksUI interface {
