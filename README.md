@@ -459,6 +459,8 @@ Desktop notifications fire directly from agent hook systems — no daemon, no po
 
 Desktop notifications are enabled by default. Set `"notify": {"desktop": false}` to disable them, or set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
 
+Clicking a notification jumps to the agent that triggered it: it switches the tmux session (or selects the matching terminal tab) and brings your terminal forward. This needs [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`); macOS `osascript` notifications can't carry a click action. Without it, notifications still fire but clicking does nothing useful. Run `ww doctor` to check. Tab selection works in iTerm2 and Terminal.app; other terminals get app-focus plus the tmux switch.
+
 ### `ww dispatch <prompt> [flags]`
 
 Create a worktree and launch the configured agent harness with a prompt. From the terminal, the agent runs interactively in the foreground. From the tmux picker, `Ctrl-G` launches the configured default in a background session and `Ctrl-O` lets you pick a one-off harness.

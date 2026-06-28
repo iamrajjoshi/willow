@@ -161,6 +161,7 @@ func NewApp() *cli.Command {
 			codexSetupCmd(),
 			cursorSetupCmd(),
 			hookCmd(),
+			focusCmd(),
 			shellInitCmd(),
 			gcCmd(),
 			migrateBaseCmd(),

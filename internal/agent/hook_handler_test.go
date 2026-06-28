@@ -404,6 +404,40 @@ func TestWriteSessionConcurrentWriters(t *testing.T) {
 	}
 }
 
+func TestClickForKey_BuildsTmuxTarget(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("__CFBundleIdentifier", "com.googlecode.iterm2")
+
+	click := clickForKey("myrepo/feat-x")
+	if click == nil {
+		t.Fatal("clickForKey returned nil")
+	}
+	if click.Sender != "com.googlecode.iterm2" {
+		t.Errorf("Sender = %q, want iterm2 bundle", click.Sender)
+	}
+	if click.Group != "willow-myrepo/feat-x" {
+		t.Errorf("Group = %q, want willow-myrepo/feat-x", click.Group)
+	}
+	for _, want := range []string{"focus", "--session 'myrepo/feat-x'", "--tmux-socket '/tmp/sock'"} {
+		if !strings.Contains(click.Execute, want) {
+			t.Errorf("Execute = %q, missing %q", click.Execute, want)
+		}
+	}
+}
+
+func TestClickForKey_NoTmuxOmitsSocket(t *testing.T) {
+	t.Setenv("TMUX", "")
+	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
+
+	click := clickForKey("myrepo/feat-x")
+	if click == nil {
+		t.Fatal("clickForKey returned nil")
+	}
+	if strings.Contains(click.Execute, "--tmux-socket") {
+		t.Errorf("Execute should omit --tmux-socket outside tmux: %q", click.Execute)
+	}
+}
+
 func TestResolveWorktree_UsesConfiguredBaseDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

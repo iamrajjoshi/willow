@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -196,6 +197,32 @@ func TestCheckBinary(t *testing.T) {
 	if !u.hasWarning("tmux not found") {
 		t.Fatalf("warnings = %v, want tmux missing", u.warnings)
 	}
+}
+
+func TestCheckClickableNotifications(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("clickable-notification check is macOS-only")
+	}
+
+	t.Run("missing warns", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		u := &fakeDoctorUI{}
+		checkClickableNotifications(u)
+		if !u.hasWarning("terminal-notifier not found") {
+			t.Fatalf("warnings = %v, want terminal-notifier missing", u.warnings)
+		}
+	})
+
+	t.Run("present succeeds", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeTestExecutable(t, binDir, "terminal-notifier", "#!/bin/sh\nexit 0\n")
+		t.Setenv("PATH", binDir)
+		u := &fakeDoctorUI{}
+		checkClickableNotifications(u)
+		if !u.hasSuccess("terminal-notifier installed") {
+			t.Fatalf("successes = %v, want terminal-notifier installed", u.successes)
+		}
+	})
 }
 
 func TestCheckAgentHarnesses(t *testing.T) {
