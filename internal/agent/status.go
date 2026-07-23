@@ -10,6 +10,7 @@ import (
 
 	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/focus"
 )
 
 type Status string
@@ -32,17 +33,18 @@ type WorktreeStatus struct {
 }
 
 type SessionStatus struct {
-	Harness        string    `json:"harness,omitempty"`
-	SessionID      string    `json:"session_id"`
-	Status         Status    `json:"status"`
-	Timestamp      time.Time `json:"timestamp"`
-	StartTime      time.Time `json:"start_time,omitempty"`
-	Tool           string    `json:"tool,omitempty"`
-	ToolCount      int       `json:"tool_count,omitempty"`
-	Model          string    `json:"model,omitempty"`
-	TurnID         string    `json:"turn_id,omitempty"`
-	PermissionMode string    `json:"permission_mode,omitempty"`
-	Worktree       string    `json:"worktree,omitempty"`
+	Harness        string        `json:"harness,omitempty"`
+	SessionID      string        `json:"session_id"`
+	Status         Status        `json:"status"`
+	Timestamp      time.Time     `json:"timestamp"`
+	StartTime      time.Time     `json:"start_time,omitempty"`
+	Tool           string        `json:"tool,omitempty"`
+	ToolCount      int           `json:"tool_count,omitempty"`
+	Model          string        `json:"model,omitempty"`
+	TurnID         string        `json:"turn_id,omitempty"`
+	PermissionMode string        `json:"permission_mode,omitempty"`
+	Worktree       string        `json:"worktree,omitempty"`
+	FocusTarget    *focus.Target `json:"focus,omitempty"`
 }
 
 func StatusDir() string {
@@ -128,18 +130,30 @@ func ReadStatus(repoName, worktreeDir string) *WorktreeStatus {
 }
 
 func AggregateStatus(sessions []*SessionStatus) *WorktreeStatus {
-	best := &WorktreeStatus{Status: StatusOffline}
-	for _, ss := range sessions {
-		effective := EffectiveStatus(ss.Status, ss.Timestamp)
-		if StatusOrder(effective) < StatusOrder(best.Status) {
-			best = &WorktreeStatus{
-				Status:    effective,
-				Timestamp: ss.Timestamp,
-				Worktree:  ss.Worktree,
-			}
+	bestSession, status := highestPrioritySession(sessions)
+	if bestSession == nil {
+		return &WorktreeStatus{Status: StatusOffline}
+	}
+	return &WorktreeStatus{
+		Status:    status,
+		Timestamp: bestSession.Timestamp,
+		Worktree:  bestSession.Worktree,
+	}
+}
+
+func highestPrioritySession(sessions []*SessionStatus) (*SessionStatus, Status) {
+	var best *SessionStatus
+	bestStatus := StatusOffline
+	for _, session := range sessions {
+		effective := EffectiveStatus(session.Status, session.Timestamp)
+		if best == nil ||
+			StatusOrder(effective) < StatusOrder(bestStatus) ||
+			(StatusOrder(effective) == StatusOrder(bestStatus) && session.Timestamp.After(best.Timestamp)) {
+			best = session
+			bestStatus = effective
 		}
 	}
-	return best
+	return best, bestStatus
 }
 
 func EffectiveStatus(s Status, ts time.Time) Status {

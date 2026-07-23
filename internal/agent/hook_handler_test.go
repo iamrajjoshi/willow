@@ -2,12 +2,17 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/focus"
 )
 
 // setupWorktreeHome creates a fake willow base dir with a worktree at
@@ -36,6 +41,13 @@ func setupWorktreeHome(t *testing.T) (repo, wt string) {
 		t.Fatalf("chdir: %v", err)
 	}
 	return repo, wt
+}
+
+func withTmuxCapture(t *testing.T, capture func(context.Context, string, ...string) ([]byte, error)) {
+	t.Helper()
+	original := runTmuxCapture
+	runTmuxCapture = capture
+	t.Cleanup(func() { runTmuxCapture = original })
 }
 
 func TestHandleHook_UserPromptSubmitWritesBusy(t *testing.T) {
@@ -239,6 +251,53 @@ func TestHandleHook_SessionEndRemovesFiles(t *testing.T) {
 	}
 }
 
+func TestHandleHook_SessionEndRefreshesNotificationTarget(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "willow", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"notify":{"desktop":false}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	now := time.Now().UTC()
+	sessions := []SessionStatus{
+		{
+			Harness:     "claude",
+			SessionID:   "session-a",
+			Status:      StatusWait,
+			Timestamp:   now,
+			FocusTarget: &focus.Target{Session: repo + "/" + wt, TmuxPane: "%1"},
+		},
+		{
+			Harness:     "claude",
+			SessionID:   "session-b",
+			Status:      StatusWait,
+			Timestamp:   now.Add(time.Second),
+			FocusTarget: &focus.Target{Session: repo + "/" + wt, TmuxPane: "%2"},
+		},
+	}
+	for i := range sessions {
+		path := SessionPath(repo, wt, sessions[i].Harness, sessions[i].SessionID)
+		writeSessionFixture(t, path, sessions[i])
+	}
+
+	fireNotifications(repo, wt)
+	key := repo + "/" + wt
+	if got := loadNotificationTransitionState(NotifyStateFile())[key].Target; !strings.Contains(got, `"session_id":"session-b"`) {
+		t.Fatalf("initial notification target = %q, want session-b", got)
+	}
+
+	raw, _ := json.Marshal(HookInput{SessionID: "session-b", HookEventName: "SessionEnd"})
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+	if got := loadNotificationTransitionState(NotifyStateFile())[key].Target; !strings.Contains(got, `"session_id":"session-a"`) {
+		t.Fatalf("refreshed notification target = %q, want session-a", got)
+	}
+}
+
 func TestHandleHook_NotificationRespectsBusy(t *testing.T) {
 	repo, wt := setupWorktreeHome(t)
 	// Prime session as BUSY
@@ -401,6 +460,344 @@ func TestWriteSessionConcurrentWriters(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Fatalf("leftover temp files: %v", matches)
+	}
+}
+
+func TestCaptureFocusTarget_BuildsTmuxTarget(t *testing.T) {
+	binDir := t.TempDir()
+	tmuxPath := filepath.Join(binDir, "tmux")
+	if err := os.WriteFile(tmuxPath, []byte("#!/bin/sh\nprintf '/dev/ttys007\\tmyrepo/feat-x\\n'\n"), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("TMUX_PANE", "%7")
+	t.Setenv("__CFBundleIdentifier", "com.googlecode.iterm2")
+	withTmuxCapture(t, func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("/dev/ttys007\tmyrepo/feat-x\n"), nil
+	})
+
+	target := captureFocusTarget("myrepo/feat-x", nil)
+	if target.TmuxPath != tmuxPath || target.TmuxSocket != "/tmp/sock" || target.TmuxPane != "%7" || target.TmuxClient != "/dev/ttys007" {
+		t.Fatalf("captureFocusTarget() = %#v, want tmux path/socket/pane", target)
+	}
+	if target.TermBundle != "com.googlecode.iterm2" {
+		t.Errorf("TermBundle = %q, want iterm2 bundle", target.TermBundle)
+	}
+
+	click := clickForTarget("myrepo/feat-x", *target)
+	if click == nil {
+		t.Fatal("clickForTarget returned nil")
+	}
+	if click.Group != "willow-myrepo/feat-x" {
+		t.Errorf("Group = %q, want willow-myrepo/feat-x", click.Group)
+	}
+	for _, want := range []string{
+		"focus",
+		"--session 'myrepo/feat-x'",
+		"--tmux-path '" + tmuxPath + "'",
+		"--tmux-socket '/tmp/sock'",
+		"--tmux-pane '%7'",
+		"--tmux-client '/dev/ttys007'",
+	} {
+		if !strings.Contains(click.Execute, want) {
+			t.Errorf("Execute = %q, missing %q", click.Execute, want)
+		}
+	}
+}
+
+func TestHandleHook_BusyDoesNotCaptureFocusTarget(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+	binDir := t.TempDir()
+	tmuxPath := filepath.Join(binDir, "tmux")
+	marker := filepath.Join(binDir, "tmux-invoked")
+	if err := os.WriteFile(tmuxPath, []byte("#!/bin/sh\nprintf invoked > \"$TMUX_CAPTURE_MARKER\"\n"), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("TMUX_PANE", "%9")
+	t.Setenv("__CFBundleIdentifier", "com.googlecode.iterm2")
+	t.Setenv("TMUX_CAPTURE_MARKER", marker)
+
+	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+	got := readSession(SessionPath(repo, wt, "claude", "s1")).FocusTarget
+	if got != nil {
+		t.Fatalf("BUSY hook focus target = %#v, want nil", got)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("BUSY hook invoked tmux capture: %v", err)
+	}
+}
+
+func TestHandleHook_DoneDoesNotCaptureWhenDesktopNotificationsDisabled(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "willow", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"notify":{"desktop":false}}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	binDir := t.TempDir()
+	marker := filepath.Join(binDir, "tmux-invoked")
+	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte("#!/bin/sh\nprintf invoked > \"$TMUX_CAPTURE_MARKER\"\n"), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("TMUX_PANE", "%9")
+	t.Setenv("TMUX_CAPTURE_MARKER", marker)
+
+	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "Stop"})
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+	if got := readSession(SessionPath(repo, wt, "claude", "s1")).FocusTarget; got != nil {
+		t.Fatalf("disabled notification focus target = %#v, want nil", got)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("disabled desktop notification invoked tmux capture: %v", err)
+	}
+}
+
+func TestFocusTargetForStatus_CapturesDoneAndWaitWhenClickable(t *testing.T) {
+	for _, status := range []Status{StatusDone, StatusWait} {
+		t.Run(string(status), func(t *testing.T) {
+			binDir := t.TempDir()
+			tmuxPath := filepath.Join(binDir, "tmux")
+			marker := filepath.Join(binDir, "tmux-invoked")
+			script := "#!/bin/sh\nprintf invoked > \"$TMUX_CAPTURE_MARKER\"\nprintf '/dev/ttys009\\trepo/wt\\n'\n"
+			if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
+				t.Fatalf("write fake tmux: %v", err)
+			}
+			t.Setenv("PATH", binDir)
+			t.Setenv("TMUX", "/tmp/sock,123,0")
+			t.Setenv("TMUX_PANE", "%9")
+			t.Setenv("TMUX_CAPTURE_MARKER", marker)
+			withTmuxCapture(t, func(context.Context, string, ...string) ([]byte, error) {
+				if err := os.WriteFile(marker, []byte("invoked"), 0o644); err != nil {
+					return nil, err
+				}
+				return []byte("/dev/ttys009\trepo/wt\n"), nil
+			})
+
+			got := focusTargetForStatusConfig(
+				"repo/wt",
+				status,
+				nil,
+				config.NotifyConfig{Desktop: config.BoolPtr(true)},
+				true,
+			)
+			if got == nil || got.TmuxPath != tmuxPath || got.TmuxClient != "/dev/ttys009" {
+				t.Fatalf("focus target = %#v, want captured tmux target", got)
+			}
+			if _, err := os.Stat(marker); err != nil {
+				t.Fatalf("%s hook did not invoke tmux capture: %v", status, err)
+			}
+		})
+	}
+}
+
+func TestHandleHook_BusyPreservesPreviousFocusTarget(t *testing.T) {
+	repo, wt := setupWorktreeHome(t)
+	previous := &focus.Target{
+		Session:    repo + "/" + wt,
+		TmuxPath:   "/opt/homebrew/bin/tmux",
+		TmuxSocket: "/tmp/sock",
+		TmuxPane:   "%3",
+		TermBundle: "com.googlecode.iterm2",
+	}
+	writeSessionFixture(t, SessionPath(repo, wt, "claude", "s1"), SessionStatus{
+		Harness:     "claude",
+		SessionID:   "s1",
+		Status:      StatusDone,
+		FocusTarget: previous,
+	})
+
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
+	raw, _ := json.Marshal(HookInput{SessionID: "s1", HookEventName: "UserPromptSubmit"})
+	if err := HandleHook(bytes.NewReader(raw)); err != nil {
+		t.Fatalf("HandleHook: %v", err)
+	}
+
+	got := readSession(SessionPath(repo, wt, "claude", "s1")).FocusTarget
+	if got == nil || *got != *previous {
+		t.Fatalf("BUSY hook focus target = %#v, want previous %#v", got, previous)
+	}
+}
+
+func TestCaptureFocusTarget_NoTmuxOmitsTmuxFlags(t *testing.T) {
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
+
+	target := captureFocusTarget("myrepo/feat-x", nil)
+	click := clickForTarget("myrepo/feat-x", *target)
+	if click == nil {
+		t.Fatal("clickForTarget returned nil")
+	}
+	for _, flag := range []string{"--tmux-path", "--tmux-socket", "--tmux-pane"} {
+		if strings.Contains(click.Execute, flag) {
+			t.Errorf("Execute should omit %s outside tmux: %q", flag, click.Execute)
+		}
+	}
+}
+
+func TestNotificationFocusTarget_UsesSessionBehindAggregateStatus(t *testing.T) {
+	now := time.Now().UTC()
+	waiting := focus.Target{Session: "repo/wt", TermBundle: "com.apple.Terminal"}
+	finished := focus.Target{Session: "repo/wt", TermBundle: "com.googlecode.iterm2"}
+	sessions := []*SessionStatus{
+		{SessionID: "waiting", Status: StatusWait, Timestamp: now, FocusTarget: &waiting},
+		{SessionID: "finished", Status: StatusDone, Timestamp: now, FocusTarget: &finished},
+	}
+
+	got, identity := notificationFocusTarget("repo/wt", sessions)
+	if got.TermBundle != waiting.TermBundle {
+		t.Fatalf("notification target = %#v, want the WAIT session target", got)
+	}
+	if !strings.Contains(identity, `"session_id":"waiting"`) {
+		t.Fatalf("notification identity = %q, want waiting session", identity)
+	}
+}
+
+func TestNotificationFocusTarget_DoesNotCaptureFallback(t *testing.T) {
+	binDir := t.TempDir()
+	marker := filepath.Join(binDir, "tmux-invoked")
+	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte("#!/bin/sh\nprintf invoked > \"$TMUX_CAPTURE_MARKER\"\n"), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("TMUX_PANE", "%9")
+	t.Setenv("TMUX_CAPTURE_MARKER", marker)
+
+	got, _ := notificationFocusTarget("repo/wt", nil)
+	if got.Session != "repo/wt" {
+		t.Fatalf("notification target session = %q, want repo/wt", got.Session)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("notification target fallback invoked tmux capture: %v", err)
+	}
+}
+
+func TestClickForTarget_MissingFocusContextKeepsGroupWithoutExecute(t *testing.T) {
+	for _, target := range []focus.Target{
+		{Session: "repo/wt"},
+		{Session: "repo/wt", TermBundle: "unsupported.terminal"},
+	} {
+		click := clickForTarget("repo/wt", target)
+		if click == nil || click.Group != "willow-repo/wt" || click.Execute != "" {
+			t.Fatalf("clickForTarget() = %#v, want grouped notification without execute", click)
+		}
+	}
+}
+
+func TestNotificationRefresh_MissingFocusContextKeepsGroup(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "notify-state.json")
+	valid := focus.Target{Session: "repo/wt", TermBundle: "com.apple.Terminal"}
+	validTarget, validIdentity := notificationFocusTarget("repo/wt", []*SessionStatus{{
+		Harness:     "claude",
+		SessionID:   "session-a",
+		Status:      StatusWait,
+		FocusTarget: &valid,
+	}})
+	detectNotificationTransitions("repo/wt", StatusBusy, validIdentity, stateFile)
+	if transitions := detectNotificationTransitions("repo/wt", StatusWait, validIdentity, stateFile); len(transitions) != 1 {
+		t.Fatalf("initial transition = %#v, want one", transitions)
+	}
+	if click := clickForTarget("repo/wt", validTarget); click == nil || click.Execute == "" {
+		t.Fatalf("valid target click = %#v, want executable focus action", click)
+	}
+
+	missingTarget, missingIdentity := notificationFocusTarget("repo/wt", []*SessionStatus{{
+		Harness:   "claude",
+		SessionID: "session-b",
+		Status:    StatusWait,
+	}})
+	transitions := detectNotificationTransitions("repo/wt", StatusWait, missingIdentity, stateFile)
+	if len(transitions) != 1 || !transitions[0].Refresh {
+		t.Fatalf("missing-target transition = %#v, want one grouped refresh", transitions)
+	}
+	click := clickForTarget("repo/wt", missingTarget)
+	if click == nil || click.Group != "willow-repo/wt" || click.Execute != "" {
+		t.Fatalf("missing-target click = %#v, want group-only replacement", click)
+	}
+}
+
+func TestCaptureFocusTarget_PreservesPreviousDetachedContext(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("__CFBundleIdentifier", "")
+	previous := &focus.Target{
+		Session:    "repo/wt",
+		TmuxPath:   "/opt/homebrew/bin/tmux",
+		TmuxSocket: "/tmp/sock",
+		TmuxPane:   "%3",
+		TermBundle: "com.googlecode.iterm2",
+	}
+
+	got := captureFocusTarget("repo/wt", previous)
+	if *got != *previous {
+		t.Fatalf("captureFocusTarget() = %#v, want previous %#v", got, previous)
+	}
+}
+
+func TestCaptureFocusTarget_MovingOutOfTmuxClearsPreviousTmuxContext(t *testing.T) {
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
+	previous := &focus.Target{
+		Session:    "repo/wt",
+		TmuxPath:   "/opt/homebrew/bin/tmux",
+		TmuxSocket: "/tmp/sock",
+		TmuxPane:   "%3",
+		TmuxClient: "/dev/ttys003",
+		TermBundle: "com.googlecode.iterm2",
+	}
+
+	got := captureFocusTarget("repo/wt", previous)
+	if got.TmuxPath != "" || got.TmuxSocket != "" || got.TmuxPane != "" || got.TmuxClient != "" {
+		t.Fatalf("captureFocusTarget() retained stale tmux context: %#v", got)
+	}
+	if got.TermBundle != "com.apple.Terminal" {
+		t.Fatalf("TermBundle = %q, want current Terminal bundle", got.TermBundle)
+	}
+}
+
+func TestCaptureFocusTarget_IgnoresClientAttachedToAnotherSession(t *testing.T) {
+	binDir := t.TempDir()
+	tmuxPath := filepath.Join(binDir, "tmux")
+	if err := os.WriteFile(tmuxPath, []byte("#!/bin/sh\nprintf '/dev/ttys009\\trepo/other\\n'\n"), 0o755); err != nil {
+		t.Fatalf("write fake tmux: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("TMUX", "/tmp/sock,123,0")
+	t.Setenv("TMUX_PANE", "%3")
+	t.Setenv("__CFBundleIdentifier", "com.googlecode.iterm2")
+	withTmuxCapture(t, func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("/dev/ttys009\trepo/other\n"), nil
+	})
+	previous := &focus.Target{
+		Session:    "repo/wt",
+		TmuxPath:   tmuxPath,
+		TmuxSocket: "/tmp/sock",
+		TmuxPane:   "%3",
+		TmuxClient: "/dev/ttys003",
+		TermBundle: "com.googlecode.iterm2",
+	}
+
+	got := captureFocusTarget("repo/wt", previous)
+	if got.TmuxClient != previous.TmuxClient {
+		t.Fatalf("TmuxClient = %q, want prior same-session client %q", got.TmuxClient, previous.TmuxClient)
 	}
 }
 

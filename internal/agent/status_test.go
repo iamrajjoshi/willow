@@ -87,6 +87,17 @@ func TestReadStatus_AggregatesBusyOverDone(t *testing.T) {
 	}
 }
 
+func TestHighestPrioritySession_UsesNewestSessionToBreakStatusTie(t *testing.T) {
+	now := time.Now().UTC()
+	older := &SessionStatus{SessionID: "older", Status: StatusDone, Timestamp: now.Add(-time.Minute)}
+	newer := &SessionStatus{SessionID: "newer", Status: StatusDone, Timestamp: now}
+
+	got, status := highestPrioritySession([]*SessionStatus{older, newer})
+	if got != newer || status != StatusDone {
+		t.Fatalf("highestPrioritySession() = (%#v, %q), want newest DONE session", got, status)
+	}
+}
+
 func TestReadAllSessions_IgnoresFlatSessionFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -2,18 +2,31 @@ package agent
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/iamrajjoshi/willow/internal/agent/harness"
 	"github.com/iamrajjoshi/willow/internal/config"
+	"github.com/iamrajjoshi/willow/internal/focus"
 	"github.com/iamrajjoshi/willow/internal/notify"
-	"github.com/iamrajjoshi/willow/internal/telemetry"
+)
+
+const focusCaptureTimeout = time.Second
+
+var runTmuxCapture = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, path, args...).Output()
+}
+
+var (
+	supportsNotificationClick       = notify.SupportsClick
+	dispatchNotificationTransitions = dispatchNotifications
 )
 
 // HookInput models the Claude-shaped hook payload. It stays exported for tests
@@ -30,7 +43,8 @@ type HookInput struct {
 // worktree, and fires a desktop notification on BUSY → DONE/WAIT transitions.
 // Returns nil when there's nothing to do (not a willow worktree, missing
 // session_id, etc.) so the hook never blocks Claude Code. Notification
-// dispatch errors are captured via Sentry.
+// Notification dispatch remains best-effort so hook failures never block the
+// agent harness.
 func HandleHook(r io.Reader, harnessIDs ...string) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -60,6 +74,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 
 	if in.EventName == "SessionEnd" || in.EventName == "sessionEnd" {
 		_ = removeSessionArtifacts(repo, wt, h.ID(), in.SessionID)
+		fireNotifications(repo, wt)
 		return nil
 	}
 
@@ -94,6 +109,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 		appendFileList(FilesPathForHarness(repo, wt, h.ID(), in.SessionID), filePath)
 	}
 
+	currentFocusTarget := focusTargetForStatus(repo+"/"+wt, status, prev.FocusTarget)
 	session := SessionStatus{
 		Harness:        h.ID(),
 		Status:         status,
@@ -106,6 +122,7 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 		Timestamp:      now,
 		StartTime:      startTime,
 		Worktree:       wt,
+		FocusTarget:    currentFocusTarget,
 	}
 	if err := writeSession(destFile, session); err != nil {
 		return fmt.Errorf("write session: %w", err)
@@ -115,6 +132,125 @@ func HandleHook(r io.Reader, harnessIDs ...string) error {
 
 	fireNotifications(repo, wt)
 	return nil
+}
+
+func focusTargetForStatus(key string, status Status, previous *focus.Target) *focus.Target {
+	if status != StatusDone && status != StatusWait {
+		return previous
+	}
+	return focusTargetForStatusConfig(key, status, previous, config.Load("").Notify, supportsNotificationClick())
+}
+
+func focusTargetForStatusConfig(key string, status Status, previous *focus.Target, cfg config.NotifyConfig, supportsClick bool) *focus.Target {
+	if status != StatusDone && status != StatusWait {
+		return previous
+	}
+	desktopEnabled := cfg.Desktop == nil || *cfg.Desktop
+	if !desktopEnabled || cfg.Command != "" || !supportsClick {
+		return previous
+	}
+	return captureFocusTarget(key, previous)
+}
+
+func captureFocusTarget(key string, previous *focus.Target) *focus.Target {
+	tmuxSocket := focus.SocketFromEnv(os.Getenv("TMUX"))
+	tmuxPane := os.Getenv("TMUX_PANE")
+	termBundle := os.Getenv("__CFBundleIdentifier")
+	if tmuxSocket == "" && tmuxPane == "" && termBundle == "" && previous != nil {
+		target := *previous
+		target.Session = key
+		return &target
+	}
+
+	target := focus.Target{
+		Session:    key,
+		TmuxSocket: tmuxSocket,
+		TermBundle: termBundle,
+	}
+	if tmuxSocket == "" {
+		return &target
+	}
+
+	target.TmuxPane = tmuxPane
+	if path, err := exec.LookPath("tmux"); err == nil {
+		if absolutePath, err := filepath.Abs(path); err == nil {
+			target.TmuxPath = absolutePath
+		} else {
+			target.TmuxPath = path
+		}
+	}
+	target.TmuxClient = tmuxClientForSession(target.TmuxPath, target.TmuxSocket, target.TmuxPane, key)
+
+	if previous != nil && previous.TmuxSocket == target.TmuxSocket {
+		if target.TmuxPath == "" {
+			target.TmuxPath = previous.TmuxPath
+		}
+		if target.TmuxPane == "" {
+			target.TmuxPane = previous.TmuxPane
+		}
+		if target.TmuxClient == "" {
+			target.TmuxClient = previous.TmuxClient
+		}
+		if target.TermBundle == "" {
+			target.TermBundle = previous.TermBundle
+		}
+	}
+	return &target
+}
+
+func tmuxClientForSession(tmuxPath, socket, pane, session string) string {
+	if tmuxPath == "" || socket == "" || pane == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), focusCaptureTimeout)
+	defer cancel()
+	out, err := runTmuxCapture(
+		ctx, tmuxPath, "-S", socket,
+		"display-message", "-p", "-t", pane,
+		"#{client_name}\t#{client_session}",
+	)
+	if err != nil {
+		return ""
+	}
+	client, clientSession, ok := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	if !ok || clientSession != session {
+		return ""
+	}
+	return client
+}
+
+func notificationFocusTarget(key string, sessions []*SessionStatus) (focus.Target, string) {
+	best, _ := highestPrioritySession(sessions)
+	var target focus.Target
+	if best != nil && best.FocusTarget != nil {
+		target = *best.FocusTarget
+	}
+	target.Session = key
+
+	identity := struct {
+		Harness   string       `json:"harness,omitempty"`
+		SessionID string       `json:"session_id,omitempty"`
+		Target    focus.Target `json:"target"`
+	}{Target: target}
+	if best != nil {
+		identity.Harness = best.Harness
+		identity.SessionID = best.SessionID
+	}
+	encoded, _ := json.Marshal(identity)
+	return target, string(encoded)
+}
+
+func clickForTarget(key string, target focus.Target) *notify.Click {
+	click := &notify.Click{Group: "willow-" + key}
+	if !focus.CanFocus(target) {
+		return click
+	}
+	willowPath, err := os.Executable()
+	if err != nil {
+		return click
+	}
+	click.Execute = focus.ExecuteCommand(willowPath, target)
+	return click
 }
 
 // computeStatus returns the new status for this event plus a skip flag.
@@ -308,36 +444,56 @@ func lastTimelineStatus(path string) Status {
 	return e.Status
 }
 
-// fireNotifications aggregates sessions for this worktree, detects transitions
-// against the saved state, and dispatches notifications. Aggregation and
-// transition detection happen inside the flock so concurrent hooks across
-// sibling sessions observe a consistent view of the state file — otherwise
-// two hooks could each read the prior state, each compute "BUSY→DONE", and
-// emit duplicate notifications.
+// fireNotifications serializes grouped clickable dispatches for one worktree
+// so a stale notification cannot overtake a newer target replacement. Other
+// dispatchers run after the short state locks, so they cannot block sibling
+// hooks while running external commands.
 func fireNotifications(repo, wt string) {
 	key := repo + "/" + wt
+	cfg := config.Load("")
+	disabled := cfg.Notify.Desktop != nil && !*cfg.Notify.Desktop && cfg.Notify.Command == ""
+	clickable := !disabled && cfg.Notify.Command == "" &&
+		(cfg.Notify.Desktop == nil || *cfg.Notify.Desktop) &&
+		supportsNotificationClick()
 
 	var transitions []Transition
-	_ = withNotifyLock(func() error {
+	var clickTarget focus.Target
+	collectTransitions := func() error {
 		sessions := ReadAllSessions(repo, wt)
 		agg := AggregateStatus(sessions)
-		transitions = DetectTransitions(
-			map[string]Status{key: agg.Status},
-			NotifyStateFile(),
-		)
+		var targetIdentity string
+		clickTarget, targetIdentity = notificationFocusTarget(key, sessions)
+		_ = withNotifyLock(func() error {
+			transitions = detectNotificationTransitions(key, agg.Status, targetIdentity, NotifyStateFile())
+			return nil
+		})
 		return nil
-	})
-	if len(transitions) == 0 {
+	}
+
+	if clickable {
+		_ = withNotifyKeyLock(key, func() error {
+			if err := collectTransitions(); err != nil || len(transitions) == 0 {
+				return err
+			}
+			dispatchNotificationTransitions(cfg, key, transitions, clickTarget, true)
+			return nil
+		})
 		return
 	}
 
-	cfg := config.Load("")
-	if cfg.Notify.Desktop != nil && !*cfg.Notify.Desktop && cfg.Notify.Command == "" {
+	_ = withNotifyKeyLock(key, collectTransitions)
+	if len(transitions) == 0 || disabled {
 		return
 	}
+	dispatchNotificationTransitions(cfg, key, transitions, clickTarget, false)
+}
 
+func dispatchNotifications(cfg *config.Config, key string, transitions []Transition, clickTarget focus.Target, allowRefresh bool) {
 	for _, tr := range transitions {
 		if tr.Key != key {
+			continue
+		}
+		if tr.Refresh && !allowRefresh {
 			continue
 		}
 		var body string
@@ -350,15 +506,11 @@ func fireNotifications(repo, wt string) {
 			continue
 		}
 
-		var err error
 		switch {
 		case cfg.Notify.Command != "":
-			err = notify.SendCustom(cfg.Notify.Command, "willow", body)
+			_ = notify.SendCustom(cfg.Notify.Command, "willow", body)
 		case cfg.Notify.Desktop == nil || *cfg.Notify.Desktop:
-			err = notify.Send("willow", body)
-		}
-		if err != nil {
-			telemetry.CaptureException(err)
+			_ = notify.SendWithClick("willow", body, clickForTarget(tr.Key, clickTarget))
 		}
 	}
 }

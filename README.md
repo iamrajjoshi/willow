@@ -76,6 +76,7 @@ go install github.com/iamrajjoshi/willow/cmd/willow@latest
 - [git](https://git-scm.com/)
 - [tmux](https://github.com/tmux/tmux) — optional, for the `ww tmux` picker popup
 - [gh](https://cli.github.com/) — optional, required for `ww new --pr`, `ww stack status`, `ww pr create`, and PR-state merged worktree detection
+- [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) — optional on macOS, for clickable agent notifications (`brew install terminal-notifier`)
 
 ## Setup
 
@@ -105,7 +106,7 @@ This gives you:
 | `wwc <branch>` | Shorthand for `ww checkout` |
 | `www` | cd to `<willow-base>/worktrees/` |
 
-**Optional:** Set terminal tab title to the current worktree name:
+**Optional:** Set the terminal tab title to the current worktree name. This also lets notification clicks select the matching Ghostty 1.3+, iTerm2, or Terminal.app tab when the agent isn't running in tmux:
 
 ```bash
 eval "$(willow shell-init --tab-title)"
@@ -459,6 +460,10 @@ Desktop notifications fire directly from agent hook systems — no daemon, no po
 
 Desktop notifications are enabled by default. Set `"notify": {"desktop": false}` to disable them, or set `"notify": {"command": "..."}` to run a custom shell command instead (it receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` env vars). The tmux status bar widget uses a separate sound-only channel and is unaffected.
 
+On macOS, clicking a built-in notification can return you to the agent that triggered it. Install [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) with `brew install terminal-notifier`; Willow then switches the captured tmux session and brings its terminal forward in Ghostty 1.3+, iTerm2, or Terminal.app. Without `terminal-notifier`, Willow falls back to a plain `osascript` notification with no click action. Run `ww doctor` to check whether it is installed.
+
+For agents outside tmux, supported terminals can select the matching tab when you enable tab titles with `eval "$(willow shell-init --tab-title)"`. Without tab titles, or in another terminal, a click only brings the terminal app forward. Ghostty users must also disable Ghostty's own title updates as described in the Terminal setup section below.
+
 ### `ww dispatch <prompt> [flags]`
 
 Create a worktree and launch the configured agent harness with a prompt. From the terminal, the agent runs interactively in the foreground. From the tmux picker, `Ctrl-G` launches the configured default in a background session and `Ctrl-O` lets you pick a one-off harness.
@@ -503,7 +508,7 @@ Install hooks for one harness or all built-in harnesses.
 
 ### `ww doctor`
 
-Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`), Claude Code, Codex CLI, and Cursor Agent binaries and hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy Claude hooks left over from older releases.
+Check your willow setup for common issues. Verifies git version, optional tools (`gh`, `tmux`, and macOS `terminal-notifier`), Claude Code, Codex CLI, and Cursor Agent binaries and hooks, willow directories, stale sessions, and config validity. Flags unmarked legacy Claude hooks left over from older releases.
 
 ```bash
 ww doctor          # report issues only
@@ -541,7 +546,7 @@ Print shell integration script.
 
 | Flag | Description |
 |------|-------------|
-| `--tab-title` | Include terminal tab title hook (sets tab to `repo/branch`) |
+| `--tab-title` | Set the terminal tab to `repo/branch`; required for notification clicks to select a non-tmux tab |
 
 ## Agent status
 
@@ -631,6 +636,14 @@ eval "$(willow shell-init --tab-title)"
 ```
 
 Each tab shows `repo/branch` (e.g. `myrepo/auth-refactor`) when inside a willow worktree.
+
+For exact notification focus outside tmux in Ghostty, leave Ghostty's `title` setting unset and disable its shell integration's title updates so they do not overwrite Willow's `repo/branch` title:
+
+```ini
+shell-integration-features = no-title
+```
+
+Clickable focus requires Ghostty 1.3+ and its [AppleScript integration](https://ghostty.org/docs/features/applescript), which is enabled by default with `macos-applescript = true`. macOS may ask for Automation access the first time.
 
 Recommended Ghostty layout per worktree:
 

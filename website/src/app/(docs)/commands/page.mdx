@@ -41,7 +41,7 @@ eval "$(willow shell-init --tab-title)"  # with tab titles
 
 | Flag | Description |
 |------|-------------|
-| `--tab-title` | Include terminal tab title hook |
+| `--tab-title` | Set the terminal tab to `repo/branch`; required for notification clicks to select a non-tmux tab |
 
 ## Worktrees
 
@@ -436,6 +436,10 @@ Desktop notifications fire directly from agent hook systems after you run `ww cc
 
 **Custom notification command:** Set `notify.command` in config to run your own script instead of the built-in dispatch. The command receives `WILLOW_NOTIFY_TITLE` and `WILLOW_NOTIFY_BODY` as environment variables.
 
+**Clickable notifications on macOS:** Install [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) with `brew install terminal-notifier`. Clicking a built-in notification then switches the captured tmux session and brings its terminal forward in Ghostty 1.3+, iTerm2, or Terminal.app. Without `terminal-notifier`, Willow falls back to a plain `osascript` notification with no click action. Run `ww doctor` to check whether it is installed.
+
+**Tabs outside tmux:** Supported terminals can select the matching tab when you enable `shell-init --tab-title` in your shell config. Without tab titles, or in another terminal, a click only brings the terminal app forward. For Ghostty, leave its `title` setting unset and add `shell-integration-features = no-title` to the Ghostty config so its own shell integration does not overwrite Willow's title. Ghostty 1.3+ also requires its [AppleScript integration](https://ghostty.org/docs/features/applescript), which is enabled by default with `macos-applescript = true`; macOS may ask for Automation access the first time.
+
 **Concurrency:** When multiple sessions run in the same worktree, an advisory `flock` on `<willow-base>/notify-states.lock` prevents duplicate notifications.
 
 ### `ww dispatch <prompt>`
@@ -588,6 +592,7 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 ✔ git 2.45.0
 ✔ gh CLI installed
 ✔ tmux installed
+✔ terminal-notifier installed (clickable notifications)
 ✔ Claude Code (default) CLI installed
 ✔ Claude Code hooks installed
 ✔ Codex CLI installed
@@ -606,6 +611,7 @@ ww doctor --fix    # prompt to remove unmarked legacy willow hooks from settings
 | git version | Warns if &lt; 2.30 |
 | gh CLI | Optional — warns if missing |
 | tmux | Optional — warns if missing |
+| terminal-notifier | macOS only; optional dependency for notification clicks that focus the agent session |
 | Agent CLIs and hooks | Checks Claude Code, Codex CLI, and Cursor Agent binaries plus Willow hook installation |
 | Claude legacy hooks | Flags unmarked entries from older Willow releases in `~/.claude/settings.json` |
 | Willow directories | `<willow-base>`, `repos/`, `worktrees/` |
