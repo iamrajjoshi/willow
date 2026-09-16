@@ -283,6 +283,9 @@ func TestCheckAgentHarnesses(t *testing.T) {
 	if got := agent.UnmarkedLegacyHooks(); len(got) != 0 {
 		t.Fatalf("legacy hooks after fix = %v, want none", got)
 	}
+	if !agent.IsHarnessInstalled(harness.ClaudeID) {
+		t.Fatal("current Claude hooks should remain installed after legacy cleanup")
+	}
 }
 
 func TestCheckAgentHarnessesIncludesCursor(t *testing.T) {

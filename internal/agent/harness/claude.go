@@ -64,7 +64,7 @@ func (h Claude) HooksInstalled(command string) bool {
 		return false
 	}
 	for _, event := range h.HookEvents() {
-		if !eventHasHook(hooksMap, event, command) {
+		if !eventHasUnmarkedHook(hooksMap, event, command) {
 			return false
 		}
 	}
@@ -72,6 +72,10 @@ func (h Claude) HooksInstalled(command string) bool {
 }
 
 func (h Claude) LegacyHooks() []LegacyHook {
+	currentCommand, err := CurrentHookCommand(h)
+	if err != nil {
+		return nil
+	}
 	settings, err := readJSONFile(claudeSettingsPath())
 	if err != nil {
 		return nil
@@ -93,7 +97,7 @@ func (h Claude) LegacyHooks() []LegacyHook {
 				continue
 			}
 			for _, cmd := range ruleCommands(ruleMap) {
-				if looksLikeLegacyWillowCommand(cmd) {
+				if looksLikeLegacyWillowCommand(cmd, currentCommand) {
 					found = append(found, LegacyHook{Event: event, Command: cmd})
 				}
 			}
@@ -103,6 +107,10 @@ func (h Claude) LegacyHooks() []LegacyHook {
 }
 
 func (h Claude) RemoveLegacyHooks() ([]string, bool, error) {
+	currentCommand, err := CurrentHookCommand(h)
+	if err != nil {
+		return nil, false, err
+	}
 	settings, err := readJSONFile(claudeSettingsPath())
 	if err != nil {
 		return nil, false, err
@@ -132,7 +140,7 @@ func (h Claude) RemoveLegacyHooks() ([]string, bool, error) {
 			}
 			isLegacy := false
 			for _, cmd := range ruleCommands(ruleMap) {
-				if looksLikeLegacyWillowCommand(cmd) {
+				if looksLikeLegacyWillowCommand(cmd, currentCommand) {
 					removed = append(removed, cmd)
 					isLegacy = true
 				}
@@ -204,7 +212,6 @@ func (h Claude) addHookToSettings(command string) error {
 	}
 
 	willowRule := map[string]any{
-		"source": "willow",
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
@@ -215,13 +222,21 @@ func (h Claude) addHookToSettings(command string) error {
 
 	for _, event := range h.HookEvents() {
 		existing, _ := hooksMap[event].([]any)
+		hasCurrent := false
 		filtered := make([]any, 0, len(existing))
 		for _, rule := range existing {
-			if !isMarkedWillowRule(rule) {
-				filtered = append(filtered, rule)
+			if isMarkedWillowRule(rule) {
+				continue
 			}
+			if ruleHasCommand(rule, command) {
+				hasCurrent = true
+			}
+			filtered = append(filtered, rule)
 		}
-		hooksMap[event] = append(filtered, willowRule)
+		if !hasCurrent {
+			filtered = append(filtered, willowRule)
+		}
+		hooksMap[event] = filtered
 	}
 
 	settings["hooks"] = hooksMap
@@ -265,14 +280,34 @@ func eventHasHook(hooksMap map[string]any, event, command string) bool {
 		return false
 	}
 	for _, rule := range rules {
-		ruleMap, ok := rule.(map[string]any)
-		if !ok {
-			continue
+		if ruleHasCommand(rule, command) {
+			return true
 		}
-		for _, cmd := range ruleCommands(ruleMap) {
-			if cmd == command {
-				return true
-			}
+	}
+	return false
+}
+
+func eventHasUnmarkedHook(hooksMap map[string]any, event, command string) bool {
+	rules, ok := hooksMap[event].([]any)
+	if !ok {
+		return false
+	}
+	for _, rule := range rules {
+		if !isMarkedWillowRule(rule) && ruleHasCommand(rule, command) {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleHasCommand(rule any, command string) bool {
+	ruleMap, ok := rule.(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, cmd := range ruleCommands(ruleMap) {
+		if cmd == command {
+			return true
 		}
 	}
 	return false
@@ -304,8 +339,11 @@ func isMarkedWillowRule(rule any) bool {
 	return src == "willow"
 }
 
-func looksLikeLegacyWillowCommand(cmd string) bool {
+func looksLikeLegacyWillowCommand(cmd, currentCommand string) bool {
 	cmd = strings.TrimSpace(cmd)
+	if cmd == strings.TrimSpace(currentCommand) {
+		return false
+	}
 	if strings.HasSuffix(cmd, "/claude-status-hook.sh") {
 		return true
 	}
