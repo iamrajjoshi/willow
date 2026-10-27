@@ -492,7 +492,7 @@ Willow owns worktree creation for dispatches. Cursor's own `--worktree` path is 
 
 ### `ww cc-setup`
 
-One-time hook installation for Claude Code status tracking.
+One-time hook installation for Claude Code status tracking. Safe to re-run: Willow writes schema-valid entries for the current binary without duplicating hooks, and leaves unrelated hook rules untouched.
 
 ### `ww codex-setup`
 

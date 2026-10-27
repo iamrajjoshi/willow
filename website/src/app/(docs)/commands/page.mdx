@@ -477,7 +477,7 @@ Willow owns worktree creation for dispatches. Cursor's own `--worktree` path is 
 
 ### `ww cc-setup`
 
-Hook installation for Claude Code status tracking. Safe to re-run: each invocation overwrites willow's entries in `~/.claude/settings.json` with the current binary path, so upgrades and relocations stay in sync. Third-party hook rules are left untouched.
+Hook installation for Claude Code status tracking. Safe to re-run: Willow writes schema-valid entries for the current binary without duplicating hooks. Unrelated hook rules are left untouched, and `ww doctor` reports stale commands from older installations.
 
 1. Creates the status directory: `<willow-base>/status/`
 2. Registers the hidden `willow hook` subcommand for every event willow tracks. The absolute binary path is resolved via `os.Executable()` at install time.

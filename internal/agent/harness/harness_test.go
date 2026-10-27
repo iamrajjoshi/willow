@@ -49,9 +49,168 @@ func TestClaudeHookInstaller(t *testing.T) {
 	settings := readTestJSON(t, filepath.Join(home, ".claude", "settings.json"))
 	hooks := settings["hooks"].(map[string]any)
 	for _, event := range h.HookEvents() {
-		if _, ok := hooks[event]; !ok {
-			t.Fatalf("missing Claude hook event %s", event)
+		rules, ok := hooks[event].([]any)
+		if !ok || len(rules) != 1 {
+			t.Fatalf("event %s rules = %#v, want one rule", event, hooks[event])
 		}
+		rule := rules[0].(map[string]any)
+		if len(rule) != 1 {
+			t.Fatalf("event %s rule keys = %#v, want only hooks", event, rule)
+		}
+		handlers, ok := rule["hooks"].([]any)
+		if !ok || len(handlers) != 1 {
+			t.Fatalf("event %s handlers = %#v, want one handler", event, rule["hooks"])
+		}
+		handler := handlers[0].(map[string]any)
+		if len(handler) != 2 || handler["type"] != "command" || handler["command"] != command {
+			t.Fatalf("event %s handler = %#v, want schema-valid command handler", event, handler)
+		}
+	}
+}
+
+func TestClaudeHooksInstalledRequiresMarkerFreeRules(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	h := Claude{}
+	command := "/usr/local/bin/willow hook --harness claude"
+	hooks := map[string]any{}
+	for _, event := range h.HookEvents() {
+		hooks[event] = []any{
+			map[string]any{
+				"source": "willow",
+				"hooks": []any{
+					map[string]any{"type": "command", "command": command},
+				},
+			},
+		}
+	}
+	if err := writeJSONFile(filepath.Join(home, ".claude", "settings.json"), map[string]any{"hooks": hooks}); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	if h.HooksInstalled(command) {
+		t.Fatal("source-marked rules should require migration")
+	}
+	if _, err := h.InstallHooks(command); err != nil {
+		t.Fatalf("InstallHooks: %v", err)
+	}
+	if !h.HooksInstalled(command) {
+		t.Fatal("marker-free rules should be installed after migration")
+	}
+}
+
+func TestClaudeHookInstallerMigratesMarkedRule(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	h := Claude{}
+	command := "/usr/local/bin/willow hook --harness claude"
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{
+		"hooks": {
+			"Stop": [
+				{
+					"source": "willow",
+					"hooks": [{"type": "command", "command": "/old/willow hook --harness claude"}]
+				},
+				{
+					"hooks": [{"type": "command", "command": "/tmp/other-hook"}]
+				}
+			]
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("write existing settings: %v", err)
+	}
+
+	changed, err := h.InstallHooks(command)
+	if err != nil {
+		t.Fatalf("InstallHooks: %v", err)
+	}
+	if !changed {
+		t.Fatal("migration should change settings")
+	}
+
+	settings := readTestJSON(t, settingsPath)
+	hooks := settings["hooks"].(map[string]any)
+	stopRules := hooks["Stop"].([]any)
+	if len(stopRules) != 2 {
+		t.Fatalf("Stop rules = %#v, want third-party rule plus Willow rule", stopRules)
+	}
+	if !eventHasHook(hooks, "Stop", "/tmp/other-hook") {
+		t.Fatal("third-party hook should be preserved")
+	}
+	if !eventHasHook(hooks, "Stop", command) {
+		t.Fatal("current Willow hook should be installed")
+	}
+	if eventHasHook(hooks, "Stop", "/old/willow hook --harness claude") {
+		t.Fatal("marked Willow hook should be replaced")
+	}
+	for _, rule := range stopRules {
+		if _, ok := rule.(map[string]any)["source"]; ok {
+			t.Fatalf("migrated rule contains unsupported source field: %#v", rule)
+		}
+	}
+}
+
+func TestClaudeHookInstallerPreservesCustomCurrentRule(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	h := Claude{}
+	command := "/usr/local/bin/willow hook --harness claude"
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{
+		"hooks": {
+			"Stop": [
+				{
+					"hooks": [
+						{"type": "command", "command": "/usr/local/bin/willow hook --harness claude"},
+						{"type": "command", "command": "/tmp/other-hook"}
+					]
+				}
+			]
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("write existing settings: %v", err)
+	}
+
+	if _, err := h.InstallHooks(command); err != nil {
+		t.Fatalf("InstallHooks: %v", err)
+	}
+	settings := readTestJSON(t, settingsPath)
+	hooks := settings["hooks"].(map[string]any)
+	stopRules := hooks["Stop"].([]any)
+	if len(stopRules) != 1 {
+		t.Fatalf("Stop rules = %#v, want custom rule preserved without duplicate", stopRules)
+	}
+	if !eventHasHook(hooks, "Stop", command) || !eventHasHook(hooks, "Stop", "/tmp/other-hook") {
+		t.Fatalf("custom Stop rule was not preserved: %#v", stopRules)
+	}
+}
+
+func TestLooksLikeLegacyWillowCommandExcludesCurrentCommand(t *testing.T) {
+	current := "/opt/homebrew/bin/willow hook --harness claude"
+	tests := []struct {
+		name    string
+		command string
+		want    bool
+	}{
+		{name: "current", command: current, want: false},
+		{name: "relocated", command: "/old/bin/willow hook --harness claude", want: true},
+		{name: "old hook", command: "/old/bin/willow hook", want: true},
+		{name: "old script", command: "/old/bin/claude-status-hook.sh", want: true},
+		{name: "unrelated", command: "/tmp/other-hook", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikeLegacyWillowCommand(tt.command, current); got != tt.want {
+				t.Fatalf("looksLikeLegacyWillowCommand(%q) = %v, want %v", tt.command, got, tt.want)
+			}
+		})
 	}
 }
 
